@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!129 &1
@@ -19,7 +20,7 @@ PlayerSettings:
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0, g: 0, b: 0, a: 1}
   m_ShowUnitySplashScreen: 1
-  m_ShowUnitySplashLogo: 1
+  m_ShowUnitySplashLogo: 0
   m_SplashScreenOverlayOpacity: 1
   m_SplashScreenAnimation: 1
   m_SplashScreenLogoStyle: 1
@@ -43,7 +44,7 @@ PlayerSettings:
   m_SplashScreenLogos:
   - logo: {fileID: 21300000, guid: 1ba66f91f9abdef4cbba601a3946b9bb, type: 3}
     duration: 2
-  - logo: {fileID: 10404, guid: 0000000000000000f000000000000000, type: 0}
+  - logo: {fileID: 21300000, guid: 69f1940e91b181e439b7c2be875974d9, type: 3}
     duration: 2
   m_VirtualRealitySplashScreen: {fileID: 0}
   defaultScreenWidth: 1024
@@ -80,6 +81,9 @@ PlayerSettings:
   androidUseSwappy: 0
   androidRequestedVisibleInsets: 0
   m_AndroidWindowInsets:
+    4:
+      overlapping: 0
+      appearance: 0
     2:
       overlapping: 0
       appearance: 0
@@ -212,10 +216,8 @@ PlayerSettings:
   strictShaderVariantMatching: 0
   VertexChannelCompressionMask: 4054
   iPhoneSdkVersion: 988
-  iOSSimulatorArchitecture: 0
   iOSTargetOSVersionString: 16.0
   tvOSSdkVersion: 0
-  tvOSSimulatorArchitecture: 0
   tvOSRequireExtendedGameController: 0
   tvOSTargetOSVersionString: 16.0
   VisionOSSdkVersion: 0
@@ -1002,6 +1004,7 @@ PlayerSettings:
   androidVulkanDenyFilterList: []
   androidVulkanAllowFilterList: []
   androidVulkanDeviceFilterListAsset: {fileID: 0}
+  d3d12CollectStateObjectDatabase: 0
   d3d12DeviceFilterListAsset: {fileID: 0}
   webGPUDeviceFilterListAsset: {fileID: 0}
   allowedHttpConnections: 3
