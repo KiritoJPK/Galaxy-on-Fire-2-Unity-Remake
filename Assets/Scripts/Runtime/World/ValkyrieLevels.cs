@@ -412,14 +412,20 @@ namespace GoF2Remake.World
             // once, then PlayerStation::update 0x147dbc never runs it again: the arms unfolded (the turrets and shield
             // generators below sit on them), not the folded load pose that looped as "opening itself".
             PartAnimation.HoldAllAtEnd(battlestation);
-            AddStationVolumes(battlestation, true);
+            AddStationVolumes(battlestation, true, unfolded: true);   // Modified: the unfolded arms' volumes
             // [1-12] turrets and shield generators: at host + (-x, y, -z), rotation (0, 0, -rz) (the table rotated by (0, pi, 0)).
             int rank = Session.Rank;
             int hp = rank <= 20 ? rank * 15 + 220 : 520;
-            foreach (var t in StationTurrets)
+            for (int i = 0; i < StationTurrets.Length; i++)
             {
+                var t = StationTurrets[i];
                 var s = BattleTurret(t.shield, Standing.Pirate, host + new Vector3(-t.pos.x, t.pos.y, -t.pos.z), new Vector3(0, 0, -t.rz),
                                      sp => { sp.alwaysEnemy = true; sp.hitpoints = hp; });
+                // Modified: named after its StationTurrets entry, so each one can be told apart in the Hierarchy.
+                if (s != null) s.gameObject.name = $"{(t.shield ? "Shield" : "Turret")} {i} (StationTurrets[{i}])";
+                // Modified: the turrets' pose measured against the original (Inspector values, relative to the battlestation).
+                if (s != null && battlestation != null && TurretPoses80.TryGetValue(i, out var pose))
+                    s.transform.SetPositionAndRotation(battlestation.transform.position + pose.pos, Quaternion.Euler(pose.rot));
                 // Level::assignGuns, mission 0x50: turrets x1.7 (NpcTables.GunDamage).
                 if (t.shield) s.shootingEnabled = false;
             }
@@ -485,12 +491,15 @@ namespace GoF2Remake.World
         }
 
         /// <summary>PlayerStation 101's volumes on a scenery battlestation (unrotated: the (0, pi, 0) of the table mirrored).</summary>
-        static void AddStationVolumes(GameObject go, bool unrotated)
+        /// Modified: 'unfolded' (80: the arms held unfolded) takes the alien orbit's battlestation volumes (collision 1003:
+        /// the arms out at +-29630, where 101 has them folded at +-15990, so the unfolded arms had no collision).
+        static void AddStationVolumes(GameObject go, bool unrotated, bool unfolded = false)
         {
             if (go == null) return;
             var o = go.AddComponent<Obstacle>();
             o.landmark = true;
-            o.volumes = CollisionVolume.ForStation(101, false);
+            o.volumes = unfolded ? CollisionVolume.ForStation(101, true, true) : CollisionVolume.ForStation(101, false);
+            Debug.Log($"[Valkyrie] {go.name}: {o.volumes.Count} collision volumes ({(unfolded ? "1003, unfolded" : "101")})");
             if (unrotated)
                 for (int i = 0; i < o.volumes.Count; i++)
                 {
@@ -1286,6 +1295,21 @@ namespace GoF2Remake.World
         const float ExplosionAt80 = 6900f;
         const float HitWait80 = 800f;        // steps 7 and 8 (unchanged from the original)
         const float LaserDelay80 = ExplosionAt80 - LaserWindow80 - 2f * HitWait80;   // Modified: ms until the laser fires (3600 now; was step 1's 3000)
+        // Modified: 80's battlestation turrets (StationTurrets index -> position relative to the battlestation, Unity units,
+        // and rotation, degrees), from the Inspector with the battlestation at (0, 0, -8000). The shield generators keep the
+        // table's pose.
+        static readonly Dictionary<int, (Vector3 pos, Vector3 rot)> TurretPoses80 = new Dictionary<int, (Vector3 pos, Vector3 rot)>
+        {
+            { 0, (new Vector3(215f, 1165f, -370f), new Vector3(0f, 180f, 87f)) },
+            { 1, (new Vector3(-215f, 1165f, -370f), new Vector3(0f, 180f, -87f)) },
+            { 4, (new Vector3(170f, -1138f, 30f), new Vector3(0f, 180f, 90f)) },
+            { 5, (new Vector3(-170f, -1138f, 30f), new Vector3(0f, 180f, -90f)) },
+            { 6, (new Vector3(1486f, -532f, -188f), new Vector3(-180f, 0f, 0f)) },
+            { 7, (new Vector3(-1485f, -536f, -191f), new Vector3(-180f, 0f, 0f)) },
+            { 8, (new Vector3(-1485f, 225f, -191f), new Vector3(0f, -180f, 0f)) },
+            { 11, (new Vector3(1485f, 225f, -191f), new Vector3(0f, -180f, 0f)) },
+        };
+
         const float LaserChargeMs80 = 1500f; // Modified: ms the laser's charge-up animation takes; then it stays on until the cut
         bool laserLooping80;   // the laser is held at its LaserHoldAt80 pose
         // Modified: where in its animation the laser is held after the charge-up (0 = its start, 1 = its last frame, where
