@@ -50,6 +50,10 @@ namespace GoF2Remake.World
             public int turretGun = -1;    // a gun item for the turrets (the fighter turret's 22), -1 = the turret's own
             public float turretDamage = 1f;
             public (Vector3 pos, Vector3 rot)[] scenery;   // the Valkyrie's shield generators (no gun)
+            /// <summary>The turrets' and scenery's poses are Unity offsets (metres) and Euler degrees relative to the hull
+            /// placed unrotated in a level (OrbitLayout.RotationToUnity(0)), not game units and radians: the Valkyrie's,
+            /// from ValkyrieLevels.StationTurretPose (measured against the original in mission 80).</summary>
+            public bool unityPoses;
             public string sceneryAssembly;
             public bool holdAfterOneOff;  // the Void ship: its real size is the pose after its animation's first key
             public float cameraHeight = 1f;   // FitCamera: the camera's and its look point's height above the hull's middle, x this
@@ -156,17 +160,20 @@ namespace GoF2Remake.World
                 label = X("debugHullVosskBattleship", "Vossk battleship"),
                 turrets = vossk.ToArray(), turretAssembly = "turret_003_static", turretScale = 6f,
             });
-            // Level 80 (ValkyrieLevels.Build80): the turrets at host + (-x, y, -z), rotation (0, 0, -rz).
+            // Level 80 (ValkyrieLevels.Build80): the same poses (StationTurretPose: the measured ones, else the table's).
             var guns = new List<(Vector3, Vector3)>();
             var shields = new List<(Vector3, Vector3)>();
-            foreach (var t in ValkyrieLevels.StationTurrets)
-                (t.shield ? shields : guns).Add((new Vector3(-t.pos.x, t.pos.y, -t.pos.z), new Vector3(0f, 0f, -t.rz)));
+            for (int i = 0; i < ValkyrieLevels.StationTurrets.Length; i++)
+            {
+                var (offset, rotation) = ValkyrieLevels.StationTurretPose(i);
+                (ValkyrieLevels.StationTurrets[i].shield ? shields : guns).Add((offset, rotation.eulerAngles));
+            }
             hulls.Add(new Hull
             {
                 key = "v_station_battlestation_anim_mission_object", assembly = "v_station_battlestation_anim_mission_object", stats = CapitalStats,
                 label = X("debugHullValkyrie", "Valkyrie (battlestation)"),
                 turrets = guns.ToArray(), turretAssembly = "v_station_battlestation_turret",
-                scenery = shields.ToArray(), sceneryAssembly = "v_station_battlestation_shield",
+                scenery = shields.ToArray(), sceneryAssembly = "v_station_battlestation_shield", unityPoses = true,
             });
             hulls.Add(new Hull
             {
@@ -459,8 +466,8 @@ namespace GoF2Remake.World
             var toPlayer = Quaternion.Inverse(Quaternion.Euler(0f, 180f, 0f));
             void Place(Transform t, Vector3 pos, Vector3 rot)
             {
-                var offset = toPlayer * (new Vector3(pos.x, pos.y, -pos.z) * M);
-                var turn = toPlayer * OrbitLayout.RotationToUnity(rot);
+                var offset = toPlayer * (hull.unityPoses ? pos : new Vector3(pos.x, pos.y, -pos.z) * M);
+                var turn = toPlayer * (hull.unityPoses ? Quaternion.Euler(rot) : OrbitLayout.RotationToUnity(rot));
                 if (model != null)
                 {
                     float scale = Mathf.Max(0.0001f, model.localScale.x);
@@ -483,7 +490,8 @@ namespace GoF2Remake.World
                     var spec = new SpawnSpec
                     {
                         group = NpcGroup.Turret, race = 0, ship = -1, turretAssembly = hull.turretAssembly, scale = hull.turretScale,
-                        hitpoints = 1000, noLoot = true, nameText = 1666, stationary = true, alwaysFriend = true, rotation = rot,
+                        hitpoints = 1000, noLoot = true, nameText = 1666, stationary = true, alwaysFriend = true,
+                        rotation = hull.unityPoses ? Vector3.zero : rot,   // only the spawn's: Place sets the pose
                         radarHidden = true, position = new Vector3(root.position.x, root.position.y, -root.position.z) / M,
                     };
                     var t = level.Traffic.SpawnShip(spec);
