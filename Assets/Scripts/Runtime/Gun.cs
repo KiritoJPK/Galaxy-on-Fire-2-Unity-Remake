@@ -43,6 +43,7 @@ namespace GoF2Remake.Flight
             public Vector3 position, velocity, up;
             public float timer;        // ms left; <= limit = free
             public float age;          // ms since the shot (mines, cluster corkscrew)
+            public bool lockLost;      // remake: a missile shaken off by a boost flies straight on (Target.boosting)
             public bool Active(float limit) => timer > limit;
         }
 
@@ -101,6 +102,11 @@ namespace GoF2Remake.Flight
         public event Action<Gun, int> Fired;
         /// <summary>Any gun's bomb / mine / blast went off (gun, Unity point): the gas clouds listen for the ionizing missiles.</summary>
         public static event Action<Gun, Vector3> Detonated;
+        /// <summary>Remake: a homing missile lost its lock on this target, which boosted (Target.boosting): any gun, any shooter.</summary>
+        public static event Action<Gun, Target> LockShaken;
+        /// <summary>The lock the last Update steered toward (multiplayer: NetShotSender sends it with a shot, so a capital
+        /// ship's salvo is mirrored at its own target, not the ship's).</summary>
+        public Target LastLock { get; private set; }
 
         public bool Homing => kind == Kind.Missile || kind == Kind.ClusterMissile || kind == Kind.Thermo;
         bool Coasts => kind == Kind.Rocket || kind == Kind.Missile || kind == Kind.ClusterMissile;
@@ -217,6 +223,7 @@ namespace GoF2Remake.Flight
                 bb.up = up;
                 bb.timer = lifetimeMs;
                 bb.age = 0f;
+                bb.lockLost = false;
                 reloadAcc = 0f;
                 Fired?.Invoke(this, 0);
                 return 0;
@@ -234,6 +241,7 @@ namespace GoF2Remake.Flight
                     c.up = up;
                     c.timer = lifetimeMs;
                     c.age = 0f;
+                    c.lockLost = false;
                 }
                 reloadAcc = 0f;
                 Fired?.Invoke(this, free);
@@ -255,6 +263,7 @@ namespace GoF2Remake.Flight
             b.up = up;
             b.timer = lifetimeMs;
             b.age = 0f;
+            b.lockLost = false;
             reloadAcc = 0f;
             Fired?.Invoke(this, free);
             return free;
@@ -273,6 +282,7 @@ namespace GoF2Remake.Flight
                 b.up = up;
                 b.timer = lifeMs;
                 b.age = 0f;
+                b.lockLost = false;
                 return true;
             }
             return false;
@@ -282,15 +292,21 @@ namespace GoF2Remake.Flight
         public void Update(float dtMs, IReadOnlyList<Target> targets, Target lockTarget)
         {
             reloadAcc += dtMs;
+            LastLock = lockTarget;
             lastTargets = targets;
             float limit = FreeLimit;
             // Missiles: 1/6 of the error per 33 ms frame, made frame-rate independent.
             float steer = Homing && lockTarget != null && lockTarget.Alive ? 1f - Mathf.Pow(5f / 6f, dtMs / 33.3f) : 0f;
+            bool shaken = false;
             for (int i = 0; i < bullets.Length; i++)
             {
                 ref var b = ref bullets[i];
                 if (b.timer <= limit) continue;
-                if (steer > 0f && b.age >= homingDelayMs)
+                // Remake: a boost shakes off every missile homing on that ship (players only: the local player's ship and, in
+                // multiplayer, the other players' copies, NetPlayer); they fly straight on. The original has no evasion.
+                if (steer > 0f && !b.lockLost && lockTarget.boosting) { b.lockLost = true; shaken = true; }
+                if (steer > 0f && !b.lockLost && lockTarget.isPlayer) IncomingMissiles.Report(this, i, b.position, b.velocity);
+                if (steer > 0f && !b.lockLost && b.age >= homingDelayMs)
                 {
                     float speed = b.velocity.magnitude;
                     var desired = (lockTarget.transform.position - b.position).normalized;
@@ -311,6 +327,7 @@ namespace GoF2Remake.Flight
                     else TestHits(i, ref b, targets);
                 }
             }
+            if (shaken) LockShaken?.Invoke(this, lockTarget);
         }
 
         /// <summary>RocketGun::update, sort 40: each rocket winds around its path, phase-shifted by its slot.</summary>

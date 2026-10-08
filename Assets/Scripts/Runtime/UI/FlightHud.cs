@@ -53,6 +53,8 @@ namespace GoF2Remake.UI
         NavigationView navView;
         SystemJump jump;
         CombatView combatView;
+        MissileWarningView missileWarning;
+        float evadedMessageAt = -10f;
         CooldownView cooldownView;   // remake: the booster / cloak recharge for keys and controllers
         PlayerHealth health;
         CombatRadar radar;
@@ -102,6 +104,7 @@ namespace GoF2Remake.UI
             }
             InputMode.Changed += ApplyInputMode;
             GameControls.Changed += ApplyInputMode;   // a rebound key: the hints show it
+            Gun.LockShaken += OnLockShaken;
         }
 
         void OnDestroy()
@@ -127,6 +130,16 @@ namespace GoF2Remake.UI
             panelRenderer?.UnregisterUIReloadCallback(OnUIReload);
             InputMode.Changed -= ApplyInputMode;
             GameControls.Changed -= ApplyInputMode;
+            Gun.LockShaken -= OnLockShaken;
+        }
+
+        /// <summary>Remake: a boost shook off missiles homing on the player (any shooter, Gun): "Missiles evaded!" in green, at
+        /// most every 1.5 s.</summary>
+        void OnLockShaken(Gun gun, Target target)
+        {
+            if (target == null || !target.isPlayer || Time.unscaledTime - evadedMessageAt < 1.5f) return;
+            evadedMessageAt = Time.unscaledTime;
+            miningView?.ShowMessage(Localization.Extra("missilesEvaded", "Missiles evaded!"), 2);
         }
 
         void OnUIReload(PanelRenderer renderer, VisualElement rootElement, int version)
@@ -175,6 +188,7 @@ namespace GoF2Remake.UI
             root.Add(transferCounter);
             navView = new NavigationView(root);
             combatView = new CombatView(root);
+            missileWarning = new MissileWarningView(root, gameObject);
             BuildRadarEllipse(root.Q("radarEllipse"));
             var speedPanel = root.Q("speedPanel");
             if (speedPanel != null) cooldownView = new CooldownView(speedPanel);
@@ -411,6 +425,7 @@ namespace GoF2Remake.UI
         {
             if (root == null) return;
             var kind = InputMode.Current;
+            missileWarning?.RefreshHint();
             root.EnableInClassList("input-touch", kind == InputKind.Touch);
             root.EnableInClassList("input-keyboard", kind == InputKind.KeyboardMouse);
             root.EnableInClassList("input-gamepad", kind == InputKind.Gamepad);
@@ -635,6 +650,7 @@ namespace GoF2Remake.UI
         void Update()
         {
             if (root == null) return;
+            missileWarning?.Hide();   // shown again below while missiles fly at the player and the HUD shows
             // The pause menu pauses the voice too: the shared voice source ignores the listener pause (it has to play while
             // a conversation pauses the game), so the radio's line kept talking over the menu. Multiplayer doesn't pause.
             bool menuPause = pauseMenu != null && pauseMenu.IsOpen && !GoF2Remake.Multiplayer.NetGame.Active;
@@ -915,6 +931,9 @@ namespace GoF2Remake.UI
             // Radar::draw isn't called while the launch / arrival camera runs: no ship markers (their layer sets its display
             // inline, which the .hud-launch rule can't override).
             combatView.Update(radar, traffic, health, Camera.main, cinematic, plateFree, !level.LaunchCameraOver);
+            missileWarning?.Update(level.Player != null ? level.Player.transform : null, Camera.main,
+                                   !cinematic && level.LaunchCameraOver && health != null && !health.Dead,
+                                   level.Player != null && level.Player.Model != null && level.Player.Model.HasBooster, Time.deltaTime * 1000f);
             cooldownView?.Update(level.Database, level.Player, level.Cloak, !cinematic && level.LaunchCameraOver && InputMode.Current != InputKind.Touch);
             // The Ultrascan's class-A letters: Radar::draw too, so not during the launch camera or a cinematic.
             miningView.UpdateMarkers(mining, nav != null && nav.AsteroidField != null ? nav.AsteroidField.fixedPosition : (Vector3?)null, Camera.main,

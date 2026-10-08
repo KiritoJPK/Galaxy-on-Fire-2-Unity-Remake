@@ -151,8 +151,13 @@ namespace GoF2Remake.Flight
             return new Vector2(Mathf.Clamp(scaled.x, -1f, 1f), Mathf.Clamp(scaled.y, -1f, 1f));
         }
 
+        Target selfTarget;
+
         void Update()
         {
+            // Remake: a boost shakes off the homing missiles locked on this ship (Gun, Target.boosting).
+            if (selfTarget == null) selfTarget = GetComponent<Target>();
+            if (selfTarget != null) selfTarget.boosting = Model.IsBoosting;
             Model.TiltMode = tiltMode;
             Model.LevelPitch = Data.Settings.LevelPitch;
             Model.Mass = mass;

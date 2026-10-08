@@ -467,6 +467,7 @@ namespace GoF2Remake.Multiplayer
             {
                 target.cloaked = cloaked;          // NPCs keep chasing but hold their fire (Target.cloaked)
                 target.untargetable = hidden;      // off the radar and the lock from 25 %
+                target.boosting = boost.Value > 0f;   // remake: a boost shakes off the missiles homing on them (Gun)
             }
             if (engineLoop != null)
             {
@@ -692,7 +693,8 @@ namespace GoF2Remake.Multiplayer
             if (level.Health != null && level.Health.Dead) NetAggression.Clear();   // a respawn starts clean
             if (engine.Value != glowOn) engine.Value = glowOn;
             float b = level.Player.Model != null ? level.Player.Model.BoostVisualPercent : 0f;
-            if (Mathf.Abs(boost.Value - b) > 0.02f) boost.Value = b;
+            // Back to 0 exactly when the boost ends (the others read > 0 as boosting: Target.boosting shakes off missiles).
+            if (Mathf.Abs(boost.Value - b) > 0.02f || (b == 0f && boost.Value != 0f)) boost.Value = b;
             float c = level.Cloak != null && level.Cloak.Rules != null ? level.Cloak.Rules.Percentage : 0f;
             if (Mathf.Abs(cloak.Value - c) > 0.5f || (c == 0f && cloak.Value != 0f)) cloak.Value = c;
             // The EMP lightning on the own ship too.

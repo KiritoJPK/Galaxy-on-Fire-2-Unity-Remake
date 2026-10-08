@@ -216,6 +216,12 @@ namespace GoF2Remake.Multiplayer
             InitViewer();
         }
 
+        /// <summary>The mirrored shots pass through the shooter's own side, like the real ones (its gun hits only its enemies,
+        /// NpcShip.HitTargets; same-race ships never hit each other): a capital ship's missiles left its launchers right
+        /// beside its own turrets' copies and "hit" them at once here. Players (this one, the others) are never passed.</summary>
+        bool SameSide(Target t) =>
+            t != null && target != null && !t.isPlayer && t.race >= 0 && t.race == target.race && t.GetComponent<NetPlayer>() == null;
+
         /// <summary>A copy of another game's ship here: the Target, the smoothing, the shot mirror.</summary>
         void InitViewer()
         {
@@ -224,7 +230,7 @@ namespace GoF2Remake.Multiplayer
             position.OnValueChanged += (_, p) => smoothing.Push(p);
             // The spawn's default pose (a client owner's first values follow as a delta) isn't a position.
             if (position.Value != Vector3.zero) smoothing.Push(position.Value);
-            mirror = new NetShotMirror(null, () => target);
+            mirror = new NetShotMirror(null, () => target, SameSide);
             target = gameObject.AddComponent<Target>();
             target.isShip = true;
             target.customDeath = true;

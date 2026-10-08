@@ -80,6 +80,9 @@ namespace GoF2Remake.Flight
         /// <summary>The player's cloak (Player+0x5e set by PlayerEgo::toggleCloaking): NPCs keep it as their target but don't
         /// fire, turrets don't aim at it, sleepers don't wake for it.</summary>
         [NonSerialized] public bool cloaked;
+        /// <summary>Remake: a player's ship boosting (ShipController for the local one, NetPlayer for the others): homing
+        /// missiles locked on it lose their lock (Gun). NPC ships never set it.</summary>
+        [NonSerialized] public bool boosting;
         [Tooltip("The owner handles the death (ships): no automatic explosion, renderers stay on.")]
         public bool customDeath;
         /// <summary>Asked when the hull runs out: true = saved (PlayerEgo::tryToStartEmergencySystem).</summary>

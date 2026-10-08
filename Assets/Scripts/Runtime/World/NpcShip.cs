@@ -176,7 +176,7 @@ namespace GoF2Remake.World
         public static System.Func<Target, bool> RemoteDockedAtObject;
 
         /// <summary>What its guns can hit: its enemies, plus the other players here (every player ship blocks its shots).</summary>
-        List<Target> HitTargets
+        public List<Target> HitTargets
         {
             get
             {

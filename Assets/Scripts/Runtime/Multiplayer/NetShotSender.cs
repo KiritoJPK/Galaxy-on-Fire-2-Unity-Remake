@@ -54,8 +54,9 @@ namespace GoF2Remake.Multiplayer
             var b = gun.bullets[index];
             var position = gun.isBeam ? b.position - gun.BeamDir * gun.BeamLengthUnits * Gun.MetersPerUnit : b.position;
             var velocity = gun.isBeam ? gun.BeamDir : b.velocity;
-            // A beam's target is the one it hit (its bullet sits on it); homing weapons follow the shooter's lock.
-            var target = gun.isBeam ? TargetAt(b.position) : gun.Homing || gun.kind == Gun.Kind.Rocket ? lockTarget?.Invoke() : null;
+            // A beam's target is the one it hit (its bullet sits on it); homing weapons follow the gun's own lock (a capital
+            // ship's missiles have their own target), else the shooter's.
+            var target = gun.isBeam ? TargetAt(b.position) : gun.Homing || gun.kind == Gun.Kind.Rocket ? gun.LastLock ?? lockTarget?.Invoke() : null;
             onShot(gun.itemIndex, position, velocity, b.up, b.timer, gun.homingDelayMs, NetShots.TargetId(target));
         }
 

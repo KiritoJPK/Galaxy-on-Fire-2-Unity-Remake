@@ -211,6 +211,7 @@ namespace GoF2Remake.World
             bool big = hit.boxes != null && hit.boxes.Length > 0;
             float dmg = missileBase * (big ? CapitalShips.MissileCapitalFactor : CapitalShips.MissileFactor);
             if (hit.isPlayer && !ship.Target.hostileToPlayer) dmg *= 0.2f;   // a stray hit (NpcShip.GunHit)
+            else if (!hit.isPlayer && IsRemotePlayer(hit) && !NpcShip.HostileToRemote(ship, hit)) dmg *= 0.2f;   // multiplayer: the same
             hit.Damage(dmg, true, missiles.bullets[b].velocity);
             missileRig.ShowImpact(point);
         }
@@ -219,26 +220,19 @@ namespace GoF2Remake.World
         {
             if (!missilesTried) SetupMissiles();
             if (missiles == null) return;
-            // A boost breaks the lock: the salvo at the player flies straight on and the rest of it is called off.
-            if (missileTarget != null && missileTarget.isPlayer && PlayerBoosting())
-            {
-                bool inFlight = false;
-                for (int i = 0; i < missiles.bullets.Length; i++) if (missiles.IsActive(i)) inFlight = true;
-                missileTarget = null;
-                salvoLeft = 0;
-                if (inFlight) traffic.Warn(Localization.Extra("missilesEvaded", "Missiles evaded!"));
-            }
             var lockTarget = missileTarget != null && missileTarget.Alive && !missileTarget.cloaked ? missileTarget : null;
-            missiles.Update(dtMs, ship.enemies, lockTarget);
+            missiles.Update(dtMs, ship.HitTargets, lockTarget);   // a boost shakes off the missiles in flight (Gun, Target.boosting)
             missileRig.UpdateVisuals(dtMs, Camera.main, ship.transform.up);
+            // ...and calls off the rest of the salvo at that ship.
+            if (lockTarget != null && lockTarget.boosting) { missileTarget = lockTarget = null; salvoLeft = 0; }
             if (salvoLeft > 0)
             {
                 salvoGapMs -= dtMs;
                 if (salvoGapMs > 0f) return;
                 salvoGapMs = CapitalShips.MissileGapMs;
                 if (lockTarget == null) { salvoLeft = 0; return; }
-                FireMissile(lockTarget);
-                salvoLeft--;
+                if (FireMissile(lockTarget)) salvoLeft--;
+                else salvoGapMs = 0f;   // the launcher not reloaded yet (the gap and the reload tie): again next frame
                 return;
             }
             salvoMs -= dtMs;
@@ -248,23 +242,18 @@ namespace GoF2Remake.World
             if (missileTarget != null) { salvoLeft = CapitalShips.MissilesPerSalvo; salvoGapMs = 0f; }
         }
 
-        ShipController playerShip;
 
-        bool PlayerBoosting()
+        /// <summary>One missile up out of a launcher, leaning toward the target (it homes after 1000 ms); false = not fired.</summary>
+        bool FireMissile(Target target)
         {
-            if (playerShip == null && traffic.Player != null) playerShip = traffic.Player.GetComponent<ShipController>();
-            return playerShip != null && playerShip.Model != null && playerShip.Model.IsBoosting;
-        }
-
-        /// <summary>One missile up out of a launcher, leaning toward the target (it homes after 1000 ms).</summary>
-        void FireMissile(Target target)
-        {
-            var from = ship.transform.TransformPoint(launchers[launcherIndex++ % launchers.Count]);
+            var from = ship.transform.TransformPoint(launchers[launcherIndex % launchers.Count]);
             var toward = (target.transform.position - from).normalized;
             var dir = (ship.transform.up * 0.85f + toward * 0.5f).normalized;
-            if (missiles.TryFire(from, Quaternion.LookRotation(dir, ship.transform.forward), false) < 0) return;
+            if (missiles.TryFire(from, Quaternion.LookRotation(dir, ship.transform.forward), false) < 0) return false;
+            launcherIndex++;
             missileRig.OnShot();
             Sfx.PlayAt(missileFx != null ? missileFx.Shot : null, from, 0.8f);
+            return true;
         }
 
         /// <summary>The fleet battle's enemy capital ship while it stands, else the nearest hostile ship within reach of its hull
@@ -282,7 +271,24 @@ namespace GoF2Remake.World
                 float d = (ship.Target.NearestPoint(e.transform.position) - e.transform.position).magnitude;
                 if (d < bestD) { bestD = d; best = e; }
             }
+            // Multiplayer: the other players here it is hostile to (their game takes the hits, NpcShip.HostileToRemote).
+            var remote = NpcShip.RemotePlayers;
+            if (remote != null && NpcShip.HostileToRemote != null)
+                foreach (var r in remote)
+                {
+                    if (r == null || !r.Alive || !r.isActiveAndEnabled || r.cloaked || !NpcShip.HostileToRemote(ship, r)) continue;
+                    float d = (ship.Target.NearestPoint(r.transform.position) - r.transform.position).magnitude;
+                    if (d < bestD) { bestD = d; best = r; }
+                }
             return best;
+        }
+
+        static bool IsRemotePlayer(Target t)
+        {
+            var remote = NpcShip.RemotePlayers;
+            if (remote == null) return false;
+            foreach (var r in remote) if (r == t) return true;
+            return false;
         }
 
         void OnDied(Target t)

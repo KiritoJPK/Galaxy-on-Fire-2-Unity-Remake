@@ -153,6 +153,13 @@ namespace GoF2Remake.Flight
         /// <summary>A bullet hit something at 'point'.</summary>
         public void ShowImpact(Vector3 point)
         {
+            // Gun::calcCharacterCollision: rockets, missiles and cluster missiles have no impact mesh; a hit emits record 11
+            // SET_EXPLOSION_MANUALLY_BIG at the bullet (one sprite_explosion particle, 1500 ms, 2000..3000 units, +500/s).
+            if (gun.kind == Gun.Kind.Rocket || gun.kind == Gun.Kind.Missile || gun.kind == Gun.Kind.ClusterMissile)
+            {
+                ShipBurn.ManualBurst(point, 1.5f, 2000f, 3000f, 500f);
+                return;
+            }
             if (impacts == null) return;
             int i = nextImpact;
             nextImpact = (nextImpact + 1) % impacts.Length;
