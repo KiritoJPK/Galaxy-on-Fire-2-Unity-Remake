@@ -179,7 +179,7 @@ namespace GoF2Remake.UI
                     var p = RuntimePanelUtils.CameraTransformWorldToPanel(markerLayer.panel, t.transform.position, cam) - origin;
                     if (used == markers.Count)
                     {
-                        var e = new VisualElement { pickingMode = PickingMode.Ignore };
+                        var e = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                         e.style.position = Position.Absolute;
                         SetImage(e, classFrames[0]);
                         markerLayer.Add(e);
@@ -187,8 +187,7 @@ namespace GoF2Remake.UI
                     }
                     var m = markers[used++];
                     m.style.display = DisplayStyle.Flex;
-                    m.style.left = p.x;
-                    m.style.top = p.y;
+                    m.style.translate = new Translate(p.x, p.y);   // not left / top: they ran the layout every frame
                 }
             }
             for (int i = used; i < markers.Count; i++) markers[i].style.display = DisplayStyle.None;

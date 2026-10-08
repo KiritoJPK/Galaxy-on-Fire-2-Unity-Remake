@@ -141,10 +141,10 @@ namespace GoF2Remake.Modding
                 counted++; stepsDone++;
                 if (rev != ModManager.Revision) return;
                 if (bytes == null) { Warn(s.mod, $"stations.json: \"{label}\": model {s.model} not found"); return; }
-                var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials());
+                var import = await ModGltf.Load(s.mod, bytes, agent);
+                bytes = null;
+                if (import == null) { Warn(s.mod, $"{s.model}: not a glTF model glTFast can read"); return; }
                 imports.Add(import);
-                var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };
-                if (!await import.Load(bytes, null, settings)) { Warn(s.mod, $"{s.model}: not a glTF model glTFast can read"); return; }
                 counted++; stepsDone++;
                 if (rev != ModManager.Revision || holder == null) return;
                 var scene = new GameObject("scene");
@@ -185,10 +185,10 @@ namespace GoF2Remake.Modding
                 counted++; stepsDone++;
                 if (rev != ModManager.Revision) return;
                 if (bytes == null) { Warn(d.mod, $"{ModInteriors.File}: \"{d.id}\": model {d.model} not found"); return; }
-                var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials());
+                var import = await ModGltf.Load(d.mod, bytes, agent);
+                bytes = null;
+                if (import == null) { Warn(d.mod, $"{d.model}: not a glTF model glTFast can read"); return; }
                 imports.Add(import);
-                var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };
-                if (!await import.Load(bytes, null, settings)) { Warn(d.mod, $"{d.model}: not a glTF model glTFast can read"); return; }
                 counted++; stepsDone++;
                 if (rev != ModManager.Revision || holder == null) return;
                 var scene = new GameObject("scene");

@@ -258,6 +258,7 @@
                 <ui:TextField name="dialogField" class="debug-filter dialog-field" />
                 <ui:VisualElement class="dialog-buttons">
                     <ui:Button name="dialogYes" class="menu-button dialog-button gof-semibold" />
+                    <ui:Button name="dialogAlt" class="menu-button dialog-button gof-semibold" style="display: none;" />
                     <ui:Button name="dialogNo" class="menu-button dialog-button gof-semibold" />
                 </ui:VisualElement>
             </ui:VisualElement>

@@ -2,7 +2,8 @@
 // Remake: the in-game Options page (the flight pause menu's and the station's system menu), built like the main menu's
 // Options panel (MainMenu.uxml optionsPanel) with the same classes (GoF2Common.uss): the title with its amber accent,
 // the tabs Sound / Graphics / Controls / Gameplay / Language (only those with rows), one scrolling page of OptionsCatalog
-// rows per tab, then Back and Default settings (497) under them. Every option of the catalog is here, the in-game ones
+// rows per tab, then Back and Default settings (497) under them; Default settings asks first, in the footer's place,
+// whether to reset only the shown tab or every tab (or Cancel). Every option of the catalog is here, the in-game ones
 // (OptionDef.inGameOnly) too; the text language stays in the main menu (the HUDs would need rebuilding).
 // The host drives the keys / controller: NavItems is what Up / Down walks (the tab row, the active tab's rows, Back,
 // Default settings); Q / E and LB / RB switch tabs (StepTab). Rows are focusable for a host that uses the panel's focus
@@ -44,13 +45,16 @@ namespace GoF2Remake.UI
         public event Action<OptionControl> Changed;
         /// <summary>Another tab is shown (a click, StepTab).</summary>
         public event Action TabChanged;
-        /// <summary>Default settings (497) put every option back.</summary>
+        /// <summary>The defaults prompt reset this tab or every tab (Default settings, 497).</summary>
         public event Action DefaultsRestored;
 
         static string T(int id) => Localization.Get(id).ToUpperInvariant();
 
+        readonly Action back;
+
         public OptionsView(Action back, bool focusableRows)
         {
+            this.back = back;
             this.focusableRows = focusableRows;
             Root = new VisualElement();
             Root.AddToClassList("options-panel");
@@ -113,14 +117,107 @@ namespace GoF2Remake.UI
             BackButton.AddToClassList("back-button");
             BackButton.AddToClassList("gof-semibold");
             footer.Add(BackButton);
-            DefaultsButton = new Button(RestoreDefaults) { text = T(497), focusable = focusableRows };
+            DefaultsButton = new Button(OpenResetPrompt) { text = T(497), focusable = focusableRows };
             DefaultsButton.AddToClassList("menu-button");
             DefaultsButton.AddToClassList("back-button");
             DefaultsButton.AddToClassList("options-defaults");
             DefaultsButton.AddToClassList("gof-semibold");
             footer.Add(DefaultsButton);
 
+            // Remake (players' request): Default settings asks first, in place of the footer: this tab only, every tab, or
+            // Cancel (Esc / B too), so a stray press resets nothing.
+            prompt = new VisualElement();
+            prompt.AddToClassList("options-reset-prompt");
+            var question = new Label(OptionsCatalog.ResetQuestion) { pickingMode = PickingMode.Ignore };
+            question.AddToClassList("options-reset-question");
+            prompt.Add(question);
+            CancelButton = PromptButton(Localization.Get(425).ToUpperInvariant(), () => CloseResetPrompt());   // Cancel
+            ResetTabButton = PromptButton("", () => Reset(false));
+            ResetAllButton = PromptButton(OptionsCatalog.ResetAllLabel.ToUpperInvariant(), () => Reset(true));
+            ResetAllButton.AddToClassList("options-reset-all");
+            prompt.style.display = DisplayStyle.None;
+            footer.Add(prompt);
+
             SelectTab(0, false);
+        }
+
+        readonly VisualElement prompt;
+        public readonly Button CancelButton, ResetTabButton, ResetAllButton;
+
+        Button PromptButton(string text, Action action)
+        {
+            var b = new Button(action) { text = text, focusable = focusableRows };
+            b.AddToClassList("menu-button");
+            b.AddToClassList("back-button");
+            b.AddToClassList("gof-semibold");
+            prompt.Add(b);
+            return b;
+        }
+
+        /// <summary>The defaults prompt is showing (in place of Back and Default settings).</summary>
+        public bool ResetPromptOpen => prompt.style.display == DisplayStyle.Flex;
+
+        /// <summary>The footer's buttons as shown, left to right: Back and Default settings, or the prompt's Cancel, this
+        /// tab, every tab.</summary>
+        public IReadOnlyList<Button> FooterButtons => ResetPromptOpen
+            ? new[] { CancelButton, ResetTabButton, ResetAllButton }
+            : new[] { BackButton, DefaultsButton };
+
+        public bool IsFooter(VisualElement e) => e is Button b && (b == BackButton || b == DefaultsButton || b == CancelButton || b == ResetTabButton || b == ResetAllButton);
+
+        /// <summary>The footer button beside 'e' (dir -1 left, +1 right; stays at the ends).</summary>
+        public Button FooterStep(VisualElement e, int dir)
+        {
+            var list = FooterButtons;
+            int i = -1;
+            for (int k = 0; k < list.Count; k++) if (list[k] == e) i = k;
+            return list[Mathf.Clamp(i < 0 ? 0 : i + dir, 0, list.Count - 1)];
+        }
+
+        /// <summary>What a host with its own highlight (the pause menu) does on Enter / A for a footer button.</summary>
+        public void Activate(VisualElement e)
+        {
+            if (e == BackButton) back?.Invoke();
+            else if (e == DefaultsButton) OpenResetPrompt();
+            else if (e == CancelButton) CloseResetPrompt();
+            else if (e == ResetTabButton) Reset(false);
+            else if (e == ResetAllButton) Reset(true);
+        }
+
+        /// <summary>The prompt opened or closed: the host moves its highlight / focus to 'FooterFocus'.</summary>
+        public event Action FooterChanged;
+        /// <summary>Where the highlight goes after the footer changed: "only this tab" when the prompt opens (the gentler
+        /// choice), Default settings when it closes.</summary>
+        public Button FooterFocus => ResetPromptOpen ? ResetTabButton : DefaultsButton;
+
+        void OpenResetPrompt()
+        {
+            if (tabs.Count == 0) return;
+            ResetTabButton.text = OptionsCatalog.ResetTabLabel(tabs[TabIndex].page).ToUpperInvariant();
+            BackButton.style.display = DisplayStyle.None;
+            DefaultsButton.style.display = DisplayStyle.None;
+            prompt.style.display = DisplayStyle.Flex;
+            FooterChanged?.Invoke();
+        }
+
+        /// <summary>Closes the defaults prompt (Cancel, Esc / B). False when it wasn't open.</summary>
+        public bool CloseResetPrompt()
+        {
+            if (!ResetPromptOpen) return false;
+            prompt.style.display = DisplayStyle.None;
+            BackButton.style.display = StyleKeyword.Null;
+            DefaultsButton.style.display = StyleKeyword.Null;
+            FooterChanged?.Invoke();
+            return true;
+        }
+
+        void Reset(bool everything)
+        {
+            if (everything) Settings.ResetToDefaults();
+            else OptionsCatalog.ResetPage(tabs[TabIndex].page);
+            RefreshAll();
+            CloseResetPrompt();
+            DefaultsRestored?.Invoke();
         }
 
         public bool IsShown => Root.resolvedStyle.display != DisplayStyle.None && Root.style.display != DisplayStyle.None;
@@ -135,16 +232,19 @@ namespace GoF2Remake.UI
         /// <summary>The row whose field this is (null for the tabs and the footer).</summary>
         public OptionControl RowOf(VisualElement field) => field != null && byField.TryGetValue(field, out var c) ? c : null;
 
-        /// <summary>What Up / Down walks: the active tab, the active page's rows, Back, Default settings.</summary>
+        /// <summary>What Up / Down walks: the active tab, the active page's rows, then the footer's buttons (Back and Default
+        /// settings, or the defaults prompt's); Up / Down treat the footer as one row (the hosts: FooterStep for left / right).</summary>
         public List<VisualElement> NavItems()
         {
             var list = new List<VisualElement>();
             if (ActiveTab != null) list.Add(ActiveTab);
             if (tabs.Count > 0) foreach (var c in tabs[TabIndex].rows) if (c.Shown) list.Add(c.Field);
-            list.Add(BackButton);
-            list.Add(DefaultsButton);
+            list.AddRange(FooterButtons);
             return list;
         }
+
+        /// <summary>The first footer button in NavItems (Up from the footer goes to the item before it).</summary>
+        public int FooterStart(List<VisualElement> nav) => nav.Count - FooterButtons.Count;
 
         public void SelectTab(int index) => SelectTab(index, true);
 
@@ -158,6 +258,7 @@ namespace GoF2Remake.UI
                 tabs[i].scroll.EnableInClassList("tab-page--active", i == TabIndex);
             }
             tabs[TabIndex].scroll.scrollOffset = Vector2.zero;
+            if (ResetPromptOpen) ResetTabButton.text = OptionsCatalog.ResetTabLabel(tabs[TabIndex].page).ToUpperInvariant();
             if (notify) TabChanged?.Invoke();
         }
 
@@ -191,12 +292,5 @@ namespace GoF2Remake.UI
             foreach (var c in all) c.Refresh();
         }
 
-        /// <summary>Default settings (497): every option back to its default, the rows with it.</summary>
-        public void RestoreDefaults()
-        {
-            Settings.ResetToDefaults();
-            RefreshAll();
-            DefaultsRestored?.Invoke();
-        }
     }
 }

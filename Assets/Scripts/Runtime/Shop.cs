@@ -63,7 +63,12 @@ namespace GoF2Remake.Data
         // ---- cargo (Ship::getCurrentLoad / getMaxLoad) -----------------------------------------------------------
 
         /// <summary>Every unit in cargo weighs 1 t; mounted items weigh nothing.</summary>
-        public static int CargoLoad() => Session.Cargo.Sum(s => s.amount);
+        public static int CargoLoad()
+        {
+            int load = 0;   // a loop: LINQ's Sum allocated on every call (the HUD's cargo readout, every frame)
+            foreach (var s in Session.Cargo) load += s.amount;
+            return load;
+        }
 
         /// <summary>Ship::refreshValue 0x1a33f4 (Ship+0x48, getFirePower): over the mounted items of sorts 0-3, 8 and 25,
         /// attr 9 x (1 + attr 40 / 100) / (attr 11 x (1 - attr 39 / 100)) x 1000; the factors are the sort-28 weapon mod's.</summary>
@@ -85,8 +90,8 @@ namespace GoF2Remake.Data
             return sum;
         }
 
-        /// <summary>Ship::getBaseHP: the hull (+40 with mod 0).</summary>
-        public static int BaseHp(Database db) => (db.Ship(Session.ShipIndex)?.armor ?? 0) + (Session.HasMod(0) ? 40 : 0);
+        /// <summary>Ship::getBaseHP: the hull (+40 per mod 0).</summary>
+        public static int BaseHp(Database db) => (db.Ship(Session.ShipIndex)?.armor ?? 0) + 40 * Session.ModLevel(0);
 
         /// <summary>Ship::getCombinedHP: the hull + the shield (attr 18) + the armor (attr 20).</summary>
         public static int CombinedHp(Database db)
@@ -100,7 +105,7 @@ namespace GoF2Remake.Data
         /// compression (attr 22, category 12) % / 100).</summary>
         public static int MaxLoad(Database db)
         {
-            int b = (db.Ship(Session.ShipIndex)?.cargo ?? 0) + (Session.HasMod(1) ? 30 : 0), pct = 0;
+            int b = (db.Ship(Session.ShipIndex)?.cargo ?? 0) + 30 * Session.ModLevel(1), pct = 0;
             foreach (var e in Session.Equipment) { var it = db.Item(e.item); if (it != null && it.categoryId == 12) pct += it.Attr(22); }
             return b + (int)(b * pct / 100f);
         }
@@ -197,6 +202,7 @@ namespace GoF2Remake.Data
         /// station isn't among the last 3 visited, otherwise nibbled by computerTradeGoods after > 30 s away.</summary>
         public static StationStock EnterStation(Database db, int station)
         {
+            Modding.ModBlueprints.UnlockAvailable();   // remake mods: blueprints.json "unlocked": known once available
             var recent = Session.RecentStations;
             var stock = recent.Find(s => s.station == station);
             if (stock == null)
@@ -230,7 +236,7 @@ namespace GoF2Remake.Data
         public static List<ItemStack> GenerateItems(Database db, int station)
         {
             var list = GenerateItemsOriginal(db, station);
-            list.RemoveAll(s => !Modding.ModCampaigns.ItemAllowed(db, s.item));
+            list.RemoveAll(s => !Modding.ModCampaigns.ItemAllowed(db, s.item) || !Modding.ModUnlocks.ItemAvailable(s.item));
             return list;
         }
 
@@ -329,7 +335,7 @@ namespace GoF2Remake.Data
         public static List<int> GenerateShips(Database db, int station)
         {
             var ships = GenerateShipsOriginal(db, station);
-            ships.RemoveAll(s => !Modding.ModCampaigns.ShipAllowed(s));
+            ships.RemoveAll(s => !Modding.ModCampaigns.ShipAllowed(s) || !Modding.ModUnlocks.ShipAvailable(s));
             return ships;
         }
 
@@ -381,6 +387,7 @@ namespace GoF2Remake.Data
             }
             if (race == 0 && Random.Range(0, 8) == 0) ships.Add(51);
             if (system == 17) foreach (int s in new[] { 42, 43, 52 }) if (Random.Range(0, 3) == 0) ships.Add(s);
+            Modding.ModUnlocks.AddDealerShips(db, station, race, ships);   // remake mods: ships.json "dealer"
             return ships.Distinct().ToList();
         }
 

@@ -439,6 +439,34 @@
     color: var(--gof-text);
 }
 
+/* Remake: hold a used slot to delete it (SaveSlotRow): the row fills red from the left. */
+.slot-delete-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background-color: rgba(255, 70, 50, 0.32);
+}
+
+.slot-list .slot-row.slot-row--deleting,
+.slot-list .slot-row.slot-row--deleting:focus {
+    border-left-color: rgb(255, 90, 70);
+}
+
+.slot-row--deleting .slot-state {
+    color: rgb(255, 225, 215);
+}
+
+.slot-delete-hint {
+    flex-shrink: 0;
+    margin-top: 8px;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--gof-text-dim);
+    -unity-text-align: middle-center;
+}
+
 /* ---- the in-game Debug pages (PauseMenu.BuildDebug, StationMenu.BuildStationDebug): tabs, a result line, two-column
    grids, cards and button-like actions ------------------------------------------------------------------------------ */
 
@@ -731,6 +759,35 @@
 .options-defaults {
     align-self: auto;
     color: var(--gof-text-dim);
+}
+
+/* Default settings' prompt in the footer's place: the question, then Cancel, only this tab, every tab. */
+.options-reset-prompt {
+    flex-grow: 1;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* The question gives way (wraps) before the buttons do: they stay on one line. */
+.options-reset-question {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    margin-right: 12px;
+    color: var(--gof-text-dim);
+    -unity-text-align: middle-left;
+    white-space: normal;
+}
+
+.options-reset-prompt > .menu-button {
+    align-self: auto;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.options-reset-all {
+    color: var(--gof-amber);
 }
 
 /* OptionsView: the panel itself, like the main menu's .panel (shown at once, no slide-in). */

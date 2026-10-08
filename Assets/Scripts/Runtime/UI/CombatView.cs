@@ -42,6 +42,29 @@ namespace GoF2Remake.UI
         readonly Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
         static readonly string[] Faction = { "enemy", "friend", "neutral" };
 
+        /// <summary>A faction's marker images, looked up once: DrawShip runs per ship per frame, and building the names
+        /// ("ship_bar_enemy"...) each time allocated strings.</summary>
+        class MarkerTextures { public Texture2D bar, fill, bracket, ring, dot; }
+
+        // The lock plate as last built (Update).
+        Target plateTarget;
+        int platePct = -1, plateRace = int.MinValue;
+        string plateName;
+        Texture2D plateIcon;
+        readonly MarkerTextures[] factionTextures = new MarkerTextures[3];
+
+        MarkerTextures FactionTextures(int faction)
+        {
+            var t = factionTextures[faction];
+            if (t != null) return t;
+            string f = Faction[faction];
+            return factionTextures[faction] = new MarkerTextures
+            {
+                bar = Tex($"ship_bar_{f}"), fill = Tex($"ship_fill_{f}"), bracket = Tex($"ship_bracket_{f}"),
+                ring = Tex($"ship_ring_{f}"), dot = Tex($"ship_dot_{f}"),
+            };
+        }
+
         Texture2D Tex(string name)
         {
             if (!textures.TryGetValue(name, out var t)) textures[name] = t = Resources.Load<Texture2D>("GoF2Hud/" + name);
@@ -90,7 +113,12 @@ namespace GoF2Remake.UI
             e.style.height = tex.height;
         }
 
-        static void Place(VisualElement e, float x, float y)
+        /// <summary>The markers move every frame: by their translate, which only changes their transform, not their left / top,
+        /// which ran the panel's layout every frame (absolute elements are laid out too).</summary>
+        static void Place(VisualElement e, float x, float y) => e.style.translate = new Translate(x, y);
+
+        /// <summary>Left / top for elements placed once (the hit arcs, which also flip by their scale).</summary>
+        static void PlaceFixed(VisualElement e, float x, float y)
         {
             e.style.left = x;
             e.style.top = y;
@@ -98,7 +126,7 @@ namespace GoF2Remake.UI
 
         VisualElement NewImage()
         {
-            var e = new VisualElement { pickingMode = PickingMode.Ignore };
+            var e = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
             e.AddToClassList("nav-abs");
             e.style.display = DisplayStyle.None;
             layer.Add(e);
@@ -110,7 +138,7 @@ namespace GoF2Remake.UI
             if (!markers.TryGetValue(key, out var m))
             {
                 m = new Marker { dot = NewImage(), bar = NewImage(), fill = NewImage(), bracket = NewImage(), emp = NewImage(), empFill = NewImage() };
-                m.distance = new Label { pickingMode = PickingMode.Ignore };
+                m.distance = new Label { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                 m.distance.AddToClassList("combat-label");
                 m.distance.AddToClassList("gof-semibold");
                 m.distance.style.display = DisplayStyle.None;
@@ -155,7 +183,7 @@ namespace GoF2Remake.UI
                 foreach (var sg in SentryGun.All)
                     if (sg != null && sg.Target != null && sg.Target.Alive)
                         DrawShip(Get(sg), sg.transform.position, 1, sg.Target.HullFraction, radar.Locked == sg.Target, cam, origin, centre);
-                foreach (var c in Object.FindObjectsByType<Crate>(FindObjectsInactive.Exclude))
+                foreach (var c in Crate.All)   // the registry: a scene search every frame before
                     DrawCrate(Get(c), c.transform.position, c.race == 9, cam, origin, centre);
 
                 // Lock ring and plate for ships / crates (after the navigation view, which owns them otherwise).
@@ -170,12 +198,18 @@ namespace GoF2Remake.UI
                     lockPlate.EnableInClassList("lock-plate--shown", true);
                     // Radar::drawCurrentLock 0x158548: "<name or race> NN%"; the Hijacker / the Informer their name alone; a Most
                     // Wanted criminal in its own colour.
-                    string who = string.IsNullOrEmpty(locked.displayName) ? RaceName(locked.race) : locked.displayName;
-                    lockOre.text = locked.plateNameOnly && !string.IsNullOrEmpty(locked.displayName) ? locked.displayName : $"{who} {Mathf.RoundToInt(locked.HullFraction * 100f)}%";
+                    // Built again only when something on it changed (every frame allocated the text and the icon's name).
+                    int pct = Mathf.RoundToInt(locked.HullFraction * 100f);
+                    if (locked != plateTarget || pct != platePct || locked.displayName != plateName || locked.race != plateRace)
+                    {
+                        plateTarget = locked; platePct = pct; plateName = locked.displayName; plateRace = locked.race;
+                        string who = string.IsNullOrEmpty(locked.displayName) ? RaceName(locked.race) : locked.displayName;
+                        lockOre.text = locked.plateNameOnly && !string.IsNullOrEmpty(locked.displayName) ? locked.displayName : $"{who} {pct}%";
+                        plateIcon = !locked.plateNoIcon && (locked.race >= 0 && locked.race <= 3 || locked.race == 8 || locked.race == 9) ? Tex($"race_{locked.race}") : null;
+                    }
                     lockOre.EnableInClassList("lock-ore--wanted", locked.plateWanted);
-                    var icon = !locked.plateNoIcon && (locked.race >= 0 && locked.race <= 3 || locked.race == 8 || locked.race == 9) ? Tex($"race_{locked.race}") : null;
-                    lockClass.style.display = icon != null ? DisplayStyle.Flex : DisplayStyle.None;
-                    Image(lockClass, icon);
+                    lockClass.style.display = plateIcon != null ? DisplayStyle.Flex : DisplayStyle.None;
+                    Image(lockClass, plateIcon);
                 }
             }
             List<Object> gone = null;
@@ -240,7 +274,7 @@ namespace GoF2Remake.UI
                 Show(m.bar, false); Show(m.fill, false); Show(m.bracket, false); Show(m.dot, false); Show(m.distance, false);
                 return;
             }
-            string f = Faction[faction];
+            var t = FactionTextures(faction);
             bool bar = onScreen && near && !dotOnly;
             Show(m.bar, bar);
             Show(m.fill, bar);
@@ -249,16 +283,16 @@ namespace GoF2Remake.UI
             Show(m.distance, !bar && onScreen && locked);
             if (bar)
             {
-                Image(m.bar, Tex($"ship_bar_{f}"));
-                Image(m.fill, Tex($"ship_fill_{f}"));
+                Image(m.bar, t.bar);
+                Image(m.fill, t.fill);
                 Place(m.bar, p.x - 59f, p.y + 63f);
                 Place(m.fill, p.x - 58f, p.y + 65f);
                 m.fill.style.width = Mathf.Clamp01(hull) * 110f;
-                if (locked) { Image(m.bracket, Tex($"ship_bracket_{f}")); Place(m.bracket, p.x - 40.5f, p.y - 40.5f); }
+                if (locked) { Image(m.bracket, t.bracket); Place(m.bracket, p.x - 40.5f, p.y - 40.5f); }
             }
             else
             {
-                var tex = Tex(locked ? $"ship_ring_{f}" : $"ship_dot_{f}");
+                var tex = locked ? t.ring : t.dot;
                 Image(m.dot, tex);
                 if (tex != null) Place(m.dot, p.x - tex.width / 2f, p.y - tex.height / 2f);
                 if (onScreen && locked)
@@ -278,7 +312,8 @@ namespace GoF2Remake.UI
             if (!on) return;
             Image(m.emp, Tex("emp_bar"));
             Image(m.empFill, Tex("emp_fill"));
-            float x = m.bar.style.left.value.value, y = m.bar.style.top.value.value + 18f;
+            var at = m.bar.style.translate.value;
+            float x = at.x.value, y = at.y.value + 18f;
             Place(m.emp, x, y);
             Place(m.empFill, x + 2f, y + 2f);
             m.empFill.style.width = Mathf.Clamp01(emp) * 110f;
@@ -328,10 +363,10 @@ namespace GoF2Remake.UI
                 float w = tex.width, h = tex.height;
                 switch (i)
                 {
-                    case 0: Place(a, -EllipseX - w / 2f, -h / 2f); a.style.scale = new Scale(new Vector3(-1f, 1f, 1f)); break;
-                    case 1: Place(a, EllipseX - w / 2f, -h / 2f); break;
-                    case 2: Place(a, -w / 2f, -EllipseY - h / 2f); break;
-                    default: Place(a, -w / 2f, EllipseY - h / 2f); a.style.scale = new Scale(new Vector3(1f, -1f, 1f)); break;
+                    case 0: PlaceFixed(a, -EllipseX - w / 2f, -h / 2f); a.style.scale = new Scale(new Vector3(-1f, 1f, 1f)); break;
+                    case 1: PlaceFixed(a, EllipseX - w / 2f, -h / 2f); break;
+                    case 2: PlaceFixed(a, -w / 2f, -EllipseY - h / 2f); break;
+                    default: PlaceFixed(a, -w / 2f, EllipseY - h / 2f); a.style.scale = new Scale(new Vector3(1f, -1f, 1f)); break;
                 }
             }
         }

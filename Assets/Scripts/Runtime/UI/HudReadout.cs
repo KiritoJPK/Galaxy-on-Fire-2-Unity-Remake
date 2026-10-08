@@ -58,6 +58,21 @@ namespace GoF2Remake.UI
             return t != null ? new StyleBackground(t) : new StyleBackground(StyleKeyword.None);
         }
 
+        // The line as last built: the readout runs every frame and its numbers seldom change (the string and the boxed ints
+        // were made every frame).
+        string lineFormat, lineText;
+        int lineA = int.MinValue, lineB = int.MinValue;
+
+        string Line(string format, int a, int b)
+        {
+            if (!ReferenceEquals(format, lineFormat) || a != lineA || b != lineB)
+            {
+                lineFormat = format; lineA = a; lineB = b;
+                lineText = string.Format(format, a, b);
+            }
+            return lineText;
+        }
+
         void SetPlate(VisualElement e, ref string current, string image)
         {
             if (current == image) return;
@@ -80,13 +95,13 @@ namespace GoF2Remake.UI
             {
                 int sec = Mathf.CeilToInt(left / 1000f);
                 image = "hud_timer";
-                line = $"{sec / 60}:{sec % 60:00}";
+                line = Line("{0}:{1:00}", sec / 60, sec % 60);
             }
             else if (mission != null && mission.type == StoryType.Passengers)
             {
                 int cm = Session.CampaignMission, st = level.Layout.stationIndex;
                 bool cargoPlate = (cm == 0x66 && st == 0x71) || (cm == 0x8b && st == 0x83);
-                if (cargoPlate) line = $"{Shop.CargoLoad()} / {Shop.MaxLoad(db)}t";
+                if (cargoPlate) line = Line("{0} / {1}t", Shop.CargoLoad(), Shop.MaxLoad(db));
                 else { image = "hud_passengers"; line = $"{Session.StoryCounter} / {Freelance.MaxPassengers(db)}"; }
                 secondImg = "hud_passengers_left";
                 secondLine = mission.value.ToString();
@@ -100,10 +115,10 @@ namespace GoF2Remake.UI
                 secondLine = Mathf.Max(0, mission.goodsAmount - mission.value).ToString();
             }
             else if (freelance != null && freelance.Type == MissionType.Challenge)
-                line = $"{freelance.PlayerKills} : {freelance.OtherKills}";
+                line = Line("{0} : {1}", freelance.PlayerKills, freelance.OtherKills);
             else if (level.Campaign != null && !Session.FreePlay && Session.CampaignMission == 36)
-                line = $"{level.Campaign.PlayerKills} : {level.Campaign.NpcKills}";
-            else line = $"{Shop.CargoLoad()} / {Shop.MaxLoad(db)}t";
+                line = Line("{0} : {1}", level.Campaign.PlayerKills, level.Campaign.NpcKills);
+            else line = Line("{0} / {1}t", Shop.CargoLoad(), Shop.MaxLoad(db));
             SetPlate(plate, ref plateImage, image);
             text.text = line;
             bool volatileGoods = GalaxyMap.HasVolatileGoods && image != "hud_timer";

@@ -155,6 +155,7 @@ namespace GoF2Remake.Data
                 if (a != null) a.mission.reward = Math.Min(a.mission.reward * 10, 50000);
             }
             AddCustomShipSellers(db, station, agents);
+            AddModBlueprintSellers(db, station, agents);
             return agents;
         }
 
@@ -174,6 +175,7 @@ namespace GoF2Remake.Data
                 if (l.systemRace >= 0 && l.systemRace != systemRace) continue;
                 if (Session.FreePlay ? Session.Rank < l.minRank : Session.CampaignMission < l.minCampaign) continue;
                 if (Session.ShipIndex == c.index || KaamoClub.HasShip(c.index)) continue;
+                if (!Modding.ModUnlocks.ShipAvailable(c.index)) continue;   // its "available" condition
                 if (R(100) >= l.chance) continue;
                 int race = c.race >= 0 && c.race <= 7 ? c.race : 0;
                 bool male = race == 0 ? R(100) < 60 : true;   // only Terrans can be female
@@ -184,6 +186,33 @@ namespace GoF2Remake.Data
                 };
                 // Not another custom ship's seller either (two in one bar: both stay).
                 int i = agents.FindLastIndex(x => !x.IsStory && x.offer != AgentOffer.Diplomat && x.offer != AgentOffer.Wingmen && x.offer != AgentOffer.SellShip);
+                if (agents.Count >= 5 && i >= 0) agents[i] = seller;
+                else if (agents.Count < 5) agents.Add(seller);
+            }
+        }
+
+        /// <summary>Remake mods: a mod blueprint's lounge seller (blueprints.json "lounge": chance %, price, systemRace) while
+        /// the blueprint is available and not known: a local of the system (Terran rules for gender) in the place of the last
+        /// generic visitor without a diplomat's, wingmen's or ship seller's deal, or joining a bar with room.</summary>
+        static void AddModBlueprintSellers(Database db, int station, List<Agent> agents)
+        {
+            if (station == 108 || station == 101 || Shop.InSupernovaSystem(SystemOf(db, station), station)) return;
+            int systemRace = Sys(db, SystemOf(db, station))?.raceId ?? -1;
+            foreach (var d in Modding.ModBlueprints.Offerable(b => b.loungeChance > 0f))
+            {
+                if (d.loungeRace >= 0 && d.loungeRace != systemRace) continue;
+                if (Rng.NextDouble() * 100.0 >= d.loungeChance) continue;
+                if (agents.Exists(a => a.offer == AgentOffer.SellBlueprint && a.sellBlueprint == d.product)) continue;
+                int race = systemRace >= 0 && systemRace <= 3 ? systemRace : 0;
+                bool male = race == 0 ? R(100) < 60 : true;
+                int price = d.loungePrice > 0 ? d.loungePrice : Math.Max(1000, (db.Item(d.product)?.maxPrice ?? 0) / 2);
+                var seller = new Agent
+                {
+                    name = RandomName(race, male), race = race, male = male, station = station, offer = AgentOffer.SellBlueprint,
+                    portrait = CreatePortrait(male, race), sellBlueprint = d.product, sellPrice = price,
+                };
+                int i = agents.FindLastIndex(x => !x.IsStory && x.offer != AgentOffer.Diplomat && x.offer != AgentOffer.Wingmen
+                                                  && x.offer != AgentOffer.SellShip && x.offer != AgentOffer.SellBlueprint);
                 if (agents.Count >= 5 && i >= 0) agents[i] = seller;
                 else if (agents.Count < 5) agents.Add(seller);
             }
@@ -205,6 +234,11 @@ namespace GoF2Remake.Data
                     : s.index == 26 ? AgentOffer.ShipDealer : AgentOffer.SmallTalk;
             // A taken offer stays taken (Agent+0x74 persists in Status); known too, so the chat opens with 858.
             if (a.offer != AgentOffer.KaamoSpecial && a.offer != AgentOffer.ShipDealer && Session.StoryAgentsAccepted.Contains(s.index))
+                a.accepted = a.known = true;
+            // Remake (players' report): a blueprint already owned (the story's Liberator, a hidden wreck's...) isn't offered
+            // again: the seller has 858 "nothing left". The original sells it again for nothing (Generator::createAgents
+            // never checks BluePrint::isUnlocked).
+            if (a.offer == AgentOffer.SellBlueprint && Session.UnlockedBlueprints.Contains(s.sellBlueprint))
                 a.accepted = a.known = true;
             if (a.offer == AgentOffer.KaamoSpecial)
             {

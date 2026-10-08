@@ -40,6 +40,7 @@ namespace GoF2Remake.Flight
         ShipController ship;
         PlayerHealth health;
         PlayerCloak cloak;
+        int nextCloakLook;
         GameObject glow;
         readonly List<ParticleSystem> systems = new List<ParticleSystem>();
         readonly List<float> baseSizes = new List<float>();
@@ -259,7 +260,8 @@ namespace GoF2Remake.Flight
             else
             {
                 if (health == null) health = GetComponent<PlayerHealth>();
-                if (cloak == null) cloak = GetComponent<PlayerCloak>();
+                // Only ships with a cloak have one: looked for twice a second, not every frame (added later by a debug mount).
+                if (cloak == null && Time.frameCount >= nextCloakLook) { cloak = GetComponent<PlayerCloak>(); nextCloakLook = Time.frameCount + 30; }
                 want = (glow == null || glow.activeInHierarchy) && (health == null || !health.Dead)
                        && (ship.visualModel == null || ship.visualModel.gameObject.activeInHierarchy);
             }

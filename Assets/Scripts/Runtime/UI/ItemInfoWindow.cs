@@ -32,6 +32,7 @@ namespace GoF2Remake.UI
         readonly VisualElement backdrop, icon, stats, preview, previewImage, floorLeft, floorRight;
         readonly Label header, help, nameLabel, subLabel, descTitle, text;
         readonly ScrollView textScroll;
+        readonly VisualElement modLines = ItemInfo.NewModBlock();
 
         GameObject stage;
         Transform model;
@@ -105,6 +106,7 @@ namespace GoF2Remake.UI
             text = new Label();
             text.AddToClassList("info-text");
             textScroll.Add(text);
+            textScroll.Add(modLines);
             right.Add(preview);
             right.Add(descTitle);
             right.Add(textScroll);
@@ -152,6 +154,7 @@ namespace GoF2Remake.UI
             help.text = T(643);
             descTitle.text = T(280).ToUpperInvariant();
             stats.Clear();
+            ItemInfo.FillModLines(modLines, null);
             textScroll.scrollOffset = Vector2.zero;
             IsOpen = true;
             backdrop.AddToClassList("info-backdrop--shown");
@@ -207,16 +210,18 @@ namespace GoF2Remake.UI
             var cur = db.Ship(Session.ShipIndex);
             int Cmp(float v, float c) => cur == null ? 2 : v < c ? -1 : v > c ? 1 : 0;
             bool mine = ship == Session.ShipIndex;
-            string Plus(int mod) => mine && Session.HasMod(mod) ? " (+)" : "";
-            Row(T(165), (s.armor + (mine && Session.HasMod(0) ? 40 : 0)) + Plus(0), Cmp(s.armor, cur?.armor ?? 0));
-            Row(T(166), $"{s.cargo + (mine && Session.HasMod(1) ? 30 : 0)} t" + Plus(1), Cmp(s.cargo, cur?.cargo ?? 0));
+            int Lv(int mod) => mine ? Session.ModLevel(mod) : 0;
+            string Plus(int mod) => Lv(mod) > 0 ? " (+)" : "";
+            Row(T(165), (s.armor + 40 * Lv(0)) + Plus(0), Cmp(s.armor, cur?.armor ?? 0));
+            Row(T(166), $"{s.cargo + 30 * Lv(1)} t" + Plus(1), Cmp(s.cargo, cur?.cargo ?? 0));
             Row(T(265), s.slots.primary.ToString(), Cmp(s.slots.primary, cur?.slots.primary ?? 0));
             Row(T(266), s.slots.secondary.ToString(), Cmp(s.slots.secondary, cur?.slots.secondary ?? 0));
             Row(T(267), s.slots.turret.ToString(), Cmp(s.slots.turret, cur?.slots.turret ?? 0));
-            Row(T(269), (s.slots.equipment + (mine && Session.HasMod(2) ? 1 : 0)) + Plus(2), Cmp(s.slots.equipment, cur?.slots.equipment ?? 0));
-            Row(T(164), (Mathf.RoundToInt(s.handling) + (mine && Session.HasMod(3) ? 20 : 0)) + Plus(3), Cmp(s.handling, cur?.handling ?? 0));
+            Row(T(269), (s.slots.equipment + Lv(2)) + Plus(2), Cmp(s.slots.equipment, cur?.slots.equipment ?? 0));
+            Row(T(164), (Mathf.RoundToInt(s.handling) + 20 * Lv(3)) + Plus(3), Cmp(s.handling, cur?.handling ?? 0));
             if (showPrice) Row(T(132), ItemInfo.Credits(price));
             text.text = GameNames.ShipDescription(ship);
+            if (mine) ItemInfo.FillModLines(modLines, Session.ShipMods);   // the Kaamo Club mods under the description
             ShowPreview(db, ship, Mathf.Max(0, Shop.RaceOfShip(ship)));   // the model by the original's race (freighters)
         }
 

@@ -336,13 +336,15 @@ namespace GoF2Remake.Flight
         float autopilotRate;
 
         /// <summary>The autopilot's model bank (PlayerEgo::moveToPosition / update): 'turnLeft' = this frame's turn in radians,
-        /// positive to the left; after Step, which left the bank at 0.</summary>
-        public void AutopilotBank(float turnLeft, float dtMs)
+        /// positive to the left; 'frameMs' = the frame's real length (unscaled); after Step, which left the bank at 0.</summary>
+        public void AutopilotBank(float turnLeft, float dtMs, float frameMs)
         {
             float he = EffectiveHandling;
-            // The original's samples are per frame (a 30 fps game): taken per 33.3 ms here, so the bank doesn't depend on the
-            // frame rate or on fast-forward.
-            if (dtMs > 0f) turnLeft *= 33.333f / dtMs;
+            // The original's samples are per frame (a 30 fps game): taken per 33.3 ms of real time here, so the bank doesn't
+            // depend on the frame rate. Fast-forward runs the original's whole update with dt x 5 (autopilot_travel.md 4), so
+            // each sample carries five times the turn and the ship banks hard into the turn (to the limit): per real time, not
+            // per game time, keeps that (a player's report with the original's video; it was divided away).
+            if (frameMs > 0f) turnLeft *= 33.333f / frameMs;
             autopilotTurns[autopilotTurnIndex] = turnLeft;
             autopilotTurnIndex = (autopilotTurnIndex + 1) % autopilotTurns.Length;
             autopilotTurnCount = Mathf.Min(autopilotTurnCount + 1, autopilotTurns.Length);
@@ -394,10 +396,11 @@ namespace GoF2Remake.Flight
 
         float AutoLevelRoll(float dtMs, Vector3 up, Vector3 right)
         {
-            // "up.x" in the original = how much the ship's up vector leans sideways relative to the horizon;
-            // here: component of ship-up along the world-horizontal part of ship-right.
-            Vector3 horizRight = Vector3.ProjectOnPlane(right, Vector3.up).normalized;
-            float lean = Vector3.Dot(up, horizRight);
+            // "up.x" in the original = how much the ship's up vector leans sideways relative to the horizon; here: how far
+            // the right wing points down (-right.y; for a small lean the same as up along the horizontal right). #57: it was
+            // up along the horizontal part of 'right', which is nothing on a knife edge (the right wing straight up or down):
+            // a ship on its side or upside down counted as level and stayed so.
+            float lean = -right.y;
             float upY = up.y;
 
             if (Mathf.Abs(lean) < LevelDoneThreshold && upY > 0f)

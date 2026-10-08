@@ -11,7 +11,10 @@
 // applyMaterialChannels (opt-in: the sky layers, explosions): the `extra` channel (0..100, opacity) goes to the part
 // renderer's _Fade, or for the GoF2 Shader Graphs (no _Fade) scales their _Color tint (rgb on additive, alpha otherwise),
 // and `v5_0` (a UV scroll, assumed 100 = one texture width) to its _UVOffset.x, through a MaterialPropertyBlock.
-// Without it an explosion's debris streaks never fade and hang in space fully stretched (long lines).
+// Without it an explosion's debris streaks never fade and hang in space fully stretched (long lines). An animation with
+// nothing but `extra` keys (blinking lights: the Kaamo Club's, the plasma array stages') applies them by itself and runs
+// for their length (it had no length and stayed off); on an opaque material `extra` scales the colour (_BaseColor on URP
+// Lit), a light switched off going dark.
 
 using System;
 using System.Collections.Generic;
@@ -40,6 +43,7 @@ namespace GoF2Remake.Visuals
     /// <summary>Which recovered channel drives a Unity axis, and with which sign.</summary>
     [Serializable] public struct AxisMap { public int source; public float sign; }
 
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class PartAnimation : MonoBehaviour
     {
         public TextAsset meta;
@@ -73,9 +77,12 @@ namespace GoF2Remake.Visuals
         [Tooltip("Apply the `extra` (opacity) and `v5_0` (UV scroll) channels to the part renderers (_Fade / _UVOffset).")]
         public bool applyMaterialChannels;
 
-        class Track { public Transform tr; public AnimationKey[][] pos = new AnimationKey[3][]; public AnimationKey[][] rot = new AnimationKey[3][]; public AnimationKey[][] scl = new AnimationKey[3][]; public float[] rotTimes; public Vector3 basePos; public Quaternion baseRot; public Vector3 baseScale; public AnimationKey[] extra, uv, uvY; public Renderer renderer; public MaterialPropertyBlock block; public int fadeMode; public Color baseColor; public int uvMode; public Vector4 baseST; public bool initialised; }
+        static readonly int ColorId = Shader.PropertyToID("_Color"), BaseColorId = Shader.PropertyToID("_BaseColor"),
+            FadeId = Shader.PropertyToID("_Fade"), UVOffsetId = Shader.PropertyToID("_UVOffset"), MainTexStId = Shader.PropertyToID("_MainTex_ST");
+
+        class Track { public Transform tr; public AnimationKey[][] pos = new AnimationKey[3][]; public AnimationKey[][] rot = new AnimationKey[3][]; public AnimationKey[][] scl = new AnimationKey[3][]; public float[] rotTimes; public Vector3 basePos; public Quaternion baseRot; public Vector3 baseScale; public AnimationKey[] extra, uv, uvY; public Renderer renderer; public MaterialPropertyBlock block; public int fadeMode; public int fadeProperty = ColorId; public Color baseColor; public int uvMode; public Vector4 baseST; public bool initialised; }
         readonly List<Track> tracks = new List<Track>();
-        float timeMs, lengthMs;
+        float timeMs, lengthMs, extraMs;
 
         void Awake()
         {
@@ -98,7 +105,7 @@ namespace GoF2Remake.Visuals
                 {
                     if (c.keys == null || c.keys.Length == 0 || string.IsNullOrEmpty(c.target) || c.target.Length < 4) continue;
                     foreach (var key in c.keys) if (key.t > 0f) loadPoseMs = Mathf.Min(loadPoseMs, key.t);
-                    if (c.target == "extra") { tk.extra = c.keys; continue; }   // not in the length: the transform channels set it
+                    if (c.target == "extra") { tk.extra = c.keys; extraMs = Mathf.Max(extraMs, c.keys[c.keys.Length - 1].t); continue; }   // not in the length: the transform channels set it
                     // The UV scrolls set the length too: the burning stations' fire and smoke have no other keys.
                     if (c.target == "v5_0" || c.target == "v5_1")
                     {
@@ -120,6 +127,8 @@ namespace GoF2Remake.Visuals
                 if (times.Count > 0) { tk.rotTimes = new float[times.Count]; times.CopyTo(tk.rotTimes); }
                 tracks.Add(tk);
             }
+            // Remake: opacity keys alone (blinking lights) are the whole animation: their length, applied by themselves.
+            if (lengthMs <= 0f && extraMs > 0f) { lengthMs = extraMs; applyMaterialChannels = true; }
             enabled = tracks.Count > 0 && lengthMs > 0f;
             // The original's range start (see loopStartMs); kept when something set one before (a prefab's own value).
             if (loopStartMs <= 0f) loopStartMs = Mathf.Min(LoadPoseMs, lengthMs);
@@ -136,7 +145,9 @@ namespace GoF2Remake.Visuals
             // 0 = _Fade, 1 = _Color rgb (additive), 2 = _Color alpha, -1 = nothing to fade
             tk.fadeMode = mat == null ? -1 : mat.HasProperty("_Fade") ? 0 : !mat.HasProperty("_Color") ? -1
                         : mat.shader.name.Contains("Additive") ? 1 : 2;
-            if (tk.fadeMode > 0) tk.baseColor = mat.GetColor("_Color");
+            // Opaque (no blending): its alpha shows nothing, so the colour is scaled instead (URP Lit's own is _BaseColor).
+            if (tk.fadeMode == 2 && mat.renderQueue < 2450) { tk.fadeMode = 1; if (mat.HasProperty(BaseColorId)) tk.fadeProperty = BaseColorId; }
+            if (tk.fadeMode > 0) tk.baseColor = mat.GetColor(tk.fadeProperty);
             // 1 = _UVOffset (GoF2/SkyLayer), 2 = _MainTex_ST (the Shader Graphs' main texture tiling and offset), 0 = none
             tk.uvMode = mat == null ? 0 : mat.HasProperty("_UVOffset") ? 1 : mat.HasProperty("_MainTex_ST") ? 2 : 0;
             if (tk.uvMode == 2) { var sc = mat.mainTextureScale; var of = mat.mainTextureOffset; tk.baseST = new Vector4(sc.x, sc.y, of.x, of.y); }
@@ -204,16 +215,21 @@ namespace GoF2Remake.Visuals
 
         /// <summary>Plays every part animation under 'root' once from its start (loopStartMs); returns the longest playing
         /// time in ms (from the start to the end).</summary>
-        public static float PlayOnce(GameObject root)
+        public static float PlayOnce(GameObject root) =>
+            PlayOnce(root.GetComponentsInChildren<PartAnimation>(true), root.GetComponentsInChildren<Modding.ModFxPart>(true));
+
+        /// <summary>PlayOnce on parts collected beforehand (GunRig's muzzle flashes and impacts: per shot / per hit, where
+        /// the two hierarchy walks and their arrays added up).</summary>
+        public static float PlayOnce(PartAnimation[] anims, Modding.ModFxPart[] modParts)
         {
             float longest = 0f;
-            foreach (var a in root.GetComponentsInChildren<PartAnimation>(true))
+            foreach (var a in anims)
             {
                 a.loop = false;
                 a.Restart();
                 longest = Mathf.Max(longest, a.LengthMs - Mathf.Clamp(a.loopStartMs, 0f, a.LengthMs));
             }
-            return Mathf.Max(longest, Modding.ModFxPart.RestartAll(root));   // a mod weapon's sprites / models
+            return Mathf.Max(longest, Modding.ModFxPart.RestartAll(modParts));   // a mod weapon's sprites / models
         }
 
         static float Eval(AnimationKey[] k, float t, float fallback)
@@ -231,7 +247,7 @@ namespace GoF2Remake.Visuals
 
         Quaternion KeyRotation(Track tk, float t)
         {
-            var r = new[] { Eval(tk.rot[0], t, 0), Eval(tk.rot[1], t, 0), Eval(tk.rot[2], t, 0) };
+            var r = new Vector3(Eval(tk.rot[0], t, 0), Eval(tk.rot[1], t, 0), Eval(tk.rot[2], t, 0));
             var v = Map(r, rotationMap) * (rotationInRadians ? Mathf.Rad2Deg : 1f);
             // The file's order Rx * Ry * Rz, its axes X, Y, Z being Unity x, z, y (Quaternion.Euler would apply z, x, y).
             return Quaternion.AngleAxis(v.x, Vector3.right) * Quaternion.AngleAxis(v.z, Vector3.forward) * Quaternion.AngleAxis(v.y, Vector3.up);
@@ -262,7 +278,8 @@ namespace GoF2Remake.Visuals
         /// <summary>ModelOrientationPostprocessor turned the vertices (-x, y, -z): offsets in the part's frame turn with them.</summary>
         static Vector3 ImportFlip(Vector3 v) => new Vector3(-v.x, v.y, -v.z);
 
-        static Vector3 Map(float[] src, AxisMap[] map) =>
+        // A Vector3, not a float[]: this runs per animated part per frame (an array each was most of the flight's garbage).
+        static Vector3 Map(Vector3 src, AxisMap[] map) =>
             new Vector3(src[map[0].source] * map[0].sign, src[map[1].source] * map[1].sign, src[map[2].source] * map[2].sign);
 
         void Update()
@@ -281,6 +298,9 @@ namespace GoF2Remake.Visuals
             }
             if (timeMs < start) timeMs = start;
             Apply();
+            // A finished one-shot holds its last pose: applied once, not again every frame for the rest of the level (the
+            // freighter wrecks); Restart plays it again.
+            if (!loop && timeMs >= lengthMs) play = false;
         }
 
         void Apply()
@@ -289,7 +309,7 @@ namespace GoF2Remake.Visuals
             {
                 if (tk.pos[0] != null || tk.pos[1] != null || tk.pos[2] != null)
                 {
-                    var p = new[] { Eval(tk.pos[0], timeMs, 0), Eval(tk.pos[1], timeMs, 0), Eval(tk.pos[2], timeMs, 0) };
+                    var p = new Vector3(Eval(tk.pos[0], timeMs, 0), Eval(tk.pos[1], timeMs, 0), Eval(tk.pos[2], timeMs, 0));
                     tk.tr.localPosition = tk.basePos + ImportFlip(Map(p, positionMap)) * metersPerUnit;
                 }
                 if (tk.rot[0] != null || tk.rot[1] != null || tk.rot[2] != null)
@@ -300,11 +320,10 @@ namespace GoF2Remake.Visuals
                 }
                 if (tk.scl[0] != null || tk.scl[1] != null || tk.scl[2] != null)
                 {
-                    var s = new[] { Eval(tk.scl[0], timeMs, 1), Eval(tk.scl[1], timeMs, 1), Eval(tk.scl[2], timeMs, 1) };
                     // Scale keys are in the mesh's own (engine) axis order, not the Z-up layout of the position keys: the ship
                     // explosion's debris streak (explosion_debris_anim_add) stretches sclZ 45x along its length (engine Z) while it
                     // flies about as far; swapped, the 45x went across its width and every streak became a 2.9 km line.
-                    var v = new Vector3(s[0], s[1], s[2]);
+                    var v = new Vector3(Eval(tk.scl[0], timeMs, 1), Eval(tk.scl[1], timeMs, 1), Eval(tk.scl[2], timeMs, 1));
                     tk.tr.localScale = Vector3.Scale(tk.baseScale, v);
                 }
                 // The UV scroll channels (v5_0 u, v5_1 v; 100 = one texture) run on every mesh, as the engine animates them
@@ -321,16 +340,16 @@ namespace GoF2Remake.Visuals
                     if (tk.extra != null && applyMaterialChannels)
                     {
                         float f = Mathf.Clamp01(Eval(tk.extra, timeMs, 100f) / 100f);
-                        if (tk.fadeMode == 0) tk.block.SetFloat("_Fade", f);
-                        else if (tk.fadeMode == 1) tk.block.SetColor("_Color", new Color(tk.baseColor.r * f, tk.baseColor.g * f, tk.baseColor.b * f, tk.baseColor.a));
-                        else if (tk.fadeMode == 2) tk.block.SetColor("_Color", new Color(tk.baseColor.r, tk.baseColor.g, tk.baseColor.b, tk.baseColor.a * f));
+                        if (tk.fadeMode == 0) tk.block.SetFloat(FadeId, f);
+                        else if (tk.fadeMode == 1) tk.block.SetColor(tk.fadeProperty, new Color(tk.baseColor.r * f, tk.baseColor.g * f, tk.baseColor.b * f, tk.baseColor.a));
+                        else if (tk.fadeMode == 2) tk.block.SetColor(tk.fadeProperty, new Color(tk.baseColor.r, tk.baseColor.g, tk.baseColor.b, tk.baseColor.a * f));
                     }
                     if (uvAnimated)
                     {
                         float u = tk.uv != null ? Eval(tk.uv, timeMs, 0f) / 100f : 0f, v = tk.uvY != null ? Eval(tk.uvY, timeMs, 0f) / 100f : 0f;
                         // GoF2/SkyLayer subtracts _UVOffset; the Shader Graphs take _MainTex_ST the same way round.
-                        if (tk.uvMode == 1) tk.block.SetVector("_UVOffset", new Vector4(u, v, 0f, 0f));
-                        else if (tk.uvMode == 2) tk.block.SetVector("_MainTex_ST", new Vector4(tk.baseST.x, tk.baseST.y, tk.baseST.z - u, tk.baseST.w - v));
+                        if (tk.uvMode == 1) tk.block.SetVector(UVOffsetId, new Vector4(u, v, 0f, 0f));
+                        else if (tk.uvMode == 2) tk.block.SetVector(MainTexStId, new Vector4(tk.baseST.x, tk.baseST.y, tk.baseST.z - u, tk.baseST.w - v));
                     }
                     tk.renderer.SetPropertyBlock(tk.block);
                 }

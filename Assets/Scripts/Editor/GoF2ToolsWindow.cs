@@ -61,6 +61,7 @@ namespace GoF2Remake.EditorTools
                     T("GoF2/Build/HUD Images", "Resources/GoF2Hud: the HUD, star map, medal and touch-control images and the alien font, cut from the original interface atlases."),
                     T("GoF2/Build/Item Icons", "Resources/GoF2Icons: the shop icon of every item and ship."),
                     T("GoF2/Build/Text Icons", "The dialogue's inline icons (coin, race emblems, item and ship icons) as one sprite asset. Uses the HUD images and item icons, so build those first."),
+                    T("GoF2/Build/Modding AI Reference", "Modding/ai/gof2-modding/reference.md: every original item, ship, system and station with its number and stats, for the AI modding guide (SKILL.md)."),
                     T("GoF2/Build/Sky Layers", "Resources/GoF2Backdrop: the extra sky meshes (planet ring sky, supernova flares, storms, asteroid belt)."),
                     T("GoF2/Build/Space Skies", "Bakes the star and nebula cubemaps the flight levels use (Resources/GoF2Sky). Takes a while."),
                     T("GoF2/Build/Materials And Prefabs", "One material per game material and one prefab per game mesh, from resources.json. Everything else is built on these. Slow.", true),

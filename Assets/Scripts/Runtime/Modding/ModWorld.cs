@@ -355,7 +355,8 @@ namespace GoF2Remake.Modding
         /// <summary>The calm space music a mod gave the station's system (null: the game's).</summary>
         public static AudioClip SpaceMusic(int station)
         {
-            var st = Database.Load().Stations.Find(s => s.index == station);
+            if (systemSpaceMusic.Count == 0) return null;   // every music change asks: no table lookup without mod music
+            var st = Database.Shared.Stations.Find(s => s.index == station);
             return st != null && systemSpaceMusic.TryGetValue(st.system, out string name) ? ModMusic.Track(name) : null;
         }
 
@@ -363,7 +364,8 @@ namespace GoF2Remake.Modding
         public static AudioClip StationMusic(int station)
         {
             if (stationMusic.TryGetValue(station, out string name)) return ModMusic.Track(name);
-            var st = Database.Load().Stations.Find(s => s.index == station);
+            if (systemStationMusic.Count == 0) return null;
+            var st = Database.Shared.Stations.Find(s => s.index == station);
             return st != null && systemStationMusic.TryGetValue(st.system, out name) ? ModMusic.Track(name) : null;
         }
 

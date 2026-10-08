@@ -739,6 +739,14 @@ namespace GoF2Remake.World
         /// loot cleared, docking type 0, Level::createRadioMessage(k + 0x15) (3156 + k, BLUEPRINT_RECOVERED_k), found for good.</summary>
         public void OnHackWon(NpcShip ship)
         {
+            if (ship != null && ship.Spec.modBlueprint >= 0)
+            {
+                // Remake mods: a derelict's blueprint, in a data crate drifting off the wreck (pulled in, it is learnt).
+                ship.DockingType = 0;
+                Crate.Spawn(ship.transform.position + ship.transform.up * 300f * M, new[] { new ItemStack(ship.Spec.modBlueprint, 1) },
+                            ship.Spec.race, Crate.LookJunk);
+                return;
+            }
             int k = ship != null ? ship.Spec.hiddenBlueprint : -1;
             if (k < 0 || k >= TrafficPlan.HiddenBlueprints.Length || (Session.HiddenBlueprintsFound & (1 << k)) != 0) return;
             Session.HiddenBlueprintsFound |= 1 << k;

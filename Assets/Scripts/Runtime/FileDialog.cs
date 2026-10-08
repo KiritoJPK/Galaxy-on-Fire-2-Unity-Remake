@@ -1,5 +1,5 @@
 // FileDialog.cs
-// Remake-only: the system's save / open file dialog for SaveTransfer. The Editor uses EditorUtility's panels; a Windows
+// Remake-only: the system's save / open file dialog for SaveTransfer (and, on Windows, the mod browser's Import mod). The Editor uses EditorUtility's panels; a Windows
 // player calls comdlg32's GetSaveFileNameW / GetOpenFileNameW (modal: the game waits while it is open). Elsewhere there
 // is no dialog (Available false) and SaveTransfer uses its Transfer folder.
 
@@ -46,6 +46,18 @@ namespace GoF2Remake.Data
 #endif
         }
 
+        /// <summary>Asks for a file to read with its own title and filter ('extensions' without the dots; the Mods' Import
+        /// mod). Windows player only (the Editor and the other platforms have their own pickers, Modding.ModImport). Null:
+        /// cancelled / no dialog.</summary>
+        public static string Open(string title, string filterName, params string[] extensions)
+        {
+#if UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            return Win32.Show(false, null, extensions.Length > 0 ? extensions[0] : "", title, filterName, extensions);
+#else
+            return null;
+#endif
+        }
+
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
         static class Win32
         {
@@ -79,18 +91,21 @@ namespace GoF2Remake.Data
             [DllImport("user32.dll")]
             static extern IntPtr GetActiveWindow();
 
-            public static string Show(bool save, string defaultName, string extension)
+            public static string Show(bool save, string defaultName, string extension, string titleText = null, string filterName = null,
+                                      string[] extensions = null)
             {
                 IntPtr filter = IntPtr.Zero, file = IntPtr.Zero, dir = IntPtr.Zero, title = IntPtr.Zero, defExt = IntPtr.Zero;
                 try
                 {
-                    filter = Marshal.StringToHGlobalUni($"Galaxy on Fire 2 saves (*.{extension})\0*.{extension}\0\0");
+                    extensions ??= new[] { extension };
+                    string patterns = string.Join(";", Array.ConvertAll(extensions, e => "*." + e));
+                    filter = Marshal.StringToHGlobalUni($"{filterName ?? "Galaxy on Fire 2 saves"} ({patterns})\0{patterns}\0\0");
                     file = Marshal.AllocHGlobal(MaxPath * 2);
                     var name = new char[MaxPath];
                     if (!string.IsNullOrEmpty(defaultName)) defaultName.CopyTo(0, name, 0, Math.Min(defaultName.Length, MaxPath - 1));
                     Marshal.Copy(name, 0, file, MaxPath);
                     dir = Marshal.StringToHGlobalUni(StartFolder ?? "");
-                    title = Marshal.StringToHGlobalUni(save ? "Export saves" : "Import saves");
+                    title = Marshal.StringToHGlobalUni(titleText ?? (save ? "Export saves" : "Import saves"));
                     defExt = Marshal.StringToHGlobalUni(extension);
                     var ofn = new OpenFileName
                     {

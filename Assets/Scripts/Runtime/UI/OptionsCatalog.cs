@@ -66,6 +66,26 @@ namespace GoF2Remake.UI
             _ => X("tabGameplay", "Gameplay"),
         };
 
+        /// <summary>Remake (players' request): "Default settings" for one tab only, the choice the menus offer next to every
+        /// tab (Settings' key groups; the Key bindings tab resets the bindings).</summary>
+        public static void ResetPage(OptionPage page)
+        {
+            switch (page)
+            {
+                case OptionPage.Sound: Settings.Reset(Settings.SoundKeys); break;
+                case OptionPage.Graphics: Settings.Reset(Settings.GraphicsKeys); break;
+                case OptionPage.Controls: Settings.Reset(Settings.ControlsKeys); break;
+                case OptionPage.Gameplay: Settings.Reset(Settings.GameplayKeys); break;
+                case OptionPage.Language: Settings.Reset(Settings.LanguageKeys); break;
+                case OptionPage.Bindings: Flight.GameControls.ResetToDefaults(); break;
+            }
+        }
+
+        /// <summary>The defaults prompt's question and its two reset buttons' texts.</summary>
+        public static string ResetQuestion => X("resetQuestion", "Reset to the default settings:");
+        public static string ResetTabLabel(OptionPage page) => string.Format(X("resetTab", "Only {0}"), PageTitle(page));
+        public static string ResetAllLabel => X("resetAll", "All tabs");
+
         static readonly string[] VoiceCodes = { "auto", "en", "de" };
         static readonly float[] RenderScales = { 0.5f, 0.67f, 0.75f, 0.8f, 0.9f, 1f, 1.25f, 1.5f, 2f };
         static readonly int[] MsaaSamples = { 1, 2, 4, 8 };
@@ -263,6 +283,19 @@ namespace GoF2Remake.UI
                 mouseDeadzone.description = () => X("mouseDeadzoneHelp", "How far the mouse can move from the centre before the ship turns.");
                 list.Add(mouseDeadzone);
             }
+            // Remake (#61): the original's Configure screen (Options > Controls, 494 / 495) moved the touch controls' left
+            // group and right cluster up and down; here as two sliders, shown when the touch controls are in use.
+            foreach (bool right in new[] { false, true })
+            {
+                bool r = right;
+                var touchHeight = Slider(r ? "touchRightHeight" : "touchLeftHeight", OptionPage.Controls,
+                    () => r ? X("touchRightHeight", "Touch controls height: fire buttons") : X("touchLeftHeight", "Touch controls height: stick"), 0f, 1f,
+                    () => { float v = r ? Settings.TouchRightHeight : Settings.TouchLeftHeight; return v < 0f ? TouchControls.DefaultHeight01(r) : v; },
+                    v => { if (r) Settings.TouchRightHeight = v; else Settings.TouchLeftHeight = v; }, Percent);
+                touchHeight.description = () => X("touchHeightHelp", "How high the touch controls sit on the screen: 0 % is the highest, 100 % the lowest.");
+                touchHeight.visible = () => Application.isMobilePlatform || InputMode.Current == InputKind.Touch;
+                list.Add(touchHeight);
+            }
             // Remake VR: the cockpit's grabbable stick (right grip) and throttle lever (left grip), else the controllers as a gamepad.
             var vrGrab = Toggle("vrGrabControls", OptionPage.Controls, () => X("vrGrabControls", "VR flight: grab the stick and throttle"),
                 () => Settings.VrGrabControls, v => Settings.VrGrabControls = v);
@@ -309,6 +342,14 @@ namespace GoF2Remake.UI
                 () => Settings.CapitalShips, v => Settings.CapitalShips = v);
             capitalShips.description = () => X("capitalShipsHelp", "Battleships and carriers get escorts and stronger turrets; the carrier and the Vossk battleship can be destroyed for loot, the carrier launches Inflicts when attacked and lets trusted pilots dock to resupply. Not in the original.");
             list.Add(capitalShips);
+            var kaamoStacking = Toggle("kaamoStacking", OptionPage.Gameplay, () => X("kaamoStacking", "Stackable Kaamo Club upgrades"),
+                () => Settings.KaamoStacking, v => Settings.KaamoStacking = v);
+            kaamoStacking.description = () => X("kaamoStackingHelp", "The Kaamo Club's mechanics fit their upgrade again and again, each level costing twice the last. Off: one of each, as in the original. Not in the original.");
+            list.Add(kaamoStacking);
+            var kaamoGear = Toggle("kaamoKeepsEquipment", OptionPage.Gameplay, () => X("kaamoKeepsEquipment", "Stored ships keep their equipment"),
+                () => Settings.KaamoKeepsEquipment, v => Settings.KaamoKeepsEquipment = v);
+            kaamoGear.description = () => X("kaamoKeepsEquipmentHelp", "A ship you park in the Kaamo Club keeps its weapons, turrets and equipment, and they are back on it when you fly it again. Off: they move to the ship you take, as in the original. Ships traded in elsewhere always hand theirs over.");
+            list.Add(kaamoGear);
             // #28: the Informer mission's rule for other ships dying after the spy.
             list.Add(Choice("informerRule", OptionPage.Gameplay, () => X("informerRule", "Informer missions"), true,
                 () => new[] { X("informerRemake", "Remake"), X("informerOriginal", "Original") },

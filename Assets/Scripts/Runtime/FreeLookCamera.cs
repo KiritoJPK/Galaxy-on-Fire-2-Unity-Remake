@@ -33,6 +33,8 @@ namespace GoF2Remake.Flight
         public event Action<string> Message;
         /// <summary>A mode change is refused while this holds (a cutscene, a jump, mining, docking at an object).</summary>
         public Func<bool> Blocked;
+        /// <summary>While Blocked: the turret views may still be cycled (docked at an object, SpaceLevel), not free look.</summary>
+        public Func<bool> TurretAllowed;
 
         ChaseCamera chase;
         int turretIndex;   // which manual turret the Turret mode looks through
@@ -91,7 +93,14 @@ namespace GoF2Remake.Flight
         /// <summary>The camera button (touch, V, D-pad up).</summary>
         public void Cycle()
         {
-            if (Blocked != null && Blocked() && Current == Mode.Standard) return;
+            if (Blocked != null && Blocked())
+            {
+                // Docked at an object: standard -> each manual turret -> standard (PlayerEgo::setTurretMode allows it there).
+                if (TurretAllowed == null || !TurretAllowed() || !TurretMode) { if (Current != Mode.Standard) Set(Mode.Standard); return; }
+                if (Current == Mode.Turret && turretIndex + 1 < Manual().Count) { EnterTurret(turretIndex + 1, true); return; }
+                Set(Current == Mode.Standard ? Mode.Turret : Mode.Standard);
+                return;
+            }
             if (Current == Mode.Turret && turretIndex + 1 < Manual().Count) { EnterTurret(turretIndex + 1, true); return; }
             Set(Next);
         }

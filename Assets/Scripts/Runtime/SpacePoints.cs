@@ -21,6 +21,18 @@ namespace GoF2Remake.Data
     {
         public const int Approach = 1, Dock = 2;
 
+        /// <summary>SpacePoint::take / giveFree: the approach points in use, per object (its transform, the point's index in
+        /// its set). The player's docking (ObjectDocking) and the story's shuttles (SupernovaLevels) share them, so two ships
+        /// never dock at one port (the evacuations: a shuttle docked onto the player's port).</summary>
+        static readonly HashSet<(Transform, int)> taken = new HashSet<(Transform, int)>();
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetTaken() => taken.Clear();
+
+        public static bool IsTaken(Transform obj, int point) => obj != null && taken.Contains((obj, point));
+        public static void Take(Transform obj, int point) { if (obj != null) taken.Add((obj, point)); }
+        public static void Free(Transform obj, int point) { if (obj != null) taken.Remove((obj, point)); }
+
         [Serializable] class PointJson { public int id; public float[] position_engine; public float[] rotationDeg_file; }
         [Serializable] class SetJson { public int station; public PointJson[] points; }
         [Serializable] class FileJson { public SetJson[] sets; }

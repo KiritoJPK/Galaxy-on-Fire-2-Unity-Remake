@@ -590,6 +590,19 @@
     padding-right: 44px;
 }
 
+/* Delete (asks first): at the row's far end, red like Turn off. */
+.mods-delete {
+    margin-left: auto;
+    margin-right: 0;
+    border-color: rgba(230, 80, 60, 0.6);
+}
+
+.can-hover .mods-delete:hover,
+.mods-delete:focus {
+    background-color: rgba(200, 50, 40, 0.45);
+    border-color: rgba(255, 110, 90, 1);
+}
+
 /* The controller's X on the Turn on / off button (MainMenu toggles the selected mod with it); only with a controller. */
 .mods-pad-x {
     display: none;
@@ -1687,26 +1700,147 @@
 }
 
 /* Remake mods: the mods' campaigns under the campaign cards (MainMenu.RefreshModCampaigns). */
-.mod-campaigns {
-    margin-top: 14px;
+/* Remake mods: the mods' campaigns (MainMenu.RefreshModCampaigns) are cards after the three campaign cards, picked the
+   same way; the mods' new-game options (RefreshModOptions) cards of the same look in the Game options panel. A mod card's
+   art is cropped to the card; without its own title in the art, the name sits on a plate at its foot. */
+.card-scroll {
     flex-shrink: 0;
+    overflow: visible;
 }
 
-.mod-campaign {
-    flex-direction: row;
-    align-items: center;
+.card-scroll > .unity-scroll-view__content-viewport,
+.card-scroll .unity-scroll-view__content-container {
+    overflow: visible;
 }
 
-.mod-campaign__image {
-    width: 128px;
-    height: 72px;
-    margin-right: 16px;
-    flex-shrink: 0;
+.card-row--4 .campaign-card {
+    width: 220px;
+    height: 340px;
+}
+
+.card-row--many {
+    justify-content: flex-start;
+}
+
+.card-row--many .campaign-card {
+    width: 176px;
+    height: 272px;
+    margin-right: 14px;
+    flex-shrink: 0;   /* the cards keep their size; the row scrolls */
+}
+
+.mod-card {
+    overflow: hidden;
+    background-color: rgba(8, 14, 22, 0.9);
+    border-color: var(--gof-line);
+}
+
+.mod-card__art {
     -unity-background-scale-mode: scale-and-crop;
-    border-radius: 3px;
 }
 
-.mod-campaign__text {
+.mod-card__plate {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 10px 12px 12px 12px;
+    background-color: rgba(4, 8, 14, 0.82);
+    border-top-width: 1px;
+    border-top-color: var(--gof-line);
+}
+
+.mod-card__title {
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: var(--gof-text);
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+.mod-card__sub {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+.game-options-body {
+    flex-direction: row;
+    flex-shrink: 0;
+}
+
+.game-options-left {
     flex-grow: 1;
     flex-shrink: 1;
+    flex-basis: 0;
+}
+
+.mod-option-column {
+    flex-shrink: 0;
+    width: 476px;
+    margin-left: 12px;
+}
+
+.mod-option-cards {
+    flex-shrink: 0;
+    width: 476px;
+}
+
+.mod-option-hint {
+    margin-top: 0;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--gof-text-dim);
+    -unity-text-align: middle-center;
+}
+
+.mod-option-cards .unity-scroll-view__content-container {
+    flex-direction: row;
+    padding: 12px 10px 12px 10px;   /* room for a selected card's 5 % growth */
+}
+
+.mod-option-card {
+    width: 214px;
+    height: 331px;
+    margin-right: 14px;
+    flex-shrink: 0;   /* the cards keep their size; the row scrolls */
+}
+
+/* With the cards the panel is wide and may take a little more height (Back stays inside it). */
+#gameOptionsPanel.panel--wide {
+    max-height: 88%;
+}
+
+.mod-option-card > .mod-card__art {
+    opacity: 0.5;
+}
+
+.mod-option-card--on {
+    border-color: var(--gof-amber);
+}
+
+.mod-option-card--on > .mod-card__art {
+    opacity: 1;
+}
+
+.mod-option-card__badge {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 3px 10px;
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--gof-text-dim);
+    background-color: rgba(4, 8, 14, 0.85);
+    border-width: 1px;
+    border-color: var(--gof-line);
+    border-radius: 2px;
+}
+
+.mod-option-card--on .mod-option-card__badge {
+    color: rgb(20, 12, 0);
+    background-color: var(--gof-amber);
+    border-color: var(--gof-amber);
 }

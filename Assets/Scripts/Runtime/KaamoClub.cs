@@ -77,11 +77,26 @@ namespace GoF2Remake.Data
         public static bool HasShip(int ship) => Session.KaamoShips.Any(s => s.ship == ship);
 
         /// <summary>Station::addShip on the storage: ignored when that type is already parked. Returns whether it was added.</summary>
-        public static bool Store(int ship, int race, List<int> mods)
+        public static bool Store(int ship, int race, List<int> mods, List<ItemStack> equipment = null)
         {
             if (HasShip(ship)) return false;
-            Session.KaamoShips.Add(new StoredShip(ship, race, mods));
+            Session.KaamoShips.Add(new StoredShip(ship, race, mods, equipment));
             return true;
+        }
+
+        /// <summary>Items into the club's storage (Session.KaamoItems, 108's stock while owned), in item order.</summary>
+        public static void AddToStorage(IEnumerable<ItemStack> items)
+        {
+            if (items == null) return;
+            foreach (var e in items)
+            {
+                if (e == null) continue;
+                int n = System.Math.Max(1, e.amount);
+                var row = Session.KaamoItems.Find(s => s.item == e.item);
+                if (row != null) { row.amount += n; continue; }
+                int at = Session.KaamoItems.FindIndex(s => s.item > e.item);
+                Session.KaamoItems.Insert(at < 0 ? Session.KaamoItems.Count : at, new ItemStack(e.item, n));
+            }
         }
 
         /// <summary>Agent 26 (offer 10): the dealer's ships the player neither flies nor stores.</summary>

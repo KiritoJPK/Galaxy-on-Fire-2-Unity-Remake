@@ -2076,8 +2076,6 @@ namespace GoF2Remake.World
             public float easeMs;
         }
         readonly List<Shuttle> shuttles = new List<Shuttle>();
-        /// <summary>SpacePoint::take / giveFree, per object: the docking points in use.</summary>
-        readonly HashSet<(Transform, int)> takenPoints = new HashSet<(Transform, int)>();
 
         /// <summary>PlayerFighter states 7 / 8 (game/PlayerFighter.c 2779-2890): the nearest free approach point (type 1), reached
         /// within 2000 units; then the docking point nearest it, eased onto like the player's (approachDockingPoint: nose = the
@@ -2095,7 +2093,7 @@ namespace GoF2Remake.World
                 int pick = -1;
                 for (int i = 0; i < points.Count; i++)
                 {
-                    if (points[i].type != SpacePoints.Approach || takenPoints.Contains((obj, i))) continue;
+                    if (points[i].type != SpacePoints.Approach || SpacePoints.IsTaken(obj, i)) continue;
                     float d = (obj.TransformPoint(SpacePoints.ToLocal(points[i].engine)) - s.transform.position).sqrMagnitude;
                     if (d < best) { best = d; pick = i; }
                 }
@@ -2111,7 +2109,7 @@ namespace GoF2Remake.World
                 }
                 if (dock < 0) return false;
                 sh.taken = pick;
-                takenPoints.Add((obj, pick));
+                SpacePoints.Take(obj, pick);
                 var dLocal = SpacePoints.ToLocal(points[dock].engine);
                 var up = a - dLocal;
                 up = up.sqrMagnitude > 1e-8f ? up.normalized : Vector3.up;
@@ -2156,7 +2154,7 @@ namespace GoF2Remake.World
         void ShuttleUndock(Shuttle sh)
         {
             var obj = sh.dockAt != null && sh.leg < sh.dockAt.Length ? sh.dockAt[sh.leg] : null;
-            if (obj != null && sh.taken >= 0) takenPoints.Remove((obj, sh.taken));
+            if (obj != null && sh.taken >= 0) SpacePoints.Free(obj, sh.taken);
             if (sh.taken >= 0) sh.ship.SetExhaust(true);
             sh.taken = -1;
             sh.dockPhase = 0;

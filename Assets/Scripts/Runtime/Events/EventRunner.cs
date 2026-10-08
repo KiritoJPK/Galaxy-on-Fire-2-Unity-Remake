@@ -435,6 +435,31 @@ namespace GoF2Remake.Events
             }
         }
 
+        /// <summary>Remake (mods: Modding.ModUnlocks): a condition in the events' expression language outside any event, for
+        /// this game (the quests' "Starts when" words: campaign, credits, rank, visited(...), quest(...), option(...), won(...),
+        /// systemsvisited...). Empty = true; nonzero = true; a bad expression is false with 'error'.</summary>
+        public static bool Condition(string expression, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(expression)) return true;
+            var probe = new EventRun("condition", new List<Step>(), new MissionInfo(), new HashSet<ulong> { 0 }, -1, LocalPilot.Instance, new Dictionary<string, double>());
+            try { return probe.Probe(expression) != 0; }
+            catch (Exception e) { error = e.Message; return false; }
+        }
+
+        /// <summary>"systemsvisited": the star systems of the stations docked at (Session.VisitedStations).</summary>
+        static int VisitedSystems()
+        {
+            var systems = new HashSet<int>();
+            var db = NetGame.Db;
+            foreach (int st in Session.VisitedStations)
+            {
+                var s = db.Stations.Find(x => x.index == st);
+                if (s != null) systems.Add(s.system);
+            }
+            return systems.Count;
+        }
+
         /// <summary>Single player: the bar mission of an event graph the player is on (its run; null: none).</summary>
         static EventRun LocalMissionRun => runs.Find(r => r.record != null && r.record.kind == GraphQuestState.KindMission && !r.ended);
 
@@ -1948,6 +1973,7 @@ namespace GoF2Remake.Events
                     case "system": return NetGame.Db.Stations.Find(s => s.index == Session.StationIndex)?.system ?? -1;
                     case "ship": return Session.ShipIndex;
                     case "kills": return Session.Kills;
+                    case "systemsvisited": return VisitedSystems();   // remake: 2+ = the player has left the starting system
                 }
                 throw new Exception(string.Format(X("mpEventNoVar", "no variable \"{0}\" (set it first)."), name));
             }
@@ -2062,7 +2088,7 @@ namespace GoF2Remake.Events
                     {
                         while (i < s.Length && (char.IsLetterOrDigit(s[i]) || s[i] == '_')) i++;
                         string name = s.Substring(start, i - start).ToLowerInvariant();
-                        if ((name == "cargo" || name == "has" || name == "visited" || name == "quest") && Peek('('))
+                        if ((name == "cargo" || name == "has" || name == "visited" || name == "quest" || name == "option" || name == "won") && Peek('('))
                         {
                             // An item / station / quest by number or name: the text up to its ")" ({expression} parts filled in).
                             Sym("(");
@@ -2145,6 +2171,21 @@ namespace GoF2Remake.Events
                 {
                     if (name == "quest")
                         return Session.GraphQuestsDone.Contains(arg) ? 2 : Session.GraphQuests.Exists(q => q.name == arg) ? 1 : 0;
+                    // option(<mod id>:<option id>): a mod's new-game option is on in this game (Modding.ModGameOptions).
+                    if (name == "option") return Modding.ModGameOptions.IsOn(arg) ? 1 : 0;
+                    // won(main | valkyrie | supernova): that campaign's story is finished in this game (or the multiplayer
+                    // session's finished world).
+                    if (name == "won")
+                    {
+                        int need = arg.ToLowerInvariant() switch
+                        {
+                            "main" or "gof2" => Story.GameWonIndex,
+                            "valkyrie" => Story.Dlc1WonIndex,
+                            "supernova" => Story.LastIndex,
+                            _ => throw new Exception($"won({arg}): main, valkyrie or supernova."),
+                        };
+                        return Session.CompletedWorld || (!Session.FreePlay && Session.CampaignMission >= need) ? 1 : 0;
+                    }
                     if (name == "visited")
                     {
                         if (!NetTeleport.ParseStation(arg, out int st, out string left) || left.Length > 0)

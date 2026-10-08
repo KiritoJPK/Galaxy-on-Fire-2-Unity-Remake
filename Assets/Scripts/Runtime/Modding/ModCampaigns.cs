@@ -1,7 +1,9 @@
 // ModCampaigns.cs
 // Remake mods: a mod's own campaign (campaign.json), a New Game entry of its own under the main menu's three campaigns:
 //   {
-//     "name": "Galaxy on Fire" | { "en": ..., "de": ... },  "description": ...,  "image": "campaign.png" (the entry's picture),
+//     "name": "Galaxy on Fire" | { "en": ..., "de": ... },  "description": ...,  "image": "campaign.png" (the card's art, like
+//     the campaign cards: 290 x 448 or a multiple), "imageHover": "campaign_hover.png" (shown while selected), "showTitle": true
+//     (the name on a plate at the card's foot; false when the art has its own title),
 //     "startStation": "mod_id:station_id" | number,  "startShip": "mod_id:ship_id" | number,  "credits": 5000,
 //     "equipment": [item, { "item": item, "amount": n }, ...]  (mounted; a secondary weapon's amount = its ammo),
 //     "cargo": [{ "item": item, "amount": n }, ...],  "standing": [terran_vossk, nivelian_midorian]  (-100..100),
@@ -33,7 +35,7 @@ namespace GoF2Remake.Modding
 
         static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "name", "description", "image", "startStation", "startShip", "credits", "equipment", "cargo", "standing", "quest",
+            "name", "description", "image", "imageHover", "showTitle", "startStation", "startShip", "credits", "equipment", "cargo", "standing", "quest",
             "galaxy", "items", "ships", "trafficShips",
         };
 
@@ -41,7 +43,8 @@ namespace GoF2Remake.Modding
         {
             public ModInfo mod;
             public Dictionary<string, string> name, description;
-            public string image, startStation, startShip, quest;
+            public string image, imageHover, startStation, startShip, quest;
+            public bool showTitle = true;
             public int credits;
             public List<(string item, int amount)> equipment = new List<(string, int)>(), cargo = new List<(string, int)>();
             public int[] standing;
@@ -86,6 +89,7 @@ namespace GoF2Remake.Modding
             var d = new Def
             {
                 mod = mod, name = ModJson.Text(o, "name"), description = ModJson.Text(o, "description"), image = ModJson.Str(o, "image"),
+                imageHover = ModJson.Str(o, "imageHover"), showTitle = ModJson.Bool(o, "showTitle", true, File),
                 startStation = ModJson.Str(o, "startStation"), startShip = ModJson.Str(o, "startShip"), quest = ModJson.Str(o, "quest"),
                 credits = Mathf.Max(0, ModJson.Int(o, "credits", 0, File)),
                 modGalaxy = string.Equals(ModJson.Str(o, "galaxy", "all"), "mod", StringComparison.OrdinalIgnoreCase),
@@ -203,6 +207,7 @@ namespace GoF2Remake.Modding
 
         /// <summary>The entry's picture (the mod's PNG; null: none).</summary>
         public static Texture2D Image(Def c) => string.IsNullOrEmpty(c.image) ? null : ModMaterials.Texture(c.mod, c.image, false, true);
+        public static Texture2D ImageHover(Def c) => string.IsNullOrEmpty(c.imageHover) ? null : ModMaterials.Texture(c.mod, c.imageHover, false, true);
 
         /// <summary>MainMenu: a new game of the campaign (after Session.ResetNewGame and the difficulty / economy): its start
         /// state, docked at its station; the scene to load ("Station"). Null with 'error' when it can't start.</summary>

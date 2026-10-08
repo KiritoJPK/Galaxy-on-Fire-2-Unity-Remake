@@ -299,6 +299,7 @@ namespace GoF2Remake.UI
             panel.style.display = DisplayStyle.None;
             options = new OptionsView(() => Show(Page.Main), false);
             options.TabChanged += () => { optionIndex = 0; HighlightOptions(); };
+            options.FooterChanged += () => KeepOptionSelected(options.FooterFocus);   // the defaults prompt opened / closed
             options.Root.EnableInClassList("can-hover", InputMode.Current == InputKind.KeyboardMouse);
             backdrop.Add(options.Root);
             optionIndex = 0;
@@ -323,7 +324,7 @@ namespace GoF2Remake.UI
 
         /// <summary>The Options page's keys, like the main menu's: up / down walk the tab row, the tab's rows and the footer
         /// (stopping at the ends); left / right switch tabs on the tab row, step a row, or move between Back and Default
-        /// settings; Q / E and LB / RB switch tabs anywhere; Enter / A takes the row or button.</summary>
+        /// settings (or the defaults prompt's buttons); Q / E and LB / RB switch tabs anywhere; Enter / A takes the row or button.</summary>
         void TickOptions(UnityEngine.InputSystem.Keyboard kb, Gamepad pad)
         {
             options.Root.EnableInClassList("can-hover", InputMode.Current == InputKind.KeyboardMouse);
@@ -340,10 +341,12 @@ namespace GoF2Remake.UI
             if (pad != null && (pad.dpad.down.wasPressedThisFrame || pad.leftStick.down.wasPressedThisFrame)) move = 1;
             if (move != 0)
             {
-                // Down from Back skips Default settings beside it (and up from it comes back over Back).
+                // The footer (Back and Default settings, or the defaults prompt's buttons) is one row: down from it stays,
+                // up from any of its buttons goes to the item before it.
                 int next = optionIndex + move;
-                if (move > 0 && items[optionIndex] == options.BackButton) next = optionIndex;
-                if (move < 0 && items[optionIndex] == options.DefaultsButton) next = optionIndex - 2;
+                bool inFooter = options.IsFooter(items[optionIndex]);
+                if (move > 0 && inFooter) next = optionIndex;
+                if (move < 0 && inFooter) next = options.FooterStart(items) - 1;
                 optionIndex = Mathf.Clamp(next, 0, items.Count - 1);
                 HighlightOptions();
                 return;
@@ -359,15 +362,14 @@ namespace GoF2Remake.UI
             {
                 if (options.IsTab(current)) options.StepTab(side);
                 else if (row != null) { row.Step(side); KeepOptionSelected(current); }
-                else { optionIndex = side < 0 ? items.IndexOf(options.BackButton) : items.IndexOf(options.DefaultsButton); HighlightOptions(); }
+                else if (options.IsFooter(current)) { optionIndex = items.IndexOf(options.FooterStep(current, side)); HighlightOptions(); }
                 return;
             }
             bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame))
                            || (pad != null && pad.buttonSouth.wasPressedThisFrame);
             if (!confirm) return;
             if (row != null) { row.Activate(); KeepOptionSelected(current); }
-            else if (current == options.BackButton) Show(Page.Main);
-            else if (current == options.DefaultsButton) options.RestoreDefaults();
+            else if (options.IsFooter(current)) options.Activate(current);   // Back, Default settings, the defaults prompt
         }
 
         // ---- the Debug page ----------------------------------------------------------------------------------
@@ -546,7 +548,11 @@ namespace GoF2Remake.UI
             if (page == Page.Options && options != null)
             {
                 if ((kb != null && (kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame))
-                    || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame))) { Show(Page.Main); return; }
+                    || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame)))
+                {
+                    if (!options.CloseResetPrompt()) Show(Page.Main);   // back closes the defaults prompt first
+                    return;
+                }
                 TickOptions(kb, pad);
                 return;
             }

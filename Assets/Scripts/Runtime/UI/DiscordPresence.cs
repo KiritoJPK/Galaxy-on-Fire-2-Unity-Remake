@@ -75,7 +75,7 @@ namespace GoF2Remake.UI
                     : Session.Campaign == Campaign.Supernova ? ("supernova", "Supernova")
                     : Session.Campaign == Campaign.Valkyrie ? ("valkyrie", "Valkyrie") : ("gof2", "Galaxy on Fire 2");
                 largeText += " · " + Session.DifficultyName(Session.Difficulty);
-                var db = Database.Load();
+                var db = Database.Shared;   // every 2 s: Load() parsed every table again (a hitch and MBs of garbage)
                 var station = db.Stations.Find(s => s.index == Session.StationIndex);
                 string stationName = station != null ? station.name : "";
                 if (station != null)

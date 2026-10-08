@@ -125,6 +125,17 @@ namespace GoF2Remake.Data
         public CustomThrottleGlow throttleGlow;   // a glow on part of the hull that follows the throttle (no mask = none)
         public List<CustomThrottleGlow> extraGlows;   // more of them (each its own mask, colour, levels and trail)
         public CustomLoungeSeller lounge;  // a lounge visitor who sells it (AgentGenerator.AddCustomShipSellers); null = none
+        public CustomDealer dealer;        // remake mods: ship dealers may stock it (Modding.ModUnlocks.AddDealerShips); null = never
+    }
+
+    /// <summary>Remake mods: a mod ship in the ordinary ship dealers' lists (Shop.GenerateShips): each time a station's dealer
+    /// list is made, 'chance' % (0.1 steps; 100 = always) at stations of 'systemRace' systems (-1 = any) with a tech level
+    /// of at least 'minTechLevel'.</summary>
+    [System.Serializable] public class CustomDealer
+    {
+        public float chance = 2f;
+        public int systemRace = -1;
+        public int minTechLevel;
     }
 
     /// <summary>When a lounge may have a visitor selling a custom ship (AgentOffer.SellShip): each time a station's bar is
@@ -192,6 +203,7 @@ namespace GoF2Remake.Data
         public int[] portraitParts;
     }
 
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class Database
     {
         public List<ShipData> Ships = new List<ShipData>();
@@ -277,6 +289,31 @@ namespace GoF2Remake.Data
             Economy = Economy.Default;
         }
 
+        static Database shared;
+        static Economy sharedEconomy;
+        static int sharedRevision = -1;
+
+        /// <summary>One loaded game database for read-only lookups (names, stations, systems), made again only when the
+        /// economy or the mods change. Load() parses every table again (several MB of garbage, a hitch): callers that only
+        /// read and run during play (Discord's status every 2 s, the mods' music on every music change) use this. Never
+        /// change what it returns.</summary>
+        public static Database Shared
+        {
+            get
+            {
+                if (shared == null || sharedEconomy != Session.Economy || sharedRevision != Modding.ModManager.Revision)
+                {
+                    sharedEconomy = Session.Economy;
+                    sharedRevision = Modding.ModManager.Revision;
+                    shared = Load();
+                }
+                return shared;
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetShared() { shared = null; sharedRevision = -1; }
+
         public static Database Load(string resourceFolder = "GoF2Data")
         {
             var db = new Database
@@ -302,8 +339,22 @@ namespace GoF2Remake.Data
             return db;
         }
 
-        public ItemData Item(int index) => index >= 0 && index < Items.Count && Items[index].index == index ? Items[index] : Items.Find(i => i.index == index);
-        public ShipData Ship(int index) => index >= 0 && index < Ships.Count && Ships[index].index == index ? Ships[index] : Ships.Find(s => s.index == index);
+        // The search is a loop of its own: a lambda capturing 'index' allocated its closure on every call, the fast path too
+        // (the HUD's cargo readout calls these every frame).
+        public ItemData Item(int index) => index >= 0 && index < Items.Count && Items[index].index == index ? Items[index] : FindItem(index);
+        public ShipData Ship(int index) => index >= 0 && index < Ships.Count && Ships[index].index == index ? Ships[index] : FindShip(index);
+
+        ItemData FindItem(int index)
+        {
+            foreach (var i in Items) if (i.index == index) return i;
+            return null;
+        }
+
+        ShipData FindShip(int index)
+        {
+            foreach (var s in Ships) if (s.index == index) return s;
+            return null;
+        }
 
         [System.Serializable] class Wrapper<W> { public W list; }
 

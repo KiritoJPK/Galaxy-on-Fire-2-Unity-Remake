@@ -400,7 +400,14 @@ namespace GoF2Remake.Flight
             // (Settings.EachWeaponSound): the first gun of every primary weapon item, so a mixed loadout sounds each weapon.
             Rig soundRig = rigs.Find(x => !x.gun.isSecondary);
             bool each = Settings.EachWeaponSound;
-            bool Sounds(Rig x) => x == soundRig || (each && !x.gun.isSecondary && rigs.Find(y => !y.gun.isSecondary && y.gun.itemIndex == x.gun.itemIndex) == x);
+            // A loop, not rigs.Find(y => ... x ...): that lambda captured 'x', a closure on every call (per shot, and every frame
+            // while a looping gun is held).
+            Rig FirstOfItem(int item)
+            {
+                foreach (var y in rigs) if (!y.gun.isSecondary && y.gun.itemIndex == item) return y;
+                return null;
+            }
+            bool Sounds(Rig x) => x == soundRig || (each && !x.gun.isSecondary && FirstOfItem(x.gun.itemIndex) == x);
             foreach (var r in rigs)
             {
                 var gun = r.gun;

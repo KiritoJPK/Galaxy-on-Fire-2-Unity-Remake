@@ -181,6 +181,7 @@ namespace GoF2Remake.Flight
                     if (it.index == 164 || it.index == 175 || it.index == 217 || it.index == 218) continue;
                     if (Random.Range(0, 100) >= (type >= 0 && type < LootTypeChance.Length ? LootTypeChance[type] : 10)) continue;
                     if (Random.Range(0, 100) >= it.occurrence) continue;
+                    if (!Modding.ModUnlocks.ItemAvailable(it.index)) continue;   // remake mods: its "available" condition
                     if (type == 4) entry = new ItemStack(it.index, Random.Range(0, 9) + 1);
                     else if (it.techLevel < 8) entry = new ItemStack(it.index, Random.Range(0, 3) + 1);
                 }

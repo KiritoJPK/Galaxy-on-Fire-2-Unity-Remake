@@ -350,9 +350,14 @@ namespace GoF2Remake.Flight
 
         void TestHits(int i, ref Bullet b, IReadOnlyList<Target> targets)
         {
+            int frame = Time.frameCount;
+            var probe = b.position - b.velocity;
             for (int t = 0; t < targets.Count; t++)
             {
                 var target = targets[t];
+                // The cheap sphere test first (Target.MayContain): most targets are nowhere near the bullet. Scatter guns'
+                // cube grows with the distance, so they keep the full test.
+                if ((object)target == null || (kind != Kind.ScatterGun && !target.MayContain(probe, frame))) continue;
                 if (target == null || target == owner || !target.Alive) continue;
                 if (Ignores != null && Ignores(target)) continue;
                 if (kind == Kind.ScatterGun ? !InScatterCube(target, b.position - b.velocity) : !target.Contains(b.position - b.velocity)) continue;

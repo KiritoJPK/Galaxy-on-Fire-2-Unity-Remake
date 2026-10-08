@@ -51,7 +51,7 @@ namespace GoF2Remake.Modding
             public JObject json;
             public string where, localId, key, overrideRef, data;   // data: the entry as CustomShipData JSON (no texts / ids)
             public Dictionary<string, string> name, description;
-            public bool hasLounge;
+            public bool hasLounge, hasDealer;
         }
 
         /// <summary>The parsed content of one mod (read when the mods are scanned, so a broken file shows in the browser).</summary>
@@ -59,6 +59,7 @@ namespace GoF2Remake.Modding
         {
             public readonly List<ItemDef> items = new List<ItemDef>();
             public readonly List<ShipDef> ships = new List<ShipDef>();
+            public readonly List<ModBlueprints.Def> blueprints = new List<ModBlueprints.Def>();
             public readonly List<ModWorld.Def> systems = new List<ModWorld.Def>(), stations = new List<ModWorld.Def>();
             public readonly Dictionary<string, Dictionary<string, string>> text =
                 new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);   // language -> key -> text
@@ -74,6 +75,7 @@ namespace GoF2Remake.Modding
         static readonly Dictionary<int, string> placeholderItems = new Dictionary<int, string>();
         static readonly Dictionary<int, int> itemLook = new Dictionary<int, int>();
         static readonly Dictionary<int, ItemDef> itemRenames = new Dictionary<int, ItemDef>();   // overrides with a name / description
+        static readonly Dictionary<int, ModBlueprints.Def> deedAt = new Dictionary<int, ModBlueprints.Def>();   // ship blueprints' items
         static int originalShips = -1;
         static readonly Dictionary<string, int> shipIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         static readonly Dictionary<int, ShipDef> shipDefAt = new Dictionary<int, ShipDef>();
@@ -104,6 +106,7 @@ namespace GoF2Remake.Modding
             {
                 ParseItems(mod, p);
                 ParseShips(mod, p);
+                ModBlueprints.Parse(mod, p.blueprints);
                 ModWorld.Parse(mod, p.systems, p.stations);
                 foreach (var f in mod.Source.FilesIn("text", ".json"))
                 {
@@ -122,6 +125,7 @@ namespace GoF2Remake.Modding
         {
             "id", "override", "base", "name", "description", "techLevel", "occurrence", "minPrice", "maxPrice", "price",
             "lowestPriceSystem", "highestPriceSystem", "vosskOnly", "alwaysSoldAt", "stats", "attributes", "defaultEconomy", "fx", "icon",
+            "available",
         };
 
         static void ParseItems(ModInfo mod, Parsed p)
@@ -169,7 +173,7 @@ namespace GoF2Remake.Modding
         {
             "id", "override", "name", "description", "race", "armor", "cargo", "price", "priceDefault", "slots", "handling",
             "hangarHeight", "mounts", "model", "icon", "modelLength", "modelYaw", "engineGlowRadius", "engineGlowColor", "materials", "throttleGlow",
-            "extraGlows", "lounge",
+            "extraGlows", "lounge", "dealer", "available",
         };
 
         static void ParseShips(ModInfo mod, Parsed p)
@@ -186,6 +190,7 @@ namespace GoF2Remake.Modding
                 {
                     mod = mod, json = o, where = where, localId = ModJson.Str(o, "id"), overrideRef = ModJson.Str(o, "override"),
                     name = ModJson.Text(o, "name"), description = ModJson.Text(o, "description"), hasLounge = ModJson.Has(o, "lounge"),
+                    hasDealer = ModJson.Has(o, "dealer"),
                 };
                 if ((d.localId == null) == (d.overrideRef == null))
                     throw new ModJsonException($"{where}: a ship needs either \"id\" (a new ship) or \"override\" (change an existing one)");
@@ -252,7 +257,7 @@ namespace GoF2Remake.Modding
             if (mappedRevision == ModManager.Revision && originalItems >= 0 && originalShips >= 0) return;
             if (originalItems < 0 || originalShips < 0) { Database.Load(); if (originalItems < 0 || originalShips < 0) return; }   // Load sets them
             mappedRevision = ModManager.Revision;
-            itemIndex.Clear(); itemDefAt.Clear(); placeholderItems.Clear(); itemLook.Clear(); itemRenames.Clear();
+            itemIndex.Clear(); itemDefAt.Clear(); placeholderItems.Clear(); itemLook.Clear(); itemRenames.Clear(); deedAt.Clear();
             bool session = ModManager.InSession;
             int next = originalItems;
             foreach (var mod in ModManager.Active)
@@ -262,6 +267,15 @@ namespace GoF2Remake.Modding
                     int i = session ? next++ : ModRegistry.Assign(ModRegistry.Kind.Item, d.key, originalItems);
                     itemIndex[d.key] = i;
                     itemDefAt[i] = d;
+                }
+            // A ship blueprint's item (ModBlueprints): numbered like an item, so saves and crates keep it.
+            foreach (var mod in ModManager.Active)
+                foreach (var b in Parse(mod).blueprints)
+                {
+                    if (!b.IsShip) continue;
+                    int i = session ? next++ : ModRegistry.Assign(ModRegistry.Kind.Item, b.DeedKey, originalItems);
+                    itemIndex[b.DeedKey] = i;
+                    deedAt[i] = b;
                 }
             if (!session)
                 foreach (var kv in ModRegistry.All(ModRegistry.Kind.Item))
@@ -330,6 +344,7 @@ namespace GoF2Remake.Modding
             c.index = index;
             c.assembly = $"ship_{index:000}_mod";
             if (!d.hasLounge) c.lounge = null;   // JsonUtility makes one with its defaults
+            if (!d.hasDealer) c.dealer = null;
             if (c.throttleGlow != null && string.IsNullOrEmpty(c.throttleGlow.mask)) c.throttleGlow = null;
             ShipText(index, false, out c.name);
             ShipText(index, true, out c.description);
@@ -485,6 +500,12 @@ namespace GoF2Remake.Modding
         {
             EnsureMapping();
             text = null;
+            if (deedAt.TryGetValue(index, out var bp))
+            {
+                // A ship blueprint's item reads as its ship.
+                text = TryResolveShip(bp.shipRef, out int ship) ? description ? GameNames.ShipDescription(ship) : GameNames.Ship(ship) : bp.DeedKey;
+                return true;
+            }
             if (placeholderItems.TryGetValue(index, out var missing))
             {
                 text = description ? string.Format(Localization.Extra("modMissingItemDesc", "This item came from the mod \"{0}\", which isn't on."), missing.Split(':')[0])
@@ -551,6 +572,8 @@ namespace GoF2Remake.Modding
                     }
                     catch (ModJsonException e) { Report(mod, e.Message); }
                 }
+            foreach (var kv in deedAt)
+                if (db.Item(kv.Key) == null) db.Items.Add(Deed(kv.Key, kv.Value));
             foreach (var kv in placeholderItems)
                 if (db.Item(kv.Key) == null) db.Items.Add(Placeholder(kv.Key, kv.Value));
             // Gaps (a number given out to a key the registry later lost): placeholders too, so the table stays 0..N-1.
@@ -558,6 +581,7 @@ namespace GoF2Remake.Modding
             for (int i = originalItems; i <= max; i++) if (db.Item(i) == null) db.Items.Add(Placeholder(i, "?:" + i));
             db.Items.Sort((a, c) => a.index.CompareTo(c.index));
             ApplyShips(db, dflt);
+            ModBlueprints.Apply(db);   // the recipes, and the ship blueprints' prices (after the ships)
             ModWorld.Apply(db);
         }
 
@@ -647,6 +671,15 @@ namespace GoF2Remake.Modding
             blueprint = new List<BlueprintPart>(),   // a copy is no blueprint product
             attrKeys = (int[])s.attrKeys.Clone(), attrValues = (int[])s.attrValues.Clone(),
             modded = s.modded, lookIndex = s.lookIndex, modKey = s.modKey,
+        };
+
+        /// <summary>A ship blueprint's item (ModBlueprints): a commodity no shop or loot ever offers (it is a blueprint
+        /// product), named and drawn as its ship.</summary>
+        static ItemData Deed(int index, ModBlueprints.Def b) => new ItemData
+        {
+            index = index, name = b.DeedKey, description = "", type = "commodity", category = "Commodity", categoryId = 22, techLevel = 1,
+            modded = true, modKey = b.DeedKey, lookIndex = index, blueprint = new List<BlueprintPart>(),
+            statList = new List<StatEntry>(), attrKeys = new[] { 0, 1, 2 }, attrValues = new[] { index, 4, 22 },
         };
 
         static ItemData Placeholder(int index, string key)

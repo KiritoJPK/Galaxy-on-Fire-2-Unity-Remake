@@ -674,12 +674,8 @@ namespace GoF2Remake.World
 
         void DropJunkCrate(Vector3 at)
         {
-            var assets = CombatAssets.Load();
-            var prefab = assets != null ? assets.junkCrate : null;   // KIPlayer::createCrate(3): mesh 0x4218 space_junk_004
-            var go = prefab != null ? Instantiate(prefab, at, Random.rotation) : new GameObject("Crate");
-            go.name = "Crate";
-            var crate = go.AddComponent<Crate>();
-            crate.Setup(new List<ItemStack> { new ItemStack(99, Random.Range(0, 10) + 1) }, Standing.Pirate);
+            // KIPlayer::createCrate(3): mesh 0x4218 space_junk_004
+            var crate = Crate.Spawn(at, new List<ItemStack> { new ItemStack(99, Random.Range(0, 10) + 1) }, Standing.Pirate, Crate.LookJunk);
             crate.missionLoot = true;   // multiplayer: only the mission's team takes it
         }
 

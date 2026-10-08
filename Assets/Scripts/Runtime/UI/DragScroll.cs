@@ -63,7 +63,12 @@ namespace GoF2Remake.UI
             target.UnregisterCallback<DetachFromPanelEvent>(OnDetach);
         }
 
-        float MaxOffset => Mathf.Max(0f, scroll.contentContainer.layout.height - scroll.contentViewport.layout.height);
+        /// <summary>A horizontal ScrollView (the main menu's mod option cards) scrolls along x, the rest along y.</summary>
+        bool Sideways => scroll.mode == ScrollViewMode.Horizontal;
+        float Along(Vector2 v) => Sideways ? v.x : v.y;
+
+        float MaxOffset => Sideways ? Mathf.Max(0f, scroll.contentContainer.layout.width - scroll.contentViewport.layout.width)
+                                    : Mathf.Max(0f, scroll.contentContainer.layout.height - scroll.contentViewport.layout.height);
 
         void OnDown(PointerDownEvent e)
         {
@@ -73,7 +78,7 @@ namespace GoF2Remake.UI
             inertia?.Pause();
             pointerId = e.pointerId;
             startPos = lastPos = e.position;
-            startOffset = scroll.scrollOffset.y;
+            startOffset = Along(scroll.scrollOffset);
             velocity = 0f;
             dragging = false;
         }
@@ -86,14 +91,14 @@ namespace GoF2Remake.UI
             Vector2 p = e.position;
             if (!dragging)
             {
-                if (Mathf.Abs(p.y - startPos.y) < StartThreshold) return;
+                if (Mathf.Abs(Along(p) - Along(startPos)) < StartThreshold) return;
                 dragging = true;
                 target.CapturePointer(pointerId);   // from here on the list owns the gesture
             }
-            float dy = p.y - lastPos.y;
+            float dy = Along(p) - Along(lastPos);
             velocity = Mathf.Lerp(velocity, -dy, 0.5f);
             lastPos = p;
-            SetOffset(startOffset - (p.y - startPos.y));
+            SetOffset(startOffset - (Along(p) - Along(startPos)));
             e.StopImmediatePropagation();   // also keeps the ScrollView's own touch handling from doubling it
         }
 
@@ -140,11 +145,12 @@ namespace GoF2Remake.UI
             {
                 float frames = t.deltaTime / 16.67f;
                 velocity *= Mathf.Pow(Damping, frames);
-                SetOffset(scroll.scrollOffset.y + velocity * frames);
+                SetOffset(Along(scroll.scrollOffset) + velocity * frames);
                 if (Mathf.Abs(velocity) < 0.2f) inertia.Pause();
             }).Every(16);
         }
 
-        void SetOffset(float y) => scroll.scrollOffset = new Vector2(scroll.scrollOffset.x, Mathf.Clamp(y, 0f, MaxOffset));
+        void SetOffset(float v) => scroll.scrollOffset = Sideways ? new Vector2(Mathf.Clamp(v, 0f, MaxOffset), scroll.scrollOffset.y)
+                                                             : new Vector2(scroll.scrollOffset.x, Mathf.Clamp(v, 0f, MaxOffset));
     }
 }

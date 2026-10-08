@@ -34,6 +34,7 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<Vector3> position = new NetworkVariable<Vector3>(default, Read, Owner);
         readonly NetworkVariable<Quaternion> rotation = new NetworkVariable<Quaternion>(Quaternion.identity, Read, Owner);
         readonly NetworkVariable<int> race = new NetworkVariable<int>(-1, Read, Owner);
+        readonly NetworkVariable<int> look = new NetworkVariable<int>(-1, Read, Owner);   // Crate.look; -1 = not written yet
         readonly NetworkVariable<FixedString512Bytes> loot = new NetworkVariable<FixedString512Bytes>(default, Read, Owner);   // "item:amount,..."
         readonly NetworkVariable<bool> fromFriend = new NetworkVariable<bool>(false, Read, Owner);
         readonly NetworkVariable<bool> missionCrate = new NetworkVariable<bool>(false, Read, Owner);
@@ -97,6 +98,7 @@ namespace GoF2Remake.Multiplayer
             position.Value = crate.transform.position;
             rotation.Value = crate.transform.rotation;
             race.Value = crate.race;
+            look.Value = crate.look;
             loot.Value = Encode(crate.loot);
             fromFriend.Value = crate.fromFriend;
             missionCrate.Value = crate.missionCrate;
@@ -148,14 +150,15 @@ namespace GoF2Remake.Multiplayer
         /// <summary>A copy for this player (in the crate's orbit): built once the owner's values are here.</summary>
         void BuildCopy()
         {
-            if (crate != null || race.Value < 0) return;
+            if (crate != null || look.Value < 0) return;   // a shot asteroid's crate has race -1
             var assets = CombatAssets.Load();
-            var prefab = assets != null ? assets.Crate(race.Value) : null;
+            var prefab = assets != null ? assets.CrateModel(look.Value, race.Value) : null;
             var go = prefab != null ? Instantiate(prefab, position.Value, rotation.Value) : new GameObject();
             go.name = "Crate (other player's)";
             crate = go.AddComponent<Crate>();
             crate.remote = true;
             crate.race = race.Value;
+            crate.look = look.Value;
             crate.fromFriend = fromFriend.Value;
             crate.missionCrate = missionCrate.Value;
             crate.missionLoot = missionLoot.Value;

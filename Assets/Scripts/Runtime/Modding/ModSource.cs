@@ -1,5 +1,5 @@
 // ModSource.cs
-// Where a mod's files come from: a folder in a Mods folder, or a .zip / .gof2mod archive (the same layout zipped, with
+// Where a mod's files come from: a folder in a Mods folder, or a .zip archive (the same layout zipped, with
 // mod.json at its root or inside one top folder). Paths inside a mod use forward slashes and are case-insensitive, so
 // a mod made on Windows also loads on Android / Linux.
 
@@ -64,7 +64,7 @@ namespace GoF2Remake.Modding
                 if (Directory.Exists(location))
                     return File.Exists(Path.Combine(location, ModManifest.FileName)) ? new FolderSource(location) : null;
                 string ext = Path.GetExtension(location).ToLowerInvariant();
-                if (File.Exists(location) && (ext == ".zip" || ext == ".gof2mod"))
+                if (File.Exists(location) && ext == ".zip")
                 {
                     var z = new ZipSource(location);
                     if (z.Exists(ModManifest.FileName)) return z;

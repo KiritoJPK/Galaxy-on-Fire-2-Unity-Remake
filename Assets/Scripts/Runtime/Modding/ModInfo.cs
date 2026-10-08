@@ -96,6 +96,25 @@ namespace GoF2Remake.Modding
             catch (Exception e) { Debug.LogWarning($"Mods: {Id}: {file}: {e.Message}"); return null; }
         }
 
+        /// <summary>A GLB's embedded image written out for the texture decoder (ModMaterials.PreloadImage, which deletes it
+        /// afterwards): temporaryCachePath/ModFiles/&lt;id&gt;_images/&lt;name&gt;.&lt;ext&gt;. Any thread; null when it can't be written.</summary>
+        public string LocalImage(string name, string ext, byte[] bytes)
+        {
+            try
+            {
+                if (bytes == null) return null;
+                string path = System.IO.Path.Combine(cacheRoot, "ModFiles", Id + "_images", name + "." + ext);
+                if (System.IO.File.Exists(path) && new System.IO.FileInfo(path).Length == bytes.Length) return path;
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path));
+                string tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                System.IO.File.WriteAllBytes(tmp, bytes);
+                if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+                System.IO.File.Move(tmp, path);
+                return path;
+            }
+            catch (Exception e) { Debug.LogWarning($"Mods: {Id}: image {name}: {e.Message}"); return null; }
+        }
+
         // Application.temporaryCachePath may only be read on the main thread: taken when the mod is made.
         readonly string cacheRoot = Application.temporaryCachePath;
 

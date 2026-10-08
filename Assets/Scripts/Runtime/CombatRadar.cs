@@ -199,7 +199,7 @@ namespace GoF2Remake.Flight
                     if (best == null && bestSteal == null)
                     {
                         bestD = float.MaxValue;
-                        foreach (var cr in FindObjectsByType<Crate>(FindObjectsInactive.Exclude))
+                        foreach (var cr in Crate.All)
                             if (cr != Salvaging && !cr.claimedByOther && InBox(cam, c, box, cr.transform.position, out float d) && d < bestD) { bestD = d; bestCrate = cr; }
                     }
                 }
@@ -281,7 +281,7 @@ namespace GoF2Remake.Flight
         {
             Crate pick = null;
             float best = float.MaxValue;
-            foreach (var cr in FindObjectsByType<Crate>(FindObjectsInactive.Exclude))
+            foreach (var cr in Crate.All)
             {
                 if (cr.stolenFrom != null || !cr.HasLoot || cr.claimedByOther) continue;
                 if (onScreenOnly)
@@ -355,6 +355,18 @@ namespace GoF2Remake.Flight
             if (assets != null && assets.tractorClose != null) sfx.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(assets.tractorClose), Settings.SfxVolume);
             var entry = crate.loot.Find(s => s.amount > 0);
             if (entry == null) { Destroy(crate.gameObject); return; }
+            if (GoF2Remake.Modding.ModBlueprints.Of(entry.item) != null)
+            {
+                // Remake mods: a data crate (a mod blueprint's drop or derelict): the blueprint is learnt, nothing goes in
+                // the hold.
+                bool known = Blueprints.IsUnlocked(entry.item);
+                Blueprints.Unlock(entry.item);
+                Message?.Invoke(string.Format(known ? Localization.Extra("bpKnown", "Blueprint already known: {0}")
+                                                    : Localization.Extra("bpFound", "Blueprint found: {0}"), GameNames.Item(entry.item)), 2);
+                crate.CapturedHere?.Invoke();
+                Destroy(crate.gameObject);
+                return;
+            }
             int free = Shop.FreeCargo(db);
             var ship = crate.stolenFrom;
             int want = ship != null ? UnityEngine.Random.Range(0, entry.amount) : entry.amount;

@@ -18,6 +18,7 @@ using UnityEngine.UIElements;
 
 namespace GoF2Remake.UI
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class NavigationView
     {
         const float M = 0.05f;
@@ -49,7 +50,14 @@ namespace GoF2Remake.UI
         public bool FastForwardPressed => fastForwardPressed;
         public event System.Action AutopilotButton;
 
-        static Texture2D Tex(string name) => Resources.Load<Texture2D>("GoF2Hud/" + name);
+        // Looked up once per name: the markers ask for theirs every frame (a Resources.Load each, with its path string).
+        static readonly Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>();
+
+        static Texture2D Tex(string name)
+        {
+            if (!textures.TryGetValue(name, out var t) || t == null) textures[name] = t = Resources.Load<Texture2D>("GoF2Hud/" + name);
+            return t;
+        }
 
         public NavigationView(VisualElement root)
         {
@@ -97,7 +105,7 @@ namespace GoF2Remake.UI
 
         static Label Text(VisualElement parent, string cls)
         {
-            var l = new Label { pickingMode = PickingMode.Ignore };
+            var l = new Label { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
             l.AddToClassList("nav-label");
             if (cls != null) l.AddToClassList(cls);
             l.AddToClassList("gof-semibold");
@@ -120,14 +128,14 @@ namespace GoF2Remake.UI
                 bool wormhole = t.kind == Navigation.Kind.Wormhole;
                 if (t.kind != Navigation.Kind.Planet && !wormhole)
                 {
-                    m.bracket = new VisualElement { pickingMode = PickingMode.Ignore };
+                    m.bracket = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                     m.bracket.AddToClassList("nav-abs");
                     Image(m.bracket, Tex("bracket"));
                     layer.Add(m.bracket);
                 }
                 if (t.kind == Navigation.Kind.Jumpgate || t.kind == Navigation.Kind.Waypoint || wormhole || (t.kind == Navigation.Kind.Planet && t.station == gateStation))
                 {
-                    m.icon = new VisualElement { pickingMode = PickingMode.Ignore };
+                    m.icon = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                     m.icon.AddToClassList("nav-abs");
                     Image(m.icon, Tex(t.kind == Navigation.Kind.Waypoint ? (t.freelance ? "map_freelance" : "map_story") : wormhole ? "wormhole_icon" : "gate_icon"));
                     layer.Add(m.icon);
@@ -137,7 +145,7 @@ namespace GoF2Remake.UI
                 // and an event graph quest's target (EventRunner.IsQuestTarget; it may change in the orbit: shown per frame).
                 if (t.kind == Navigation.Kind.Planet)
                 {
-                    m.story = new VisualElement { pickingMode = PickingMode.Ignore };
+                    m.story = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                     m.story.AddToClassList("nav-abs");
                     Image(m.story, Tex("map_story"));
                     layer.Add(m.story);
@@ -146,7 +154,7 @@ namespace GoF2Remake.UI
                 // client's station), drawn after the story icon at the same spot.
                 if (t.kind == Navigation.Kind.Planet)
                 {
-                    m.freelance = new VisualElement { pickingMode = PickingMode.Ignore };
+                    m.freelance = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
                     m.freelance.AddToClassList("nav-abs");
                     Image(m.freelance, Tex("map_freelance"));
                     layer.Add(m.freelance);
@@ -321,10 +329,7 @@ namespace GoF2Remake.UI
             Image(autopilotButton, active || nav != null && nav.MenuOpen ? autopilotOn : autopilotOff);
         }
 
-        static void Place(VisualElement e, float x, float y)
-        {
-            e.style.left = x;
-            e.style.top = y;
-        }
+        // By the translate, not left / top: the markers move every frame, and left / top ran the panel's layout each time.
+        static void Place(VisualElement e, float x, float y) => e.style.translate = new Translate(x, y);
     }
 }

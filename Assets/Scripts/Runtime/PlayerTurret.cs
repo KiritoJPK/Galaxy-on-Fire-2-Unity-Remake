@@ -294,11 +294,30 @@ namespace GoF2Remake.Flight
             if (announce) herald.Message?.Invoke(Localization.Get(37) + (on ? ": " + Localization.Extra("on", "On") : ": " + Localization.Extra("off", "Off")));
         }
 
+        ObjectDocking docking;
+
+        /// <summary>The guns are blocked, except by docking at an object: PlayerEgo::setTurretMode 0xa6a48 refuses only while
+        /// mining (+0x1e4), steering the Liberator (+0x194) or for an auto turret (+0x180), so docked (the evacuations, the
+        /// hacks) the turret view and the auto turrets work; the remake had them off with the docked ship's guns. Not during
+        /// the hacking game, which takes the keys.</summary>
+        bool GunsBlocked
+        {
+            get
+            {
+                if (weapons == null || !weapons.Blocked) return false;
+                if (docking == null) docking = GetComponent<ObjectDocking>();
+                return docking == null || !docking.IsDocked || docking.Hacking != null;
+            }
+        }
+
+        /// <summary>Some turret on this ship is in its view (ObjectDocking leaves the camera to it).</summary>
+        public static bool ViewActive(GameObject player) => On(player).Exists(t => t.InTurretView);
+
         /// <summary>PlayerEgo::setTurretMode: refused for auto turrets, while mining or while the guns are blocked. Remake:
         /// one turret view at a time (entering this one leaves another's).</summary>
         public void SetTurretView(bool on)
         {
-            if (on && (IsAuto || weapons == null || weapons.Blocked || Time.timeScale <= 0f)) return;
+            if (on && (IsAuto || weapons == null || GunsBlocked || Time.timeScale <= 0f)) return;
             if (InTurretView == on) return;
             if (on) foreach (var other in On(gameObject)) if (other != this && other.InTurretView) other.SetTurretView(false);
             InTurretView = on;
@@ -306,6 +325,9 @@ namespace GoF2Remake.Flight
             if (ship != null) ship.steeringLocked = on;
             if (chase != null)
             {
+                // Docked at an object the chase camera is off (ObjectDocking's look-at camera): on for the turret's view.
+                if (docking == null) docking = GetComponent<ObjectDocking>();
+                if (docking != null && docking.Busy) chase.enabled = on;
                 chase.follow = on ? camAnchor : null;
                 // Under the hull the camera hangs below the turret (still upright: the anchor keeps the ship's up).
                 float side = UpsideDown ? -1f : 1f;
@@ -336,7 +358,7 @@ namespace GoF2Remake.Flight
             if (aim == null) return;
             float dtMs = Time.deltaTime * 1000f;
             if (gun.owner == null) gun.owner = GetComponent<Target>();   // the player's Target comes after the turret
-            bool halted = Time.timeScale <= 0f || (weapons != null && weapons.Blocked);
+            bool halted = Time.timeScale <= 0f || GunsBlocked;
             if (!halted)
             {
                 // The view key (V / D-pad up) is the camera button now: FreeLookCamera cycles standard / turret / free look.
@@ -349,7 +371,7 @@ namespace GoF2Remake.Flight
                 if (autoAction.WasPressedThisFrame() && IsAuto && group.Find(t => t.IsAuto) == this) SetAuto(!AutoEnabled);
             }
             bool dead = GetComponent<Target>() is Target me && !me.Alive;
-            if (InTurretView && ((weapons != null && weapons.Blocked) || dead)) SetTurretView(false);
+            if (InTurretView && (GunsBlocked || dead)) SetTurretView(false);
             if (dead) { StopShooting(); foreach (var a in anims) if (a != null) a.speed = 0f; gun.Update(dtMs, Target.All, null); rig.UpdateVisuals(dtMs, Camera.main, aim.BarrelForward); return; }
 
             bool fire = false;

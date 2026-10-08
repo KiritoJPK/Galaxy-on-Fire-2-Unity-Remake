@@ -29,11 +29,13 @@
 
 using System;
 using System.Collections.Generic;
+using GoF2Remake.Data;
 using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace GoF2Remake.UI
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public sealed class TouchControls
     {
         /// <summary>What reacts this frame: nothing, only the pause button (cutscenes, the launch camera), nothing but the
@@ -435,11 +437,30 @@ namespace GoF2Remake.UI
             Draw(dtMs);
         }
 
+        /// <summary>The flight HUD's height in panel units (Options' touch height rows read their default from it).</summary>
+        public static float PanelHeight = 1080f;
+
+        /// <summary>A group's top y: the option's 0..1 between the highest (300) and lowest place the original's Configure
+        /// allows (clamped like Globals::setCoordsSteer / setCoordsFire), or the original default for -1.</summary>
+        static float Height01(float option, float original, float lowest)
+        {
+            lowest = Mathf.Max(300f, lowest);
+            return option < 0f ? Mathf.Clamp(original, 300f, lowest) : Mathf.Lerp(300f, lowest, option);
+        }
+
+        /// <summary>The option's value for the original default at this height (the Options slider's position for -1).</summary>
+        public static float DefaultHeight01(bool right)
+        {
+            float lowest = Mathf.Max(300f, PanelHeight - (right ? 311f : 425f));
+            return lowest <= 300f ? 0f : Mathf.Clamp01(((right ? F0 : S0) - 300f) / (lowest - 300f));
+        }
+
         void Layout()
         {
             float w = Width, h = Height;
             // Globals::setCoordsSteer: the left group from S.
-            float S = Mathf.Clamp(S0, 300f, Mathf.Max(300f, h - 425f));
+            PanelHeight = h;
+            float S = Height01(Settings.TouchLeftHeight, S0, h - 425f);
             stickCentre = new Vector2(165f, S + 277f);
             var boostPos = new Vector2(40f, S + 446f);
             if (boostPos.y > h - 113f)
@@ -448,7 +469,7 @@ namespace GoF2Remake.UI
                 boostPos = new Vector2(266f + 80f * Mathf.Min(over / 54f, 1f), h - 113f);
             }
             // Globals::setCoordsFire: the right cluster from F.
-            float F = Mathf.Clamp(F0, 300f, Mathf.Max(300f, h - 311f));
+            float F = Height01(Settings.TouchRightHeight, F0, h - 311f);
             var bg = new Vector2(w - 321f, F);
             bool left = h - 401f < F;
             if (frame.cursor)

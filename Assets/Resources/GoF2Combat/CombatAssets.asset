@@ -81,6 +81,8 @@ MonoBehaviour:
   - {fileID: 3436987584550795834, guid: 528ad35d92bb1604387872436031a572, type: 3}
   - {fileID: 1549382220112034809, guid: 811e4e3394b404c4f97a6ec7aef912f7, type: 3}
   junkCrate: {fileID: 7145533416423044369, guid: 5a8d030ffb9664e45a0b1a13eb72ad33, type: 3}
+  asteroidCrate: {fileID: 2437097544388429266, guid: 6be776338a0e8ad4c8035d5b564c50c4, type: 3}
+  voidAsteroidCrate: {fileID: 6698617733241503686, guid: 69d631f27b9f48e4c8d7ae924219a791, type: 3}
   enemyEngines:
   - {fileID: 8300000, guid: 44892212b259b1e45b663e9ddeb0c6c4, type: 3}
   - {fileID: 8300000, guid: c6eb0c47e4b743549a5f30a786b36800, type: 3}

@@ -16,7 +16,10 @@ namespace GoF2Remake.Data
         [Serializable] class Wrapper { public string[] items; }
 
         static string[] texts = new string[0];
-        static Dictionary<string, string> extra = new Dictionary<string, string>();
+        // The remake's texts per language, then by key: Extra runs every frame in places (the HUD's action prompt), and a
+        // single table keyed by language + "." + key built that string on every call.
+        static readonly Dictionary<string, Dictionary<string, string>> extra = new Dictionary<string, Dictionary<string, string>>();
+        static Dictionary<string, string> extraNow;   // the current language's
 
         public static string Language { get; private set; } = "en";
         public static event Action Changed;
@@ -27,7 +30,9 @@ namespace GoF2Remake.Data
             if (table == null) return;
             var w = JsonUtility.FromJson<Wrapper>("{\"items\":" + table.text + "}");
             texts = w?.items ?? new string[0];
+            for (int i = 0; i < texts.Length; i++) if (texts[i] != null) texts[i] = Clean(texts[i]);   // once, not on every Get
             Language = language;
+            extraNow = null;
             LoadExtra(language);
             Changed?.Invoke();
         }
@@ -42,7 +47,7 @@ namespace GoF2Remake.Data
         public static string Get(int id)
         {
             if (!IsLoaded) AutoLoad();
-            return id >= 0 && id < texts.Length && texts[id] != null ? Clean(texts[id]) : "#" + id;
+            return id >= 0 && id < texts.Length && texts[id] != null ? texts[id] : "#" + id;
         }
 
         static bool autoLoadTried;
@@ -59,9 +64,18 @@ namespace GoF2Remake.Data
         }
 
         /// <summary>Remake-only strings (not in the original table), by key, with an English fallback.</summary>
-        public static string Extra(string key, string english) => extra.TryGetValue(Language + "." + key, out var s) ? s : english;
+        public static string Extra(string key, string english)
+        {
+            if (extraNow == null && !extra.TryGetValue(Language, out extraNow)) return english;
+            return extraNow.TryGetValue(key, out var s) ? s : english;
+        }
 
-        public static void SetExtra(string language, string key, string text) => extra[language + "." + key] = text;
+        public static void SetExtra(string language, string key, string text)
+        {
+            if (!extra.TryGetValue(language, out var table)) extra[language] = table = new Dictionary<string, string>();
+            table[key] = text;
+            if (language == Language) extraNow = table;
+        }
 
         /// <summary>Folder under Resources with the remake-only texts per language: extra_LANG.json (LANG = the language code), an object
         /// { "key": "text" } with the keys of the Extra calls. Missing keys keep their English text.</summary>

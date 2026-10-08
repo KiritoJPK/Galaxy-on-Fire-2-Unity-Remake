@@ -15,6 +15,7 @@
 // Chromo Plasma blueprints).
 
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace GoF2Remake.Data
@@ -605,6 +606,10 @@ namespace GoF2Remake.Data
                 case 10:                                                                    // drill -> IMT Extract 1.3
                     for (int i = 0; i < Session.Equipment.Count; i++)
                         if (db.Item(Session.Equipment[i].item)?.categoryId == 19) Session.Equipment[i] = new ItemStack(86, 1);
+                    // Remake (#58): Gunant's drill demounted into the hold before his conversation (the original only swaps a
+                    // mounted drill) goes back too, the IMT Extract in its place.
+                    int drills = Session.Cargo.Where(c => c.item == 90).Sum(c => c.amount);
+                    if (drills > 0) { Shop.RemoveFromCargo(90, drills); Shop.AddToCargo(86, drills); }
                     Session.Unsaleable.Remove(90);
                     break;
                 case 13: Session.StoryMission.value = Session.FreelanceCompleted + 1; break;

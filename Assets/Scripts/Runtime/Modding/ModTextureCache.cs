@@ -52,6 +52,18 @@ namespace GoF2Remake.Modding
             return Path.Combine(rootDir, modId, sb + ".tex");
         }
 
+        /// <summary>The cache file of a texture named by its content (a GLB's embedded image, ModGltf: 'content' = its hash
+        /// and role), any thread.</summary>
+        public static string FileForContent(string rootDir, string modId, string content, bool linear, string kind)
+        {
+            string id = $"#content|{content}|{(linear ? 1 : 0)}|{kind}|{Version}";
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(id));
+            var sb = new StringBuilder(32);
+            for (int i = 0; i < 16; i++) sb.Append(hash[i].ToString("x2"));
+            return Path.Combine(rootDir, modId, sb + ".tex");
+        }
+
         /// <summary>The cached texture, or null (none, or unreadable: it is made again). Any thread.</summary>
         public static Entry Read(string file)
         {

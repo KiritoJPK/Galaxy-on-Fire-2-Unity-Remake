@@ -55,6 +55,7 @@ namespace GoF2Remake.UI
         readonly VisualElement window, details, detailIcon, detailStats, tradeBox, sellButton, buyButton, tradeAllRow;
         readonly Button sellAllButton, buyAllButton;
         readonly ScrollView list, detailScroll;
+        readonly VisualElement detailMods = ItemInfo.NewModBlock();   // a ship's Kaamo Club mods, under its description
         readonly Label detailName, detailSub, detailText, tradeStock, tradeCargo, tradeMounted, tradePrice, cargoLabel, creditsLabel, tradeStockLabel, tradeCargoLabel, sellLabel, buyLabel;
         readonly Button tabShip, tabShop, tabBlueprints, actionButton, actionButton2;
         /// <summary>Tab 4: the blueprint whose ingredients are listed (-1 = the blueprint list).</summary>
@@ -131,6 +132,7 @@ namespace GoF2Remake.UI
             if (buyAllButton != null) { buyAllButton.focusable = false; buyAllButton.clicked += () => TradeAll(1); }
             foreach (var b in new VisualElement[] { tabShip, tabShop, tabBlueprints, actionButton, actionButton2 }) if (b != null) b.focusable = false;
             list.focusable = detailScroll.focusable = false;
+            detailText.parent?.Insert(detailText.parent.IndexOf(detailText) + 1, detailMods);
         }
 
         // ---- open / close ------------------------------------------------------------------------------------
@@ -264,7 +266,7 @@ namespace GoF2Remake.UI
                     AddHeader(ItemInfo.ItemName(editing).ToUpperInvariant());
                     var parts = db.Item(editing).blueprint;
                     for (int k = 0; k < parts.Count; k++) AddRow(new Row { kind = RowKind.Ingredient, item = parts[k].item, type = k });
-                    AddRow(new Row { kind = RowKind.Autocomplete, item = editing });
+                    if (Blueprints.CanAutocomplete(editing)) AddRow(new Row { kind = RowKind.Autocomplete, item = editing });   // a mod's may not
                 }
                 else
                 {
@@ -363,6 +365,13 @@ namespace GoF2Remake.UI
                     name.text = ItemInfo.ItemName(row.item);
                     if (!Session.SeenItems.Contains(row.item)) sub.Add(Badge(Localization.Extra("shopNew", "NEW"), "row-badge--new"));
                     else if (hangar.IsMounted(row.item)) sub.Add(Badge(Localization.Extra("shopMounted", "MOUNTED"), "row-badge--mounted"));
+                    // Remake (#62): what the player has in the hold is marked like the Ship tab's cargo rows (amber edge, IN CARGO),
+                    // so their own goods stand out from the station's.
+                    if (hangar.CargoOf(row.item) > 0)
+                    {
+                        e.AddToClassList("list-row--cargo");
+                        sub.Add(Badge(Localization.Extra("shopInCargo", "IN CARGO"), "row-badge--cargo"));
+                    }
                     // The trade mode's two amounts with their labels (136 "Station", 183 "Ship"), on every row.
                     subText.text = $"{ItemInfo.Category(it)}  ·  {Localization.Get(136)} {hangar.StockOf(row.item)} t  |  {Localization.Get(183)} {hangar.CargoOf(row.item)} t";
                     int mountedUnits = hangar.MountedOf(row.item);
@@ -379,6 +388,8 @@ namespace GoF2Remake.UI
                     tex = ItemInfo.ShipIcon(row.ship);
                     name.text = ItemInfo.ShipName(row.ship);
                     subText.text = ItemInfo.ShipRaceText(row.ship) + (stored.mods.Count > 0 ? "  (+)" : "");
+                    int gear = stored.equipment?.Count ?? 0;   // remake: the items left on it (Settings.KaamoKeepsEquipment)
+                    if (gear > 0) subText.text += "  ·  " + string.Format(Localization.Extra("kaamoGearCount", "{0} mounted"), gear);
                     price.text = ItemInfo.Credits(hangar.StoredPrice(row.equipment));   // the sell value
                     break;
                 }
@@ -397,7 +408,7 @@ namespace GoF2Remake.UI
                     var s = db.Ship(row.ship);
                     tex = ItemInfo.ShipIcon(row.ship);
                     name.text = ItemInfo.ShipName(row.ship);
-                    subText.text = s != null ? $"{Localization.Get(165)} {s.armor}   {Localization.Get(166)} {hangar.Load} / {hangar.MaxLoad} t" : "";
+                    subText.text = s != null ? $"{Localization.Get(165)} {Shop.BaseHp(db)}   {Localization.Get(166)} {hangar.Load} / {hangar.MaxLoad} t" : "";   // with the +40 hull mod
                     break;
                 }
                 case RowKind.Slot when row.equipment >= 0:
@@ -589,6 +600,7 @@ namespace GoF2Remake.UI
             var db = level.Database;
             detailStats.Clear();
             detailText.text = "";
+            ItemInfo.FillModLines(detailMods, null);
             details.style.visibility = selected == null ? Visibility.Hidden : Visibility.Visible;
             tradeBox.AddToClassList("trade-box--hidden");
             tradeAllRow?.AddToClassList("trade-box--hidden");
@@ -654,13 +666,21 @@ namespace GoF2Remake.UI
                 detailIcon.style.backgroundImage = new StyleBackground(ItemInfo.ShipIcon(selected.ship));
                 detailName.text = ItemInfo.ShipName(selected.ship);
                 detailSub.text = ItemInfo.ShipRaceText(selected.ship);
-                if (s != null) foreach (var (label, value) in ItemInfo.ShipStats(s, hangar.ShipPrice(selected.ship))) AddStat(label, value);
+                var hullMods = selected.kind == RowKind.OwnShip ? Session.ShipMods
+                    : selected.kind == RowKind.ShopShip ? hangar.Stock.ModsOf(selected.ship)
+                    : selected.kind == RowKind.StoredShip ? Session.KaamoShips[selected.equipment].mods : null;
+                // Remake (#62): a dealer or stored hull compared with the ship flown (the original's arrows, its item window only).
+                var current = selected.kind == RowKind.OwnShip ? null : db.Ship(Session.ShipIndex);
+                if (s != null)
+                    foreach (var (label, value, compare) in ItemInfo.ShipStatsCompared(s, hangar.ShipPrice(selected.ship), hullMods, current, Session.ShipMods))
+                        AddStat(label, value, compare);
                 detailText.text = GameNames.ShipDescription(selected.ship);
+                if (selected.kind == RowKind.OwnShip) ItemInfo.FillModLines(detailMods, Session.ShipMods);
                 if (selected.kind == RowKind.ShopShip)
                 {
                     int delta = hangar.ShipPrice(selected.ship) - hangar.ShipPrice(Session.ShipIndex);
                     ShowAction($"{T(301).ToUpperInvariant()}   {ItemInfo.Credits(delta)}", true);
-                    foreach (int mod in hangar.Stock.ModsOf(selected.ship)) AddStat(ModName(mod), "(+)");   // a traded-in hull's mods
+                    ItemInfo.FillModLines(detailMods, hangar.Stock.ModsOf(selected.ship));   // a traded-in hull's mods
                 }
                 else if (selected.kind == RowKind.StoredShip)
                 {
@@ -671,8 +691,8 @@ namespace GoF2Remake.UI
                         actionButton2.text = $"{T(330).ToUpperInvariant()}   {ItemInfo.Credits(hangar.StoredPrice(selected.equipment))}";
                         actionButton2.RemoveFromClassList("detail-action--hidden");
                     }
-                    if (Session.KaamoShips[selected.equipment].mods.Count > 0)
-                        foreach (int mod in Session.KaamoShips[selected.equipment].mods) AddStat(ModName(mod), "(+)");
+                    ItemInfo.FillModLines(detailMods, Session.KaamoShips[selected.equipment].mods);
+                    ItemInfo.AddEquipmentLines(detailMods, Session.KaamoShips[selected.equipment].equipment);
                 }
             }
             else
@@ -693,9 +713,23 @@ namespace GoF2Remake.UI
             var it = db.Item(item);
             detailIcon.style.backgroundImage = new StyleBackground(ItemInfo.ItemIcon(item));
             detailName.text = ItemInfo.ItemName(item);
-            detailSub.text = $"{ItemInfo.Category(it)}  ·  {T(133)} {it.techLevel}";
-            foreach (var (label, value) in ItemInfo.ItemStats(it)) AddStat(label, value);
-            detailText.text = ItemInfo.ItemText(db, it, hangar.SystemIndex);
+            int bpShip = Modding.ModBlueprints.ShipOf(item);
+            if (bpShip >= 0 && db.Ship(bpShip) is ShipData ship)
+            {
+                // Remake mods: a ship blueprint shows the ship it builds.
+                detailSub.text = $"{Localization.Extra("bpShipBlueprint", "Ship blueprint")}  ·  {ItemInfo.ShipRaceText(bpShip)}";
+                foreach (var (label, value) in ItemInfo.ShipStats(ship, ship.price)) AddStat(label, value);
+                detailText.text = GameNames.ShipDescription(bpShip);
+                var bp = Modding.ModBlueprints.Of(item);
+                if (bp != null && bp.requiresShip >= 0)
+                    detailText.text += "\n\n" + string.Format(Localization.Extra("bpRebuilds", "Rebuilds your {0}: build it while flying one."), GameNames.Ship(bp.requiresShip));
+            }
+            else
+            {
+                detailSub.text = $"{ItemInfo.Category(it)}  ·  {T(133)} {it.techLevel}";
+                foreach (var (label, value) in ItemInfo.ItemStats(it)) AddStat(label, value);
+                detailText.text = ItemInfo.ItemText(db, it, hangar.SystemIndex);
+            }
             switch (selected.kind)
             {
                 case RowKind.Blueprint:
@@ -736,6 +770,9 @@ namespace GoF2Remake.UI
         {
             var db = level.Database;
             int item = selected.item;
+            // Remake mods: a skin's blueprint ("requiresShip") is only built while flying that ship.
+            string refusal = Modding.ModBlueprints.RequiresShipRefusal(editing);
+            if (refusal != null) { ReleaseArrow(); menu.ShowToast(refusal); return; }
             var st = Blueprints.State(db, editing);
             if (Blueprints.IsEmpty(st) && !startConfirmed && !HasPending)
             {
@@ -833,6 +870,17 @@ namespace GoF2Remake.UI
             bool here = Blueprints.Produce(db, product, StationIndex);
             hangar = new Hangar(db, level.Stock);   // the new product needs its price
             string name = ItemInfo.ItemName(product);
+            if (here && Modding.ModBlueprints.ShipOf(product) >= 0)
+            {
+                // Remake mods: a ship blueprint's ship, taken here like a bought ship.
+                string text = hangar.DeliverBuiltShips();
+                level.ReplacePlayerShip(Session.ShipIndex);
+                hangar = new Hangar(db, level.Stock);
+                menu.ShowDialog(text ?? Localization.Get(211).Replace("#N", name), null, true);
+                editing = -1;
+                SetTab(Tab.Ship);
+                return;
+            }
             if (here)
             {
                 menu.ShowDialog(Localization.Get(211).Replace("#N", name), null, true);
@@ -853,6 +901,9 @@ namespace GoF2Remake.UI
         void AskAutocomplete()
         {
             var db = level.Database;
+            if (!Blueprints.CanAutocomplete(editing)) return;
+            string refusal = Modding.ModBlueprints.RequiresShipRefusal(editing);
+            if (refusal != null) { menu.ShowToast(refusal); return; }
             int price = Blueprints.AutoCompletePrice(db, editing);
             if (price > Session.Credits) { menu.ShowToast(Localization.Get(203).Replace("#C", ItemInfo.Credits(price - Session.Credits))); return; }
             if (!Blueprints.CanStartIn(db, editing, StationIndex) && Blueprints.IsEmpty(Blueprints.State(db, editing)))
@@ -875,7 +926,8 @@ namespace GoF2Remake.UI
             actionButton.EnableInClassList("detail-action--disabled", !enabled);
         }
 
-        void AddStat(string label, string value)
+        /// <summary>A stat row; 'compare' -1 / 1 / 0 adds the worse / better / equal arrow (ItemInfo.ShipStatsCompared), 2 none.</summary>
+        void AddStat(string label, string value, int compare = 2)
         {
             var row = new VisualElement { pickingMode = PickingMode.Ignore };
             row.AddToClassList("stat-row");
@@ -885,7 +937,19 @@ namespace GoF2Remake.UI
             v.AddToClassList("stat-value");
             v.AddToClassList("gof-semibold");
             row.Add(l);
-            row.Add(v);
+            if (compare != 2)
+            {
+                var right = new VisualElement { pickingMode = PickingMode.Ignore };
+                right.AddToClassList("stat-compare");
+                var a = new VisualElement { pickingMode = PickingMode.Ignore };
+                a.AddToClassList("stat-arrow");
+                var tex = Resources.Load<Texture2D>("GoF2Hud/" + (compare < 0 ? "compare_worse" : compare > 0 ? "compare_better" : "compare_equal"));
+                if (tex != null) a.style.backgroundImage = new StyleBackground(tex);
+                right.Add(v);
+                right.Add(a);
+                row.Add(right);
+            }
+            else row.Add(v);
             detailStats.Add(row);
         }
 
@@ -1045,7 +1109,13 @@ namespace GoF2Remake.UI
                         else GoF2Remake.Multiplayer.NetStock.ShipChanged(hangar.Station, -1, ship);   // not bought after all: back
                     }, SoldOut);
                     void TradeIn() => Reserved(() => hangar.BuyShip(ship));
-                    if (!KaamoClub.Owned) { menu.ShowDialog(Localization.Get(304), TradeIn); break; }
+                    // Remake (#60): the question says what happens to the old ship (the original's 304 doesn't): it is traded in.
+                    int oldPrice = hangar.ShipPrice(Session.ShipIndex), difference = hangar.ShipPrice(ship) - oldPrice;
+                    string tradeIn = Localization.Get(304) + "\n\n" + string.Format(difference >= 0
+                            ? Localization.Extra("shopTradeInNote", "Your {0} is traded in for {1}, so you pay {2}.")
+                            : Localization.Extra("shopTradeInRefund", "Your {0} is traded in for {1}, so you get {2} back."),
+                        ItemInfo.ShipName(Session.ShipIndex), ItemInfo.Credits(oldPrice), ItemInfo.Credits(Mathf.Abs(difference)));
+                    if (!KaamoClub.Owned) { menu.ShowDialog(tradeIn, TradeIn); break; }
                     // 304, then 327 "sell your old ship or keep it and have it brought to your station?" (330 / 331).
                     menu.ShowDialog(Localization.Get(304), () => menu.ShowChoice(Localization.Get(327), Localization.Get(330), Localization.Get(331), TradeIn, () =>
                     {
@@ -1091,15 +1161,6 @@ namespace GoF2Remake.UI
                 Rebuild();
             });
         }
-
-        /// <summary>The Kaamo mechanics' mods (907-910 texts' subjects): +40 hull, +30 t cargo, +1 slot, handling.</summary>
-        static string ModName(int mod) => mod switch
-        {
-            0 => Localization.Get(165),   // Armor
-            1 => Localization.Get(166),   // Cargo hold
-            2 => Localization.Get(269),   // Equipment
-            _ => Localization.Get(164),   // Handling
-        };
 
         public bool StorageMode => hangar != null && hangar.Storage;
 

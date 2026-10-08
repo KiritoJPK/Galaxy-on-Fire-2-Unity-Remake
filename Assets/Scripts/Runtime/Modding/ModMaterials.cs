@@ -9,7 +9,9 @@
 // (PreloadTexture: UnityWebRequestTexture decodes the PNG / JPG off the main thread, ModTextureEncoder compresses it to
 // DXT with its mipmaps on a worker thread where the GPU reads DXT; elsewhere Texture2D.Compress, one texture per frame), so
 // the builder's Texture calls find them made. The result is kept on disk (ModTextureCache): a later start reads it back on
-// a worker thread instead of decoding and compressing again.
+// a worker thread instead of decoding and compressing again. A GLB's embedded images come the same way (PreloadImage, by
+// their content, see ModGltf), their role's conversion done on the CPU before compression. A texture is made once however
+// many ask for it at the same time (Once), and at most DecodeSlots are decoded at once (each is uncompressed until then).
 // Normal maps (normal = true): Android builds read a normal map's X from its alpha channel and Y from green (Player settings,
 // Android normal map encoding "DXT5nm-style": URP's UnpackNormal with UNITY_ASTC_NORMALMAP_ENCODING). The game's normal maps
 // are imported as Normal Map textures, which Unity re-encodes that way; a mod's PNG arrives as plain RGB with alpha 1, so on
@@ -17,6 +19,8 @@
 // into alpha before compressing (NormalsInAlpha); desktop reads either layout (UnpackNormalmapRGorAG) and is left as it was.
 
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using GoF2Remake.Data;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -51,6 +55,7 @@ namespace GoF2Remake.Modding
             made.Clear();
             textures.Clear();
             solids.Clear();
+            pending.Clear();   // what is still loading is dropped when it ends (Store: the revision changed)
         }
 
         /// <summary>The build reads normal maps' X from alpha (Android's normal map encoding, see the header).</summary>
@@ -65,12 +70,21 @@ namespace GoF2Remake.Modding
             mod.Id + "|" + ModSource.Normalise(path).ToLowerInvariant() + (linear ? "|l" : "") + (readable ? "|r" : "")
             + (normal && NormalsInAlpha ? "|n" : "");
 
+        /// <summary>How a decoded texture is converted before it is compressed.</summary>
+        enum Remap { None, NormalToAlpha, MetallicRoughness }
+
         /// <summary>A normal map in the Android layout: X (red) copied into alpha, the mipmaps made again (RGBA32 if it had no
         /// alpha). Returns the texture to use (a new one when the format changed; the old one is destroyed).</summary>
-        static Texture2D NormalToAlpha(Texture2D t)
+        static Texture2D NormalToAlpha(Texture2D t) => Convert(t, Remap.NormalToAlpha);
+
+        /// <summary>A decoded (readable) texture converted for its use: NormalToAlpha above, or a glTF metallic-roughness map
+        /// (B metallic, G roughness) as URP Lit's metallic / smoothness map (R metallic, A smoothness = 1 - roughness), like
+        /// Hidden/GoF2/MetallicRoughnessToGloss but before compression (the shader's render texture stayed uncompressed).</summary>
+        static Texture2D Convert(Texture2D t, Remap remap)
         {
             var px = t.GetPixels32();
-            for (int i = 0; i < px.Length; i++) px[i].a = px[i].r;
+            if (remap == Remap.NormalToAlpha) for (int i = 0; i < px.Length; i++) px[i].a = px[i].r;
+            else for (int i = 0; i < px.Length; i++) px[i] = new Color32(px[i].b, 0, 0, (byte)(255 - px[i].g));
             bool mips = t.mipmapCount > 1;
             var o = t;
             if (t.format != TextureFormat.RGBA32 && t.format != TextureFormat.ARGB32)
@@ -129,102 +143,159 @@ namespace GoF2Remake.Modding
 
         static int compressFrame = -1;
         static readonly HashSet<string> loggedFormats = new HashSet<string>();
+        static readonly Dictionary<string, Task> pending = new Dictionary<string, Task>();
+        static SemaphoreSlim decodeSlots;
+
+        /// <summary>Decodes at once at most: each decoded texture is uncompressed (a 1024 px one 4-5.6 MB) until it is
+        /// compressed, and a mod of many models asks for hundreds at the same time.</summary>
+        static SemaphoreSlim DecodeSlots => decodeSlots ??= new SemaphoreSlim(Application.isMobilePlatform ? 2 : 6);
 
         /// <summary>Decodes a texture in the background into the cache Texture reads (nothing when it is there already, or
         /// when the background way fails: Texture then loads it the plain way).</summary>
-        public static async System.Threading.Tasks.Task PreloadTexture(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
+        public static Task PreloadTexture(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
         {
             Check();
-            if (mod == null || string.IsNullOrEmpty(path)) return;
-            bool toAlpha = normal && NormalsInAlpha;
+            if (mod == null || string.IsNullOrEmpty(path)) return Task.CompletedTask;
             string key = Key(mod, path, linear, readable, normal);
-            if (textures.ContainsKey(key)) return;
-            // Desktop GPUs read DXT: the worker thread compresses it with its own mipmaps (ModTextureEncoder).
-            bool encode = !readable && SystemInfo.SupportsTextureFormat(TextureFormat.DXT1) && SystemInfo.SupportsTextureFormat(TextureFormat.DXT5);
-            string cacheRoot = ModTextureCache.Root;   // persistentDataPath: main thread only
-            string cacheFile = null;
-            ModTextureCache.Entry cached = null;
-            string file = await System.Threading.Tasks.Task.Run(() =>
+            var remap = normal && NormalsInAlpha ? Remap.NormalToAlpha : Remap.None;
+            return Once(key, () => Decode(key, mod.Id + ":" + path, mod.Id, path, null, () => mod.LocalFile(path), linear, readable, remap));
+        }
+
+        static string ImageKey(ModInfo mod, string hash, ModGlbImages.Role role) =>
+            mod.Id + "|#image:" + hash + "|" + role + (role == ModGlbImages.Role.Normal && NormalsInAlpha ? "|n" : "");
+
+        /// <summary>A GLB's embedded image (ModGltf, ModGlbImages) as a texture for one role, made in the background once per
+        /// mod and image content: base colour / emission sRGB, normal and metallic-roughness maps linear and converted.</summary>
+        public static Task PreloadImage(ModInfo mod, string hash, string ext, byte[] bytes, ModGlbImages.Role role)
+        {
+            Check();
+            string key = ImageKey(mod, hash, role);
+            bool linear = role != ModGlbImages.Role.Color;
+            var remap = role == ModGlbImages.Role.MetallicRoughness ? Remap.MetallicRoughness
+                      : role == ModGlbImages.Role.Normal && NormalsInAlpha ? Remap.NormalToAlpha : Remap.None;
+            return Once(key, () => Decode(key, $"{mod.Id}:{hash.Substring(0, 8)} {role}", mod.Id, null, hash + "|" + role,
+                () => mod.LocalImage(hash + "_" + role, ext, bytes), linear, false, remap));
+        }
+
+        /// <summary>A texture PreloadImage made (null: none, or it couldn't be read).</summary>
+        public static Texture2D Image(ModInfo mod, string hash, ModGlbImages.Role role)
+        {
+            Check();
+            return textures.TryGetValue(ImageKey(mod, hash, role), out var t) ? t : null;
+        }
+
+        /// <summary>One load per key: a key already made or being made isn't made again (many models share images).</summary>
+        static Task Once(string key, System.Func<Task> make)
+        {
+            if (textures.ContainsKey(key)) return Task.CompletedTask;
+            if (pending.TryGetValue(key, out var running)) return running;
+            var task = Run();
+            if (!task.IsCompleted) pending[key] = task;
+            return task;
+
+            async Task Run()
             {
-                string f = mod.LocalFile(path);
-                if (f != null && !readable)
-                {
-                    // Made before (ModTextureCache): read back here, off the main thread.
-                    cacheFile = ModTextureCache.FileFor(cacheRoot, mod.Id, path, f, linear, (encode ? "dxt" : "gpu") + (toAlpha ? "-nrm" : ""));
-                    cached = ModTextureCache.Read(cacheFile);
-                }
-                return f;
-            });
-            if (file == null || textures.ContainsKey(key)) return;
-            if (cached != null && ModTextureCache.Make(cached, mod.Id + ":" + path) is Texture2D fromCache)
-            {
-                fromCache.wrapMode = TextureWrapMode.Repeat;
-                fromCache.anisoLevel = 8;
-                fromCache.filterMode = FilterMode.Trilinear;
-                made.Add(fromCache);
-                textures[key] = fromCache;
-                return;
+                try { await make(); }
+                finally { pending.Remove(key); }
             }
-            var p = UnityEngine.Networking.DownloadedTextureParams.Default;
-            p.mipmapChain = !encode;
-            p.linearColorSpace = linear;
-            p.readable = true;   // the pixels for the encoder / Compress; Apply(.., true) drops them afterwards
-            using var req = UnityEngine.Networking.UnityWebRequestTexture.GetTexture(new System.Uri(file).AbsoluteUri, p);
-            var op = req.SendWebRequest();
-            while (!op.isDone) await Awaitable.NextFrameAsync();
-            if (req.result != UnityEngine.Networking.UnityWebRequest.Result.Success || textures.ContainsKey(key)) return;
-            var t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
-            if (t == null) return;
-            t.name = mod.Id + ":" + path;
+        }
+
+        /// <summary>Stores a made texture, unless the mods changed meanwhile (then it goes).</summary>
+        static void Store(string key, Texture2D t, int rev)
+        {
+            if (rev != revision || textures.ContainsKey(key)) { Object.Destroy(t); return; }
             t.wrapMode = TextureWrapMode.Repeat;
             t.anisoLevel = 8;
             t.filterMode = FilterMode.Trilinear;
-            if (toAlpha) t = NormalToAlpha(t);
-            var work = encode ? ModTextureEncoder.Start(t, linear) : null;
-            if (encode && work == null && loggedFormats.Add(t.format + (t.width % 4 == 0 && t.height % 4 == 0 ? "" : " (size)")))
-                Debug.Log($"Mods: {path}: {t.format} {t.width}x{t.height} is compressed on the main thread (the background encoder takes RGBA32 / ARGB32 / RGB24, sizes in multiples of 4)");
-            if (work != null)
-            {
-                // A Burst job compresses it with its mipmaps (ModTextureEncoder); the decoded copy goes now.
-                string name = t.name;
-                Object.Destroy(t);
-                while (!work.Done) await Awaitable.NextFrameAsync();
-                if (textures.ContainsKey(key)) { work.Dispose(); return; }
-                byte[] raw = cacheFile != null ? work.Raw() : null;
-                var c = work.Take(name);
-                if (raw != null)
-                {
-                    int w = c.width, h = c.height, mips = c.mipmapCount;
-                    var format = c.format;
-                    string target = cacheFile;
-                    _ = System.Threading.Tasks.Task.Run(() => ModTextureCache.Write(target, w, h, format, mips, linear, raw));
-                }
-                c.wrapMode = TextureWrapMode.Repeat;
-                c.anisoLevel = 8;
-                c.filterMode = FilterMode.Trilinear;
-                made.Add(c);
-                textures[key] = c;
-                return;
-            }
-            if (!readable)
-            {
-                // One compression per frame: several finishing together would make one long frame.
-                while (compressFrame == Time.frameCount) await Awaitable.NextFrameAsync();
-                compressFrame = Time.frameCount;
-                if (textures.ContainsKey(key)) { Object.Destroy(t); return; }
-                if (t.width % 4 == 0 && t.height % 4 == 0) t.Compress(true);
-                if (cacheFile != null)
-                {
-                    byte[] raw = t.GetRawTextureData();
-                    int w = t.width, h = t.height, mips = t.mipmapCount;
-                    var format = t.format;
-                    string target = cacheFile;
-                    _ = System.Threading.Tasks.Task.Run(() => ModTextureCache.Write(target, w, h, format, mips, linear, raw));
-                }
-                t.Apply(false, true);
-            }
             made.Add(t);
             textures[key] = t;
+        }
+
+        /// <summary>Reads a texture back from the disk cache or decodes, converts and compresses it. The cache file is named
+        /// by the mod file's path, size and date ('path'), or by the content ('content', a GLB's image).</summary>
+        static async Task Decode(string key, string name, string modId, string path, string content, System.Func<string> localFile,
+            bool linear, bool readable, Remap remap)
+        {
+            int rev = revision;
+            // Desktop GPUs read DXT: the worker thread compresses it with its own mipmaps (ModTextureEncoder).
+            bool encode = !readable && SystemInfo.SupportsTextureFormat(TextureFormat.DXT1) && SystemInfo.SupportsTextureFormat(TextureFormat.DXT5);
+            string kind = (encode ? "dxt" : "gpu") + (remap == Remap.NormalToAlpha ? "-nrm" : remap == Remap.MetallicRoughness ? "-mr" : "");
+            string cacheRoot = ModTextureCache.Root;   // persistentDataPath: main thread only
+            var slots = DecodeSlots;
+            await slots.WaitAsync();
+            string file = null;
+            try
+            {
+                string cacheFile = null;
+                ModTextureCache.Entry cached = null;
+                file = await Task.Run(() =>
+                {
+                    string f = null;
+                    if (!readable)
+                    {
+                        // Made before (ModTextureCache): read back here, off the main thread.
+                        if (content != null) cacheFile = ModTextureCache.FileForContent(cacheRoot, modId, content, linear, kind);
+                        else if ((f = localFile()) != null) cacheFile = ModTextureCache.FileFor(cacheRoot, modId, path, f, linear, kind);
+                        if (cacheFile != null) cached = ModTextureCache.Read(cacheFile);
+                    }
+                    return cached != null ? null : f ?? localFile();
+                });
+                if (rev != revision || textures.ContainsKey(key)) return;
+                if (cached != null && ModTextureCache.Make(cached, name) is Texture2D fromCache) { Store(key, fromCache, rev); return; }
+                if (file == null) return;
+                var p = UnityEngine.Networking.DownloadedTextureParams.Default;
+                p.mipmapChain = !encode;
+                p.linearColorSpace = linear;
+                p.readable = true;   // the pixels for the encoder / Compress; Apply(.., true) drops them afterwards
+                using var req = UnityEngine.Networking.UnityWebRequestTexture.GetTexture(new System.Uri(file).AbsoluteUri, p);
+                var op = req.SendWebRequest();
+                while (!op.isDone) await Awaitable.NextFrameAsync();
+                if (req.result != UnityEngine.Networking.UnityWebRequest.Result.Success || rev != revision || textures.ContainsKey(key)) return;
+                var t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
+                if (t == null) return;
+                t.name = name;
+                if (remap != Remap.None) t = Convert(t, remap);
+                var work = encode ? ModTextureEncoder.Start(t, linear) : null;
+                if (encode && work == null && loggedFormats.Add(t.format + (t.width % 4 == 0 && t.height % 4 == 0 ? "" : " (size)")))
+                    Debug.Log($"Mods: {name}: {t.format} {t.width}x{t.height} is compressed on the main thread (the background encoder takes RGBA32 / ARGB32 / RGB24, sizes in multiples of 4)");
+                if (work != null)
+                {
+                    // A Burst job compresses it with its mipmaps (ModTextureEncoder); the decoded copy goes now.
+                    Object.Destroy(t);
+                    while (!work.Done) await Awaitable.NextFrameAsync();
+                    if (rev != revision || textures.ContainsKey(key)) { work.Dispose(); return; }
+                    byte[] raw = cacheFile != null ? work.Raw() : null;
+                    var c = work.Take(name);
+                    if (raw != null) WriteCache(cacheFile, c, linear, raw);
+                    Store(key, c, rev);
+                    return;
+                }
+                if (!readable)
+                {
+                    // One compression per frame: several finishing together would make one long frame. Phones take the
+                    // fast mode (ETC2 in high quality took several times as long, the first start's loading screen).
+                    while (compressFrame == Time.frameCount) await Awaitable.NextFrameAsync();
+                    compressFrame = Time.frameCount;
+                    if (rev != revision || textures.ContainsKey(key)) { Object.Destroy(t); return; }
+                    if (t.width % 4 == 0 && t.height % 4 == 0) t.Compress(!Application.isMobilePlatform);
+                    if (cacheFile != null) WriteCache(cacheFile, t, linear, t.GetRawTextureData());
+                    t.Apply(false, true);
+                }
+                Store(key, t, rev);
+            }
+            finally
+            {
+                slots.Release();
+                // A GLB image's file was only the way into the decoder (ModInfo.LocalImage).
+                if (content != null && file != null) _ = Task.Run(() => { try { System.IO.File.Delete(file); } catch (System.Exception) { } });
+            }
+        }
+
+        static void WriteCache(string cacheFile, Texture2D t, bool linear, byte[] raw)
+        {
+            int w = t.width, h = t.height, mips = t.mipmapCount;
+            var format = t.format;
+            _ = Task.Run(() => ModTextureCache.Write(cacheFile, w, h, format, mips, linear, raw));
         }
 
         static void Warn(ModInfo mod, string message)
@@ -304,8 +375,11 @@ namespace GoF2Remake.Modding
             return m;
         }
 
-        /// <summary>A glTF material as a URP Lit copy (ModGltfMaterials).</summary>
-        public static Material FromGltf(GLTFast.Schema.MaterialBase g, GLTFast.IGltfReadable gltf)
+        /// <summary>A glTF material as a URP Lit copy (ModGltfMaterials). 'images' gives a texture index's texture for a role
+        /// when the mods' loader made it (ModGltf: compressed, metallic-roughness and normal maps already converted); else
+        /// glTFast's own texture, converted here on the GPU.</summary>
+        public static Material FromGltf(GLTFast.Schema.MaterialBase g, GLTFast.IGltfReadable gltf,
+            System.Func<int, ModGlbImages.Role, Texture2D> images = null)
         {
             var a = ModAssets.Get();
             if (a == null) return null;
@@ -313,10 +387,14 @@ namespace GoF2Remake.Modding
             bool clip = mode == GLTFast.Schema.MaterialBase.AlphaMode.Mask, glass = mode == GLTFast.Schema.MaterialBase.AlphaMode.Blend;
             var m = Copy(a.Lit(clip, glass, false), string.IsNullOrEmpty(g.name) ? "glTF material" : g.name);
             var pbr = g.PbrMetallicRoughness;
-            Texture2D Tex(GLTFast.Schema.TextureInfoBase info, string property)
+            bool ours = false;   // the last Tex came from 'images'
+            Texture2D Tex(GLTFast.Schema.TextureInfoBase info, string property, ModGlbImages.Role role = ModGlbImages.Role.Color)
             {
+                ours = false;
                 if (info == null || info.index < 0) return null;
-                var t = gltf.GetTexture(info.index);
+                var t = images?.Invoke(info.index, role);
+                ours = t != null;
+                if (t == null) t = gltf.GetTexture(info.index);
                 if (t != null && gltf.IsTextureYFlipped(info.index))
                 {
                     m.SetTextureScale(property, new Vector2(1f, -1f));
@@ -330,8 +408,13 @@ namespace GoF2Remake.Modding
             m.SetTexture("_BaseMap", baseMap);
             m.SetTexture("_MainTex", baseMap);
             float metal = pbr != null ? pbr.metallicFactor : 0f, rough = pbr != null ? pbr.roughnessFactor : 1f;
-            var mr = pbr != null ? Tex(pbr.MetallicRoughnessTexture, "_MetallicGlossMap") : null;
-            if (mr != null && a.metallicRoughness != null)
+            var mr = pbr != null ? Tex(pbr.MetallicRoughnessTexture, "_MetallicGlossMap", ModGlbImages.Role.MetallicRoughness) : null;
+            if (mr != null && ours)
+            {
+                m.SetTexture("_MetallicGlossMap", mr);
+                m.SetFloat("_Smoothness", 1f);
+            }
+            else if (mr != null && a.metallicRoughness != null)
             {
                 // B metal, G roughness -> R metal, A smoothness (the map's values; URP multiplies the smoothness by _Smoothness,
                 // glTF's factors are taken as 1, the usual export).
@@ -347,8 +430,8 @@ namespace GoF2Remake.Modding
                 m.SetTexture("_MetallicGlossMap", Solid(new Color(metal, 0f, 0f, 1f)));
                 m.SetFloat("_Smoothness", 1f - rough);
             }
-            Texture nrm = Tex(g.NormalTexture, "_BumpMap");
-            if (nrm != null && NormalsInAlpha) nrm = NormalToAlpha(nrm, m.name);
+            Texture nrm = Tex(g.NormalTexture, "_BumpMap", ModGlbImages.Role.Normal);
+            if (nrm != null && NormalsInAlpha && !ours) nrm = NormalToAlpha(nrm, m.name);
             m.SetTexture("_BumpMap", nrm);
             if (g.NormalTexture != null) m.SetFloat("_BumpScale", g.NormalTexture.scale);
             var emissive = g.Emissive;

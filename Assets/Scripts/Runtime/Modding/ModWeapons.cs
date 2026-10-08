@@ -292,10 +292,10 @@ namespace GoF2Remake.Modding
                 var bytes = await Task.Run(() => d.mod.Source.ReadBytes(p.model));
                 if (rev != ModManager.Revision || holder == null) return null;
                 if (bytes == null) { Warn(d.mod, $"{d.where}: {p.model} not found"); return null; }
-                var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials());
+                var import = await ModGltf.Load(d.mod, bytes, agent);
+                bytes = null;
+                if (import == null) { Warn(d.mod, $"{p.model}: not a glTF model glTFast can read"); return null; }
                 imports.Add(import);
-                var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };
-                if (!await import.Load(bytes, null, settings)) { Warn(d.mod, $"{p.model}: not a glTF model glTFast can read"); return null; }
                 if (rev != ModManager.Revision || holder == null) return null;
                 visual = new GameObject("model");
                 visual.transform.SetParent(holder.transform, false);

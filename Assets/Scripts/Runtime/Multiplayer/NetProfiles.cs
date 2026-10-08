@@ -482,7 +482,7 @@ namespace GoF2Remake.Multiplayer
             }
             long ShipPrice(int ship) => db.Ship(ship)?.price ?? 0;
             sum += ShipPrice(s.ship) + Items(s.equipment) + Items(s.cargo) + Items(s.kaamoItems);
-            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) sum += ShipPrice(k.ship);
+            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) sum += ShipPrice(k.ship) + Items(k.equipment);
             if (s.hasParkedShip && s.parkedShip != null) sum += ShipPrice(s.parkedShip.ship) + Items(s.parkedShip.equipment) + Items(s.parkedShip.cargo);
             return sum;
         }

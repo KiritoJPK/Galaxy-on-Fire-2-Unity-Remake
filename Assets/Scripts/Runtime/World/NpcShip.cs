@@ -1219,8 +1219,9 @@ namespace GoF2Remake.World
                                  && firing.TryFire(transform) >= 0)
                         {
                             int shot = NpcTables.ShotSound(Race);
-                            var clip = firing == empGun ? WeaponFx.Load(18)?.Shot
-                                     : firing == secondGun ? WeaponFx.Load(secondGun.itemIndex)?.Shot
+                            // The rigs' own fx (WeaponFx.Load was a formatted path and a Resources lookup per shot).
+                            var clip = firing == empGun ? (empRig?.fx ?? WeaponFx.Load(18))?.Shot
+                                     : firing == secondGun ? (secondRig?.fx ?? WeaponFx.Load(secondGun.itemIndex))?.Shot
                                      : assets != null && assets.shots != null && shot < assets.shots.Length ? assets.shots[shot] : null;
                             if (clip != null) ShotVoices.PlayAt(clip, transform.position, 0.8f);   // shared voices (FEV max_playbacks)
                         }
@@ -1587,6 +1588,12 @@ namespace GoF2Remake.World
             if (Race == Standing.Void && !Spec.noLoot && Target.hostileToPlayer && !loot.Exists(s => s.item == 131))
                 loot = new List<ItemStack> { new ItemStack(131, Random.Range(0, 3) + 1) };
             traffic.OnShipDied(this, !Target.killedByNpc);
+            // Remake mods: a ship the player destroys may drop a mod blueprint (blueprints.json "drops") in a data crate.
+            if (!Target.killedByNpc && !IsWingman && !IsTurret)
+            {
+                int bp = Modding.ModBlueprints.RollDrop(Race);
+                if (bp >= 0) Crate.Spawn(transform.position, new[] { new ItemStack(bp, 1) }, Race, Crate.LookJunk);
+            }
             if (IsWingman) Wingmen.Died(Target.displayName);   // Level::wingmanDied: gone from the contract
             if (Spec.ship == 14 && !Target.killedByNpc) Session.BattleshipsDestroyed++;   // Status+0x118
             Current = State.Dying;

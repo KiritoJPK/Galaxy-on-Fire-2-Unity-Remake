@@ -157,6 +157,13 @@ namespace GoF2Remake.Flight
         /// <summary>The level's ships (Traffic.Ships): those with a docking type are docking targets.</summary>
         [NonSerialized] public List<NpcShip> Ships;
 
+        // A loop, not Targets.Exists(t => t.dockingShip == s): that closure was allocated per traffic ship per frame.
+        bool HasDockingTarget(NpcShip s)
+        {
+            foreach (var t in Targets) if (t.dockingShip == s) return true;
+            return false;
+        }
+
         /// <summary>Level::getDockingTarget: the dockable objects, lockable while visible and not radar-hidden.</summary>
         void UpdateDockingTargets()
         {
@@ -164,7 +171,7 @@ namespace GoF2Remake.Flight
             foreach (var s in Ships)
             {
                 if (s == null || s.DockingType <= 0) continue;
-                if (!Targets.Exists(t => t.dockingShip == s))
+                if (!HasDockingTarget(s))
                 {
                     s.DockIndex = Targets.FindAll(t => t.kind == Kind.DockingTarget).Count;   // Level::getDockingTarget's index
                     Targets.Add(new Target { kind = Kind.DockingTarget, transform = s.transform, dockingShip = s });

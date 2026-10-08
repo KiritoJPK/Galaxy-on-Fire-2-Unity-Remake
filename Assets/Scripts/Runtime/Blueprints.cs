@@ -139,6 +139,8 @@ namespace GoF2Remake.Data
         {
             var it = db.Item(product);
             if (it == null) return 0;
+            // Remake mods: a mod blueprint's own price (blueprints.json "autocomplete": a number).
+            if (Modding.ModBlueprints.AutocompleteOverride(product, out _, out int own) && own >= 0) return own;
             if (product == 210)
             {
                 var s = State(db, product);
@@ -150,7 +152,11 @@ namespace GoF2Remake.Data
             return (int)((float)(BaseQuantity(it) * it.maxPrice) * 1.25f);
         }
 
-        /// <summary>A completed run: to the hold here (true) or waiting at the production station (false); then reset.</summary>
+        /// <summary>Remake mods: the blueprint may be autocompleted (blueprints.json "autocomplete": false: never).</summary>
+        public static bool CanAutocomplete(int product) => !Modding.ModBlueprints.AutocompleteOverride(product, out bool allowed, out _) || allowed;
+
+        /// <summary>A completed run: to the hold here (true) or waiting at the production station (false); then reset.
+        /// Remake mods: a ship blueprint's ship always waits at the production station (TakeBuiltShips), here too.</summary>
         public static bool Produce(Database db, int product, int currentStation)
         {
             var s = State(db, product);
@@ -158,7 +164,8 @@ namespace GoF2Remake.Data
             int qty = BaseQuantity(it);
             if (s.station < 0) s.station = currentStation;
             bool here = s.station == currentStation;
-            if (here) GiveToCargo(db, product, qty);
+            bool ship = Modding.ModBlueprints.ShipOf(product) >= 0;
+            if (here && !ship) GiveToCargo(db, product, qty);
             else
             {
                 var pending = Session.PendingProducts.Find(p => p.item == product && p.station == s.station);
@@ -188,13 +195,26 @@ namespace GoF2Remake.Data
         /// <summary>ModStation::checkPendingProducts: the products waiting here move to the hold.</summary>
         public static List<PendingProduct> CollectPending(Database db, int station)
         {
-            var moved = Session.PendingProducts.FindAll(p => p.station == station);
+            var moved = Session.PendingProducts.FindAll(p => p.station == station && Modding.ModBlueprints.ShipOf(p.item) < 0);
             foreach (var p in moved)
             {
                 Session.PendingProducts.Remove(p);
                 GiveToCargo(db, p.item, p.quantity);
             }
             return moved;
+        }
+
+        /// <summary>Remake mods: the ship blueprints' finished ships waiting at 'station' (taken off the list; their blueprint
+        /// items, Hangar.DeliverBuiltShips turns them into the ships).</summary>
+        public static List<int> TakeBuiltShips(int station)
+        {
+            var list = new List<int>();
+            foreach (var p in Session.PendingProducts.FindAll(p => p.station == station && Modding.ModBlueprints.ShipOf(p.item) >= 0))
+            {
+                Session.PendingProducts.Remove(p);
+                for (int n = 0; n < Mathf.Max(1, p.quantity); n++) list.Add(p.item);
+            }
+            return list;
         }
 
         /// <summary>Status::nextCampaignMission's blueprint unlocks (the step reached), with pre-invested ingredients.</summary>

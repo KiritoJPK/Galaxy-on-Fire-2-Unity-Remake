@@ -168,6 +168,13 @@ namespace GoF2Remake.Flight
             float dtMs = Time.deltaTime * 1000f * TimeExtender.PlayerFactor;   // MGame+0x44: the player's dt
             if (externalControl)
             {
+                // The turret view while docked at an object (PlayerTurret aims by SteerInput): the stick still reads.
+                if (steeringLocked && useBuiltInInput && !inputLocked)
+                {
+                    var turretSteer = ReadInput();
+                    if (externalSteer.sqrMagnitude > turretSteer.sqrMagnitude) turretSteer = externalSteer;
+                    SteerInput = turretSteer;
+                }
                 Model.TickBoost(dtMs);   // PlayerEgo::update: the boost and its recharge run on (the mining approach boosts)
                 SpeedMetersPerSecond = ExternalSpeedMetersPerSecond;
                 Maneuver.Cancel();
@@ -225,7 +232,7 @@ namespace GoF2Remake.Flight
                 float turnAngle = Mathf.Acos(Mathf.Clamp(Vector3.Dot(transform.forward, dir), -1f, 1f));
                 if (Vector3.Dot(transform.right, dir) > 0f) turnAngle = -turnAngle;
                 if (dir.sqrMagnitude > 0f) transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
-                Model.AutopilotBank(turnAngle, dtMs);
+                Model.AutopilotBank(turnAngle, dtMs, Mathf.Min(Time.unscaledDeltaTime, Time.maximumDeltaTime) * 1000f);
                 autopilotBanking = true;
             }
             else if (autopilotBanking) { Model.ResetAutopilotBank(); autopilotBanking = false; }

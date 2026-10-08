@@ -103,6 +103,7 @@ namespace GoF2Remake.Modding
             Stacks(s.equipment, true);
             Stacks(s.cargo, true);
             Stacks(s.kaamoItems, true);
+            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) Stacks(k.equipment, true);
             if (s.parkedShip != null) { Stacks(s.parkedShip.equipment, true); Stacks(s.parkedShip.cargo, true); }
             if (s.recentStations != null)
                 foreach (var rs in s.recentStations)

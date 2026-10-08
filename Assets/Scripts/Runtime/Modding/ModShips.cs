@@ -7,10 +7,11 @@
 // active mods change) and the menu waits for Ready before a game scene loads. A ship whose model isn't there (still
 // loading, or broken) shows the Phantom's. Also each ship's shop icon (the entry's "icon" PNG, 180 x 88 like the
 // originals; none = the Phantom's).
-// Every ship loads at the same time: its files are read on worker threads, its textures decoded in the background
-// (ModMaterials.PreloadTexture), its glTF parsed by glTFast's jobs, and the main-thread work of all of them shares one
-// time budget per frame (glTFast's TimeBudgetPerFrameDeferAgent), so the game keeps running (the main menu's loading
-// screen shows Progress / Current, ModLoading).
+// The ships load side by side (at most ShipSlots at once: each holds its whole GLB file until glTFast has read it, and the
+// GoF3 Ships mod's 79 came to 430 MB): its files are read on worker threads, its textures decoded in the background
+// (ModMaterials.PreloadTexture; a GLB's embedded images the same way, ModGltf), its glTF parsed by glTFast's jobs, and the
+// main-thread work of all of them shares one time budget per frame (glTFast's TimeBudgetPerFrameDeferAgent), so the game
+// keeps running (the main menu's loading screen shows Progress / Current, ModLoading).
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -35,6 +36,10 @@ namespace GoF2Remake.Modding
         static Task loading;
         static int steps, stepsDone;
         static readonly List<string> current = new List<string>();
+        static System.Threading.SemaphoreSlim shipSlots;
+
+        /// <summary>Ships loading at once.</summary>
+        static System.Threading.SemaphoreSlim ShipSlots => shipSlots ??= new System.Threading.SemaphoreSlim(Application.isMobilePlatform ? 3 : 8);
 
         /// <summary>How far the models are (0..1; 1 with nothing to load).</summary>
         public static float Progress => steps == 0 ? 1f : Mathf.Clamp01((float)stepsDone / steps);
@@ -139,12 +144,15 @@ namespace GoF2Remake.Modding
         /// <summary>One ship: its textures and model file at once, then glTFast, then the template.</summary>
         static async Task LoadShip(int rev, ModInfo mod, CustomShipData c)
         {
+            var slots = ShipSlots;
+            await slots.WaitAsync();
             string label = c.name;
             current.Add(label);
             int counted = 0;
             void Step() { counted++; stepsDone++; }
             try
             {
+                if (rev != ModManager.Revision) return;
                 var textures = new List<Task>();
                 foreach (var (path, linear, readable, normal) in TexturesOf(c)) textures.Add(ModMaterials.PreloadTexture(mod, path, linear, readable, normal));
                 var file = string.IsNullOrEmpty(c.model) ? Task.FromResult<byte[]>(null) : Task.Run(() => mod.Source.ReadBytes(c.model));
@@ -156,10 +164,10 @@ namespace GoF2Remake.Modding
                 var icon = ModMaterials.Texture(mod, c.icon, false);
                 if (icon != null) icons[c.index] = icon;
                 if (bytes == null) { Warn(mod, $"ships.json: \"{c.name}\": model {c.model} not found"); return; }
-                var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials());
+                var import = await ModGltf.Load(mod, bytes, agent);
+                bytes = null;
+                if (import == null) { Warn(mod, $"{c.model}: not a glTF model glTFast can read"); return; }
                 imports.Add(import);
-                var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };
-                if (!await import.Load(bytes, null, settings)) { Warn(mod, $"{c.model}: not a glTF model glTFast can read"); return; }
                 Step();
                 if (rev != ModManager.Revision || holder == null) return;
                 var scene = new GameObject("scene");
@@ -181,6 +189,7 @@ namespace GoF2Remake.Modding
                     Done++;
                 }
                 current.Remove(label);
+                slots.Release();
             }
         }
 

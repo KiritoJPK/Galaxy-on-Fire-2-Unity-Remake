@@ -2,9 +2,11 @@
 // The main menu's Mods panel (remake): every installed mod (Modding.ModManager) with its preview image, name, version,
 // author and description; on the left the list in load order (a thumbnail, the name, ON / OFF / an error badge), on
 // the right the selected mod: the big preview, the texts, its problems, and Turn on / off, Earlier / Later (the load
-// order: a later mod's changes win), plus Open mods folder (desktop; elsewhere the folder's path) and Refresh. Mods are
-// turned on and off only here, in the menu: the game's tables are rebuilt when a game starts or loads.
-// Plain C#: MainMenu creates it in its panel host and hands it its sound and focus hooks.
+// order: a later mod's changes win) and Delete (asks first), plus Open mods folder (desktop; elsewhere the folder's
+// path), Import mod (Android, the Editor: the system's file picker, ModImport; players couldn't reach the Android Mods
+// folder) and Refresh. Mods are turned on and off only here, in the menu: the game's tables are rebuilt when a game
+// starts or loads.
+// Plain C#: MainMenu creates it in its panel host and hands it its sound, focus and dialog hooks.
 
 using System;
 using System.Collections.Generic;
@@ -26,7 +28,10 @@ namespace GoF2Remake.UI
         readonly Label count, empty, note;
         readonly VisualElement preview, detail;
         readonly Label name, meta, description, problems;
-        readonly Button toggle, earlier, later;
+        readonly Button toggle, earlier, later, delete;
+        readonly Action<string, string, Action> ask;
+        readonly Action<string, string> notice;
+        bool importing;
         readonly Dictionary<string, Button> rows = new Dictionary<string, Button>();
         string selected;
 
@@ -34,10 +39,15 @@ namespace GoF2Remake.UI
 
         /// <param name="rebuildCache">The footer's "Rebuild cache": every mod cache deleted and the mods loaded again (MainMenu,
         /// behind its loading screen); none = no button.</param>
-        public ModBrowser(VisualElement host, Action back, Action<VisualElement> hookFocus, Action click, Action rebuildCache = null)
+        /// <param name="ask">The menu's Yes / No dialog (title, text, on Yes): Delete and replacing a mod by an import.</param>
+        /// <param name="notice">The menu's notice (title, text): what an import or a delete came to.</param>
+        public ModBrowser(VisualElement host, Action back, Action<VisualElement> hookFocus, Action click, Action rebuildCache,
+                          Action<string, string, Action> ask, Action<string, string> notice)
         {
             this.hookFocus = hookFocus;
             this.click = click;
+            this.ask = ask;
+            this.notice = notice;
             Panel = new VisualElement { name = "modsPanel" };
             Panel.AddToClassList("panel");
             Panel.AddToClassList("mods-panel");
@@ -73,11 +83,13 @@ namespace GoF2Remake.UI
             Add(toggle, new Label("X") { pickingMode = PickingMode.Ignore }, "mods-pad-x", "gof-semibold");
             earlier = ActionButton(actions, T("modsEarlier", "Earlier"), () => Move(-1));
             later = ActionButton(actions, T("modsLater", "Later"), () => Move(1));
+            delete = ActionButton(actions, T("modsDelete", "Delete"), AskDelete, "mods-delete");
 
             var footer = Add(Panel, new VisualElement(), "mods-footer");
             note = Add(footer, new Label(), "mods-note");
             if (!Application.isMobilePlatform) ActionButton(footer, T("modsOpenFolder", "Open mods folder"),
                 () => ModManager.OpenFolder(selected != null ? ModManager.Find(selected) : null), "mods-footer-button");   // the selected mod's folder
+            if (ModImport.Available) ActionButton(footer, T("modsImport", "Import mod"), Import, "mods-footer-button");
             ActionButton(footer, T("modsRefresh", "Refresh"), () => { ModManager.Scan(); Rebuild(); }, "mods-footer-button");
             // When something looks wrong after a mod changed: the cached textures, hangar shadows and unpacked zips are made again.
             if (rebuildCache != null) ActionButton(footer, T("modsRebuildCache", "Rebuild cache"), rebuildCache, "mods-footer-button");
@@ -136,8 +148,9 @@ namespace GoF2Remake.UI
                 list.Add(row);
                 rows[m.Id] = row;
             }
-            empty.text = string.Format(T("modsEmpty",
-                "No mods installed. Put a mod's folder or .zip into the Mods folder:\n{0}\nthen press Refresh."), ModManager.MainFolder);
+            empty.text = ModImport.Available && Application.isMobilePlatform
+                ? string.Format(T("modsEmptyImport", "No mods installed. Press Import mod and pick a mod's .zip file, or put it into the Mods folder:\n{0}\nthen press Refresh."), ModManager.MainFolder)
+                : string.Format(T("modsEmpty", "No mods installed. Put a mod's folder or .zip into the Mods folder:\n{0}\nthen press Refresh."), ModManager.MainFolder);
             empty.style.display = mods.Count == 0 ? DisplayStyle.Flex : DisplayStyle.None;
             if (selected == null || !rows.ContainsKey(selected)) selected = mods.FirstOrDefault()?.Id;
             Refresh();
@@ -215,11 +228,78 @@ namespace GoF2Remake.UI
             problems.style.display = lines.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
             toggle.text = (isOn ? T("modsTurnOff", "Turn off") : T("modsTurnOn", "Turn on")).ToUpperInvariant();
             toggle.SetEnabled(!mod.Broken || isOn);
+            delete.SetEnabled(mod.Source != null);
             toggle.EnableInClassList("mods-toggle--on", isOn);
             var ids = ModManager.Installed.Where(m => ModManager.IsEnabled(m.Id)).Select(m => m.Id).ToList();
             int i = ids.IndexOf(mod.Id);
             earlier.SetEnabled(i > 0);
             later.SetEnabled(i >= 0 && i < ids.Count - 1);
+        }
+
+        /// <summary>Delete: asks (naming the mods that need it, which go off with it), then ModImport.Delete.</summary>
+        void AskDelete()
+        {
+            var mod = selected != null ? ModManager.Find(selected) : null;
+            if (mod == null) return;
+            string title = T("modsDeleteTitle", "Delete mod");
+            string text = string.Format(T("modsDeleteText", "Delete \"{0}\" from this device? This can't be undone."), mod.Name);
+            var needers = ModManager.IsEnabled(mod.Id) ? ModManager.NeededBy(mod.Id) : new List<ModInfo>();
+            if (needers.Count > 0)
+                text += "\n" + string.Format(T("modsDeleteNeeded", "These mods need it and are turned off: {0}"), string.Join(", ", needers.Select(m => m.Name)));
+            ask(title, text, () =>
+            {
+                if (!ModImport.Delete(mod, out string error))
+                    notice(title, string.Format(T("modsDeleteFailed", "The mod couldn't be deleted: {0}"), error));
+                selected = null;
+                Rebuild();
+            });
+        }
+
+        /// <summary>Import mod: the file picker (ModImport.Pick, polled until it answers), the file checked as a mod, a
+        /// replacement asked first, then installed and selected (off, like any new mod).</summary>
+        void Import()
+        {
+            if (importing) return;
+            importing = true;
+            var poll = ModImport.Pick();
+            ModImport.Picked picked = null;
+            Panel.schedule.Execute(() =>
+            {
+                picked = poll();
+                if (picked != null) { importing = false; Picked(picked); }
+            }).Every(200).Until(() => picked != null);
+        }
+
+        void Picked(ModImport.Picked p)
+        {
+            string title = T("modsImport", "Import mod");
+            if (p.cancelled) return;
+            if (p.error != null) { notice(title, string.Format(T("modsImportFailed", "The mod couldn't be imported: {0}"), p.error)); return; }
+            var manifest = ModImport.Inspect(p.path, out string error);
+            if (manifest == null)
+            {
+                ModImport.Discard(p.path);
+                notice(title, T("modsImportNotMod", "That file isn't a mod. Pick a mod's .zip file, with its mod.json inside.")
+                              + "\n(" + p.name + ": " + error + ")");
+                return;
+            }
+            void Install()
+            {
+                if (ModImport.Install(p.path, p.name, manifest, out string why) == null)
+                    notice(title, string.Format(T("modsImportFailed", "The mod couldn't be imported: {0}"), why));
+                else
+                {
+                    selected = manifest.id;
+                    Rebuild();
+                    notice(title, string.Format(ModManager.IsEnabled(manifest.id)
+                        ? T("modsImportedOn", "\"{0}\" {1} is installed and on.")
+                        : T("modsImported", "\"{0}\" {1} is installed. Turn it on to use it."), manifest.Name, "v" + manifest.version));
+                }
+            }
+            var old = ModManager.Find(manifest.id);
+            if (old == null) Install();
+            else ask(title, string.Format(T("modsImportReplace", "\"{0}\" is already installed (v{1}). Replace it with v{2}?"),
+                                          old.Name, old.Version, manifest.version), Install);
         }
 
         /// <summary>The controller's X: turns the selected mod on or off, like its Turn on / off button (not a broken mod

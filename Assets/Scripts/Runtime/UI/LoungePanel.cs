@@ -299,6 +299,8 @@ namespace GoF2Remake.UI
             // "Let me see it" (776): ListItemWindow::set(..., showPrice = false), the full-screen details.
             if ((a.offer == AgentOffer.ShipDealer || a.offer == AgentOffer.SellShip) && a.sellShip >= 0) { menu.InfoWindow?.ShowShip(Db, a.sellShip, 0, false); return; }
             int item = a.offer == AgentOffer.SellBlueprint ? LoungeChat.BlueprintProduct(a.sellBlueprint) : a.sellItem;
+            int bpShip = Modding.ModBlueprints.ShipOf(item);   // remake mods: a ship blueprint shows its ship
+            if (bpShip >= 0) { menu.InfoWindow?.ShowShip(Db, bpShip, 0, false); return; }
             var it = item >= 0 ? Db.Item(item) : null;
             if (it == null) { chatText.text = chat.Text; return; }
             menu.InfoWindow?.ShowItem(Db, item, level.Station != null ? level.Station.system : -1, false, 0);

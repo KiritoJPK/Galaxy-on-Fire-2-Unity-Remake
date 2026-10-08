@@ -17,6 +17,8 @@ namespace GoF2Remake.UI
         /// <summary>The item's shop icon: a mod's own ("icon" in items.json), else its base item's (Modding.ModContent.ItemLook).</summary>
         public static Texture2D ItemIcon(int item)
         {
+            int bpShip = Modding.ModBlueprints.ShipOf(item);   // a mod's ship blueprint: its ship's icon
+            if (bpShip >= 0) return ShipIcon(bpShip);
             var own = Modding.ModContent.ItemIcon(item);   // a mod's own icon (items.json "icon")
             return own != null ? own : Icon($"item_{Modding.ModContent.ItemLook(item):000}");
         }
@@ -47,7 +49,9 @@ namespace GoF2Remake.UI
             int race = Shop.ShipMakerRace(ship);
             return race >= 0 && (race <= 3 || race == 7 || race == 8) ? Localization.Get(406 + race) : "";
         }
-        public static string Category(ItemData it) => Localization.Get(221 + it.categoryId);
+        public static string Category(ItemData it) => Modding.ModBlueprints.ShipOf(it.index) >= 0
+            ? Localization.Extra("bpShipBlueprint", "Ship blueprint")   // a mod's ship blueprint (its hidden item)
+            : Localization.Get(221 + it.categoryId);
 
         /// <summary>Attributes the details never list (index, type, price systems, occurrence, prices, Vossk flag, home station).</summary>
         static readonly HashSet<int> Hidden = new HashSet<int> { 0, 1, 4, 5, 6, 7, 8, 60, 61, 100, 102, 103 };
@@ -124,20 +128,42 @@ namespace GoF2Remake.UI
         }
 
         /// <summary>ListItemWindow::set, ships: armor, cargo hold, slots per type, handling, price.</summary>
-        public static List<(string label, string value)> ShipStats(ShipData s, int price)
+        /// <summary>'mods': the hull's Kaamo Club mods (the player's own ship, a traded-in or stored hull): their values added
+        /// with "(+)", like the item window's (ListItemWindow::set).</summary>
+        public static List<(string label, string value)> ShipStats(ShipData s, int price, IEnumerable<int> mods = null)
+        {
+            var rows = new List<(string, string)>();
+            foreach (var (label, value, _) in ShipStatsCompared(s, price, mods, null, null)) rows.Add((label, value));
+            return rows;
+        }
+
+        /// <summary>ShipStats with each row compared to 'current' (with its mods 'currentMods'), as ListItemWindow::set's
+        /// arrows 0x512 / 0x513 / 0x514: -1 worse, 1 better, 0 equal, 2 none (no current ship; the price). Remake (#62): the
+        /// hangar's details panel shows them too (the original only in its item window), with the Kaamo upgrades counted on
+        /// both sides; a slot row shows when either ship has such slots.</summary>
+        public static List<(string label, string value, int compare)> ShipStatsCompared(ShipData s, int price, IEnumerable<int> mods,
+            ShipData current, IEnumerable<int> currentMods)
         {
             string T(int id) => Localization.Get(id);
-            var rows = new List<(string, string)>
+            int Lv(int mod) => Session.ModLevel(mods, mod);
+            int CurLv(int mod) => Session.ModLevel(currentMods, mod);
+            string Plus(int mod) => Lv(mod) > 0 ? " (+)" : "";
+            int Cmp(float v, float c) => current == null ? 2 : v < c ? -1 : v > c ? 1 : 0;
+            var rows = new List<(string, string, int)>();
+            int armor = s.armor + 40 * Lv(0), cargo = s.cargo + 30 * Lv(1), equipment = s.slots.equipment + Lv(2);
+            int handling = Mathf.RoundToInt(s.handling) + 20 * Lv(3);
+            rows.Add((T(165), armor + Plus(0), current == null ? 2 : Cmp(armor, current.armor + 40 * CurLv(0))));
+            rows.Add((T(166), $"{cargo} t" + Plus(1), current == null ? 2 : Cmp(cargo, current.cargo + 30 * CurLv(1))));
+            void Slots(int id, int n, int cur, string plus)
             {
-                (T(165), s.armor.ToString()),
-                (T(166), $"{s.cargo} t"),
-            };
-            if (s.slots.primary > 0) rows.Add((T(265), s.slots.primary.ToString()));
-            if (s.slots.secondary > 0) rows.Add((T(266), s.slots.secondary.ToString()));
-            if (s.slots.turret > 0) rows.Add((T(267), s.slots.turret.ToString()));
-            if (s.slots.equipment > 0) rows.Add((T(269), s.slots.equipment.ToString()));
-            rows.Add((T(164), Mathf.RoundToInt(s.handling).ToString()));
-            rows.Add((T(132), Credits(price)));
+                if (n > 0 || current != null && cur > 0) rows.Add((T(id), n + plus, Cmp(n, cur)));
+            }
+            Slots(265, s.slots.primary, current?.slots.primary ?? 0, "");
+            Slots(266, s.slots.secondary, current?.slots.secondary ?? 0, "");
+            Slots(267, s.slots.turret, current?.slots.turret ?? 0, "");
+            Slots(269, equipment, current != null ? current.slots.equipment + CurLv(2) : 0, Plus(2));
+            rows.Add((T(164), handling + Plus(3), current == null ? 2 : Cmp(handling, Mathf.RoundToInt(current.handling) + 20 * CurLv(3))));
+            rows.Add((T(132), Credits(price), 2));
             return rows;
         }
 
@@ -153,6 +179,72 @@ namespace GoF2Remake.UI
             if (lo) text += $"\n-> {Credits(low.price)} ({Where(low.system)})";
             if (hi) text += $"\n-> {Credits(high.price)} ({Where(high.system)})";
             return text;
+        }
+
+        /// <summary>What one level of a Kaamo Club mod adds: 0 +40 hull, 1 +30 t cargo, 2 +1 equipment slot, 3 handling +20.</summary>
+        public static int ModAmount(int mod) => mod switch { 0 => 40, 1 => 30, 2 => 1, _ => 20 };
+
+        /// <summary>Remake (players' suggestion): a Kaamo Club mechanic's ship mod as one line for the ship's details, with
+        /// what its 'level' (how many times it is fitted, Settings.KaamoStacking) adds in all.</summary>
+        public static string ModLine(int mod, int level = 1)
+        {
+            string line = string.Format(mod switch
+            {
+                0 => Localization.Extra("kaamoModArmor", "Kaamo Club armor upgrade applied (+{0})"),
+                1 => Localization.Extra("kaamoModCargo", "Kaamo Club cargo upgrade applied (+{0} t)"),
+                2 => Localization.Extra("kaamoModSlot", "Kaamo Club extra equipment slot upgrade applied (+{0})"),
+                _ => Localization.Extra("kaamoModHandling", "Kaamo Club handling upgrade applied (+{0})"),
+            }, ModAmount(mod) * level);
+            return level > 1 ? line + "  ·  " + string.Format(Localization.Extra("kaamoModLevel", "level {0}"), level) : line;
+        }
+
+        /// <summary>Fills 'into' (cleared, hidden without mods) with a line per mod, in the mods' order 0..3: the block at the
+        /// bottom of a ship's details (hangar, carrier, item window).</summary>
+        public static void FillModLines(UnityEngine.UIElements.VisualElement into, IEnumerable<int> mods)
+        {
+            into.Clear();
+            var sorted = new List<int>();
+            if (mods != null) foreach (int m in mods) if (m >= 0 && !sorted.Contains(m)) sorted.Add(m);
+            sorted.Sort();
+            into.style.display = sorted.Count > 0 ? UnityEngine.UIElements.DisplayStyle.Flex : UnityEngine.UIElements.DisplayStyle.None;
+            foreach (int m in sorted)
+            {
+                var line = new UnityEngine.UIElements.Label("+ " + ModLine(m, Session.ModLevel(mods, m))) { pickingMode = UnityEngine.UIElements.PickingMode.Ignore };
+                line.AddToClassList("kaamo-mod-line");
+                into.Add(line);
+            }
+        }
+
+        /// <summary>Remake (Settings.KaamoKeepsEquipment): a stored hull's mounted items after its mod lines, "Mounted:" and one
+        /// line each ("name (amount)" for a secondary's ammo); the block shows when there is any.</summary>
+        public static void AddEquipmentLines(UnityEngine.UIElements.VisualElement into, IEnumerable<ItemStack> equipment)
+        {
+            if (equipment == null) return;
+            bool any = false;
+            foreach (var e in equipment)
+            {
+                if (e == null) continue;
+                if (!any)
+                {
+                    var head = new UnityEngine.UIElements.Label(Localization.Extra("kaamoGearHeader", "Mounted on this ship:")) { pickingMode = UnityEngine.UIElements.PickingMode.Ignore };
+                    head.AddToClassList("kaamo-mod-line");
+                    into.Add(head);
+                    any = true;
+                }
+                var line = new UnityEngine.UIElements.Label("  " + ItemName(e.item) + (e.amount > 1 ? $" ({e.amount})" : "")) { pickingMode = UnityEngine.UIElements.PickingMode.Ignore };
+                line.AddToClassList("kaamo-mod-line");
+                into.Add(line);
+            }
+            if (any) into.style.display = UnityEngine.UIElements.DisplayStyle.Flex;
+        }
+
+        /// <summary>The block FillModLines fills (styles .kaamo-mods in GoF2Common.uss).</summary>
+        public static UnityEngine.UIElements.VisualElement NewModBlock()
+        {
+            var block = new UnityEngine.UIElements.VisualElement { pickingMode = UnityEngine.UIElements.PickingMode.Ignore };
+            block.AddToClassList("kaamo-mods");
+            block.style.display = UnityEngine.UIElements.DisplayStyle.None;
+            return block;
         }
     }
 }

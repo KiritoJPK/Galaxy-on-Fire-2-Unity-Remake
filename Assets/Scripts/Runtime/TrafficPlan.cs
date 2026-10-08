@@ -74,6 +74,7 @@ namespace GoF2Remake.Flight
         public int secondaryItem = -1;     // a second gun slot (the wanted flying ships 45-48: G'liissk rockets) ...
         public float secondaryFactor = 1f; // ... at x4
         public int hiddenBlueprint = -1;   // a Supernova wreck's hidden blueprint (TrafficPlan.HiddenBlueprints slot)
+        public int modBlueprint = -1;      // remake mods: a derelict's blueprint (the product item; blueprints.json "derelict")
         public int pirateEvent;            // remake: EventOutpost / EventBoss / EventTurret (TrafficPlan.AddPirateEvent), 0 = none
         public bool eventDangerous;        // ... in a Dangerous system: the bigger bounty (Traffic.PirateEventDone)
         public const int EventOutpost = 1, EventBoss = 2, EventTurret = 3;
@@ -304,6 +305,23 @@ namespace GoF2Remake.Flight
                     fixedObject = NpcTables.FreighterAssembly(race), deadButSelectable = true, stationary = true, alwaysFriend = true,
                     hitpoints = 9999999, noLoot = true, nameText = 3211, dockingType = found ? 0 : 3, spacePoints = HiddenBlueprints[k].points,
                     hiddenBlueprint = k, hitRadius = 4000f,
+                });
+            }
+            // Remake mods: a mod blueprint's derelict (blueprints.json "derelict"), at most one per visit: a hackable freighter
+            // wreck like the hidden blueprints' (its race's: the Vossk freighter 13, else 15, docking point sets 11-14),
+            // somewhere out in front of the station; the hack leaves the blueprint in a data crate (Traffic.OnHackWon).
+            var derelict = Modding.ModBlueprints.RollDerelict();
+            if (derelict != null)
+            {
+                int race = derelict.derelictRace >= 0 ? derelict.derelictRace : Random.Range(0, 4);
+                int points = race == 1 ? 14 : race == 3 ? 11 : race == 2 ? 12 : 13;
+                var at = new Vector3(Random.Range(-80000f, 80000f), Random.Range(-40000f, 40000f), Random.Range(60000f, 140000f));
+                list.Add(new SpawnSpec
+                {
+                    group = NpcGroup.Special, race = race, ship = race == 1 ? 13 : 15, position = at,
+                    fixedObject = NpcTables.FreighterAssembly(race), deadButSelectable = true, stationary = true, alwaysFriend = true,
+                    hitpoints = 9999999, noLoot = true, nameText = 3211, dockingType = 3, spacePoints = points,
+                    modBlueprint = derelict.product, hitRadius = 4000f,
                 });
             }
             // 7 Specters, always enemy: one point near the player, each at it + createShip's +-20000 jitter.

@@ -66,6 +66,7 @@ namespace GoF2Remake.Flight
                 StripForFx(muzzle);
                 EnableFades(muzzle);
                 muzzleLength = Mathf.Max(80f, MaxLength(muzzle));
+                muzzleParts = Parts(muzzle);
                 muzzle.SetActive(false);
             }
             wasActive = new bool[projectiles.Length];
@@ -79,7 +80,11 @@ namespace GoF2Remake.Flight
                 for (int i = 0; i < spin.Length; i++)
                     spin[i] = new Vector3(Random.Range(0, 200) - 100, Random.Range(0, 200) - 100, Random.Range(0, 200) - 100) / 50f;
             }
-            if (gun.isBeam && projectiles.Length > 0 && projectiles[0] != null) beamLength = Mathf.Max(200f, MaxLength(projectiles[0].gameObject));
+            if (gun.isBeam && projectiles.Length > 0 && projectiles[0] != null)
+            {
+                beamLength = Mathf.Max(200f, MaxLength(projectiles[0].gameObject));
+                beamParts = Parts(projectiles[0].gameObject);
+            }
             if (fx != null && fx.impact != null && impactPool > 0 && gun.kind != Gun.Kind.ScatterGun)
             {
                 impacts = new GameObject[impactPool];
@@ -91,6 +96,8 @@ namespace GoF2Remake.Flight
                     EnableFades(impacts[i]);
                     impacts[i].SetActive(false);
                 }
+                impactParts = new (PartAnimation[], Modding.ModFxPart[])[impactPool];
+                for (int i = 0; i < impactPool; i++) impactParts[i] = Parts(impacts[i]);
                 impactLength = Mathf.Max(200f, MaxLength(impacts[0]));
             }
         }
@@ -111,6 +118,13 @@ namespace GoF2Remake.Flight
             trails = new RocketTrail[gun.bullets.Length];
             for (int i = 0; i < trails.Length; i++) trails[i] = new RocketTrail(rec, fxRoot, mat);
         }
+
+        // The muzzle's, each impact's and the beam's animated parts, collected once (PlayOnce per shot / hit walked them).
+        (PartAnimation[] anims, Modding.ModFxPart[] mods) muzzleParts, beamParts;
+        (PartAnimation[] anims, Modding.ModFxPart[] mods)[] impactParts;
+
+        static (PartAnimation[], Modding.ModFxPart[]) Parts(GameObject go) =>
+            (go.GetComponentsInChildren<PartAnimation>(true), go.GetComponentsInChildren<Modding.ModFxPart>(true));
 
         public static float MaxLength(GameObject go)
         {
@@ -141,12 +155,12 @@ namespace GoF2Remake.Flight
             if (gun.isBeam && projectiles.Length > 0 && projectiles[0] != null)
             {
                 projectiles[0].gameObject.SetActive(true);
-                PartAnimation.PlayOnce(projectiles[0].gameObject);
+                PartAnimation.PlayOnce(beamParts.anims, beamParts.mods);
                 beamMs = beamLength;
             }
             if (muzzle == null) return;
             muzzle.SetActive(true);
-            PartAnimation.PlayOnce(muzzle);
+            PartAnimation.PlayOnce(muzzleParts.anims, muzzleParts.mods);
             muzzleMs = muzzleLength;
         }
 
@@ -166,7 +180,7 @@ namespace GoF2Remake.Flight
             var go = impacts[i];
             go.SetActive(true);
             go.transform.position = point;
-            PartAnimation.PlayOnce(go);
+            PartAnimation.PlayOnce(impactParts[i].anims, impactParts[i].mods);
             impactMs[i] = impactLength;
         }
 

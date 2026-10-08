@@ -36,6 +36,7 @@ namespace GoF2Remake.UI
         readonly VisualElement window, details, detailIcon, detailStats, tradeBox, sellArrow, buyArrow, tradeAllRow;
         readonly ScrollView list, detailScroll;
         readonly Label detailName, detailSub, detailText, tradeLeft, tradeRight, tradeNote, tradePrice, cargoLabel, creditsLabel;
+        readonly VisualElement detailMods = ItemInfo.NewModBlock();   // the ship's Kaamo Club mods, under the repair's text
         readonly Button buyAllButton, sellAllButton, actionButton;
 
         readonly List<(CapitalShips.Offer offer, VisualElement row)> rows = new List<(CapitalShips.Offer, VisualElement)>();
@@ -152,6 +153,7 @@ namespace GoF2Remake.UI
             detailText = Lbl("detail-text");
             detailScroll.Add(detailStats);
             detailScroll.Add(detailText);
+            detailScroll.Add(detailMods);
             details.Add(detailScroll);
             body.Add(details);
             window.Add(body);
@@ -344,6 +346,7 @@ namespace GoF2Remake.UI
         {
             detailStats.Clear();
             detailText.text = "";
+            ItemInfo.FillModLines(detailMods, null);
             details.style.visibility = selected < 0 ? Visibility.Hidden : Visibility.Visible;
             if (selected < 0) return;
             var o = rows[selected].offer;
@@ -365,6 +368,7 @@ namespace GoF2Remake.UI
                     if (hp.maxShield > 0) AddStat(X("statShield", "Shield"), $"{Mathf.RoundToInt(hp.shield)} / {hp.maxShield}");
                 }
                 detailText.text = X("resupplyRepairText", "The carrier's deck crew patch your hull and replace the armor plating. The shield recharges by itself.");
+                ItemInfo.FillModLines(detailMods, Session.ShipMods);
                 return;
             }
             var it = db.Item(o.item);

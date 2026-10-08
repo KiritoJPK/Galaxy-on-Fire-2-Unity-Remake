@@ -177,6 +177,9 @@ namespace GoF2Remake.World
             string name = StationAssembly(db, layout);
             if (name == null) { Debug.LogWarning($"OrbitBuilder: no station assembly for {layout.stationIndex}"); return null; }
             var go = Spawn(db, name, Vector3.zero, OrbitLayout.RotationToUnity(new Vector3(0f, Mathf.PI, 0f)), "Station", parent);
+            // Remake: the station's opacity keys play like the engine's (the blinking lights of the Nivelian, Midorian, pirate,
+            // Loma and Supernova-era stations, the Kaamo Club's lit panels and glows); they were left out, the lights stayed on.
+            if (go != null) foreach (var pa in go.GetComponentsInChildren<PartAnimation>(true)) pa.applyMaterialChannels = true;
             // PlayerStation::update advances the station's animation every frame except at 101 and in the alien orbit: the
             // battlestation's arms hold their first frame there, or their last once step 78 unfolded them (the ctor's
             // Transform::Update(the length): station 0x65 from campaign 0x50 0x1473c2, the alien orbit after the Valkyrie

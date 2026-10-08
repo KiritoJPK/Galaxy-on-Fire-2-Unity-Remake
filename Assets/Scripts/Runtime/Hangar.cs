@@ -99,7 +99,7 @@ namespace GoF2Remake.Data
         {
             var s = Ship?.slots;
             if (s == null) return 0;
-            return type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + (Session.HasMod(2) ? 1 : 0), _ => 0 };   // mod 2: +1 equipment slot
+            return type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + Session.ModLevel(2), _ => 0 };   // mod 2: +1 equipment slot per level
         }
 
         public int TypeOf(int item) => db.Item(item)?.TypeId ?? 4;
@@ -295,11 +295,64 @@ namespace GoF2Remake.Data
             return true;
         }
 
-        /// <summary>The new hull becomes the flown ship: every mounted item moves to the first free slot of its type (in
-        /// slot order, secondaries with their ammo), the rest to the hold; the cargo stays with the player.</summary>
-        void SwitchTo(int ship, List<int> mods)
+        /// <summary>Remake mods: the ship blueprints' ships finished for this station (Blueprints.TakeBuiltShips), taken like
+        /// bought ships: the old hull goes to the Kaamo Club when the club is owned and has none of its type, else it is traded
+        /// in at its price into the dealer list; a skin's blueprint ("requiresShip", the hull flown) rebuilds the old hull
+        /// instead (its Kaamo upgrades stay). The message for the player, null when none was waiting.</summary>
+        public string DeliverBuiltShips()
         {
-            var mounted = Session.Equipment;
+            var built = Blueprints.TakeBuiltShips(Station);
+            if (built.Count == 0) return null;
+            var text = new System.Text.StringBuilder();
+            foreach (int deed in built)
+            {
+                int ship = Modding.ModBlueprints.ShipOf(deed);
+                if (ship < 0 || db.Ship(ship) == null) continue;
+                var bp = Modding.ModBlueprints.Of(deed);
+                int old = Session.ShipIndex;
+                var oldMods = new List<int>(Session.ShipMods ?? new List<int>());
+                string oldName = GameNames.Ship(old);
+                bool rebuilt = bp != null && bp.requiresShip >= 0 && bp.requiresShip == old;
+                string how;
+                if (rebuilt) how = string.Format(Localization.Extra("bpShipRebuilt", "Your {0} was rebuilt into it."), oldName);
+                else if (KaamoClub.Owned && !KaamoClub.HasShip(old))
+                {
+                    KaamoClub.Store(old, 0, oldMods, EquipmentToStore());
+                    how = string.Format(Localization.Extra("bpShipStored", "Your {0} is parked in the Kaamo Club."), oldName);
+                }
+                else
+                {
+                    int price = ShipPrice(old);
+                    ChangeCredits(price);
+                    if (!Stock.ships.Contains(old)) Stock.ships.Add(old);
+                    Stock.PutMods(old, oldMods);
+                    how = string.Format(Localization.Extra("bpShipTradedIn", "Your {0} was traded in for {1}."), oldName, GoF2Remake.UI.ItemInfo.Credits(price));
+                }
+                SwitchTo(ship, rebuilt ? oldMods : null);
+                if (text.Length > 0) text.Append("\n\n");
+                text.Append(string.Format(Localization.Extra("bpShipReady", "Your new {0} is ready in the hangar."), GameNames.Ship(ship))).Append(' ').Append(how);
+            }
+            return text.Length > 0 ? text.ToString() : null;
+        }
+
+        /// <summary>Remake (Settings.KaamoKeepsEquipment, players' suggestion): a hull going into the Kaamo Club keeps what is
+        /// mounted on it; this takes it off the flown ship (the new hull then starts bare, or with what its own storage row
+        /// kept). Null with the option off: the items move over as in the original. The story's unsaleable items (the jump
+        /// drive, a mission's gear) never stay behind: they stay mounted and move to the new hull.</summary>
+        static List<ItemStack> EquipmentToStore()
+        {
+            if (!Settings.KaamoKeepsEquipment) return null;
+            var kept = Session.Equipment.Where(e => IsSaleable(e.item)).ToList();
+            Session.Equipment = Session.Equipment.Where(e => !IsSaleable(e.item)).ToList();
+            return kept;
+        }
+
+        /// <summary>The new hull becomes the flown ship: every mounted item moves to the first free slot of its type (in
+        /// slot order, secondaries with their ammo), the rest to the hold; the cargo stays with the player. 'mount' = the
+        /// items to put on it instead of the ones mounted now (a stored hull's own, KaamoKeepsEquipment).</summary>
+        void SwitchTo(int ship, List<int> mods, List<ItemStack> mount = null)
+        {
+            var mounted = mount ?? Session.Equipment;
             Session.ShipIndex = ship;
             Session.ShipMods = mods != null ? new List<int>(mods) : new List<int>();
             Session.Equipment = new List<ItemStack>();
@@ -350,8 +403,9 @@ namespace GoF2Remake.Data
             int old = Session.ShipIndex;
             var oldMods = Session.ShipMods;
             if (!Cheats.FreeShopping) ChangeCredits(-price);
+            var kept = EquipmentToStore();
             SwitchTo(ship, null);
-            KaamoClub.Store(old, 0, oldMods);
+            KaamoClub.Store(old, 0, oldMods, kept);
             return true;
         }
 
@@ -373,10 +427,12 @@ namespace GoF2Remake.Data
             int old = Session.ShipIndex;
             var oldMods = Session.ShipMods;
             if (!Cheats.FreeShopping) ChangeCredits(-ShipPrice(ship));
+            var kept = EquipmentToStore();
             SwitchTo(ship, Stock.TakeMods(ship));   // the bought row's mods (OnTouchEnd: getMods of the row, both branches)
             Stock.ships.Remove(ship);   // the bought row is gone
             GoF2Remake.Multiplayer.NetStock.ShipChanged(Station, ship, -1);
-            KaamoClub.Store(old, 0, oldMods);   // a bare hull (makeShip(old) + its mods; Ship::clone resets the race to 0)
+            // A bare hull (makeShip(old) + its mods; Ship::clone resets the race to 0), or with its items (KaamoKeepsEquipment).
+            KaamoClub.Store(old, 0, oldMods, kept);
             return true;
         }
 
@@ -389,13 +445,22 @@ namespace GoF2Remake.Data
             return Result.Ok;
         }
 
-        /// <summary>333 -> Yes: the stored hull (its own mods) becomes the flown ship; the old hull takes its row.</summary>
+        /// <summary>333 -> Yes: the stored hull (its own mods) becomes the flown ship; the old hull takes its row. With
+        /// KaamoKeepsEquipment each hull keeps its own items (the old one's stay on it in storage, the stored one's are
+        /// mounted); without it the mounted items move over (the original) and a stored hull's items go to the storage.</summary>
         public bool UseStored(int index)
         {
             if (CanUseStored(index) != Result.Ok) return false;
             var stored = Session.KaamoShips[index];
-            var old = new StoredShip(Session.ShipIndex, 0, Session.ShipMods);
-            SwitchTo(stored.ship, stored.mods);
+            var storedGear = stored.equipment ?? new List<ItemStack>();
+            var kept = EquipmentToStore();
+            var old = new StoredShip(Session.ShipIndex, 0, Session.ShipMods, kept);
+            if (kept != null) SwitchTo(stored.ship, stored.mods, Session.Equipment.Concat(storedGear).ToList());   // the story's items first
+            else
+            {
+                SwitchTo(stored.ship, stored.mods);
+                KaamoClub.AddToStorage(storedGear);
+            }
             Session.KaamoShips[index] = old;
             return true;
         }
@@ -408,6 +473,7 @@ namespace GoF2Remake.Data
         {
             if (index < 0 || index >= Session.KaamoShips.Count) return false;
             ChangeCredits(StoredPrice(index));
+            KaamoClub.AddToStorage(Session.KaamoShips[index].equipment);   // remake: its items stay in the club
             Session.KaamoShips.RemoveAt(index);
             return true;
         }

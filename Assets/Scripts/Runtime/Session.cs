@@ -123,8 +123,23 @@ namespace GoF2Remake.Data
         /// mods: 0 +40 hull, 1 +30 t cargo, 2 +1 equipment slot, 3 handling +0.2. They belong to the hull (cleared when
         /// the ship is traded).</summary>
         public static List<int> ShipMods = new List<int>();
-        public static void AddShipMod(int mod) { if (mod >= 0 && !ShipMods.Contains(mod)) ShipMods.Add(mod); }
+        /// <summary>Remake: with Settings.KaamoStacking a mod can be fitted again (a level is how many times it is in the
+        /// list); the original's rule is one of each.</summary>
+        public static void AddShipMod(int mod) { if (mod >= 0 && (Settings.KaamoStacking || !ShipMods.Contains(mod))) ShipMods.Add(mod); }
         public static bool HasMod(int mod) => ShipMods.Contains(mod);
+        /// <summary>How many times the mod is fitted (its level; 0 = none).</summary>
+        public static int ModLevel(int mod)
+        {
+            int n = 0;   // the List itself, not the IEnumerable overload: that boxed its enumerator (MaxLoad, every HUD frame)
+            if (ShipMods != null) foreach (int m in ShipMods) if (m == mod) n++;
+            return n;
+        }
+        public static int ModLevel(IEnumerable<int> mods, int mod)
+        {
+            int n = 0;
+            if (mods != null) foreach (int m in mods) if (m == mod) n++;
+            return n;
+        }
 
         /// <summary>Status+0x114 (Reference/research/kaamo_club.md 2): the Kaamo Club, 0 not owned, 1 Mkkt Bkkt's call
         /// heard, 2 purchasable, 3 owned.</summary>
@@ -207,6 +222,9 @@ namespace GoF2Remake.Data
         public static bool Hardcore;
         /// <summary>This game's identity (a new one at every new game; saved), so a hardcore death finds every slot of the run.</summary>
         public static string RunId = "";
+        /// <summary>Remake mods: the mods' new-game options switched on for this game ("mod_id:option_id",
+        /// Modding.ModGameOptions; saved).</summary>
+        public static HashSet<string> ModGameOptions = new HashSet<string>();
         public const int FreePlayMission = 20;
 
         /// <summary>
@@ -384,6 +402,7 @@ namespace GoF2Remake.Data
             ModCampaign = "";
             Hardcore = false;
             RunId = System.Guid.NewGuid().ToString("N");
+            ModGameOptions = new HashSet<string>();
             GraphQuestsDone = new HashSet<string>();
             GoF2Remake.Events.EventRunner.ResetLocal();   // single player's graph runs go with the game
             Blueprints = new List<BlueprintState>();

@@ -158,6 +158,11 @@ namespace GoF2Remake.Data
         public static float HapticsIntensity { get => Get("haptics", 1f); set => Set("haptics", Mathf.Clamp01(value)); }
 
         /// <summary>Controller stick dead zone (InputSettings.defaultDeadzoneMin).</summary>
+        /// <summary>Remake (#61, the original's Options > Controls > Configure, options+0x54 / +0x58): where the touch
+        /// controls' left group (the stick) and right cluster (fire) sit, 0 = highest, 1 = lowest the original allows;
+        /// -1 = the original's defaults (S 415, F 365; TouchControls).</summary>
+        public static float TouchLeftHeight { get => Get("touchLeftHeight", -1f); set => Set("touchLeftHeight", value < 0f ? -1f : Mathf.Clamp01(value)); }
+        public static float TouchRightHeight { get => Get("touchRightHeight", -1f); set => Set("touchRightHeight", value < 0f ? -1f : Mathf.Clamp01(value)); }
         public static float StickDeadzone { get => Get("stickDeadzone", DefaultDeadzone); set => Set("stickDeadzone", Mathf.Clamp(value, 0.05f, 0.4f)); }
 
         // ---- gameplay ----------------------------------------------------------------------------------------
@@ -187,6 +192,11 @@ namespace GoF2Remake.Data
         /// and any completed lock replaces the old one); off (default) = the remake's smarter lock (CombatRadar).</summary>
         public static bool OriginalTargetLock { get => GetBool("originalTargetLock", false); set => SetBool("originalTargetLock", value); }
         public static bool PirateEvents { get => GetBool("pirateEvents", true); set => SetBool("pirateEvents", value); }
+        /// <summary>Remake (players' suggestion): the Kaamo Club mechanics sell their upgrade again, the price doubling per
+        /// level (LoungeChat.ModPrice); off = the original's one of each. Levels already fitted stay either way.</summary>
+        public static bool KaamoStacking { get => GetBool("kaamoStacking", true); set => SetBool("kaamoStacking", value); }
+        /// <summary>Remake (players' suggestion): a hull stored in the Kaamo Club keeps the items mounted on it (Hangar).</summary>
+        public static bool KaamoKeepsEquipment { get => GetBool("kaamoKeepsEquipment", true); set => SetBool("kaamoKeepsEquipment", value); }
         /// <summary>Remake (players' suggestion): the capital ships fight back (World.CapitalShips): escorts, stronger turrets,
         /// a killable carrier and Vossk battleship with loot, the carrier's Inflicts and its resupply dock. Off = the original.</summary>
         public static bool CapitalShips { get => GetBool("capitalShips", false); set => SetBool("capitalShips", value); }
@@ -234,21 +244,51 @@ namespace GoF2Remake.Data
         /// <summary>Whether the German voice lines play (VoiceLanguage, "auto" follows the text language).</summary>
         public static bool GermanVoices => VoiceLanguage switch { "de" => true, "en" => false, _ => Language == "de" };
 
-        /// <summary>"Default settings" (497): every option back to its default, the language kept.</summary>
+        // "Default settings" (497) by Options tab (OptionsCatalog.ResetPage): the keys of every option on it. A new option's
+        // key goes in its tab's list. Not reset: the text language and the tilt calibration (taken on the device, not an
+        // option); the Key bindings tab resets the bindings (GameControls), the in-game Difficulty and Debug tools rows are
+        // the game's / Cheats' state.
+        public static readonly string[] SoundKeys = { "masterVolume", "musicVolume", "sfxVolume", "voiceVolume", "eachWeaponSound", "muteInBackground" };
+        public static readonly string[] GraphicsKeys =
+        {
+            "displayMode", "resolutionWidth", "resolutionHeight", "frameRate", "quality", "renderScale", "upscaler", "upscalerQuality",
+            "msaa", "brightness", "bloom", "bloomStyle", "hangarShadows", "hangarDof", "lensFlare", "npcPlayerEngines", "fov",
+            "cameraShake", "showFps",
+        };
+        public static readonly string[] ControlsKeys =
+        {
+            "tiltSteering", "tiltSensitivity", "sensitivity", "keyAutofire", "levelPitch", "invertPitch", "invertYaw", "invertDrillY",
+            "invertDrillX", "gyroSteering", "gyroSensitivity", "mouseSteering", "mouseDeadzone", "vrGrabControls", "haptics", "stickDeadzone",
+            "touchLeftHeight", "touchRightHeight",
+        };
+        public static readonly string[] GameplayKeys =
+        {
+            "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoKeepsEquipment", "informerOriginalRule",
+            "originalTargetLock", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "discordPresence",
+        };
+        public static readonly string[] LanguageKeys = { "voiceLanguage" };
+
+        /// <summary>These options back to their defaults.</summary>
+        public static void Reset(IEnumerable<string> keys)
+        {
+            foreach (var key in keys)
+            {
+                PlayerPrefs.DeleteKey(Prefix + key);
+                cache.Remove(key);
+            }
+            PlayerPrefs.Save();
+            Changed?.Invoke();
+        }
+
+        /// <summary>"Default settings" (497), every tab: every option back to its default and the key bindings, the language
+        /// kept. (Before, a list from the early options: 19 later ones, animated dialogue, hangar flights and shadows, mouse
+        /// steering, Show FPS, the target lock... were never reset.)</summary>
         public static void ResetToDefaults()
         {
-            foreach (var key in new[]
-                     {
-                         "masterVolume", "musicVolume", "sfxVolume", "voiceVolume", "displayMode", "resolutionWidth", "resolutionHeight",
-                         "frameRate", "renderScale", "upscaler", "upscalerQuality", "msaa", "quality", "brightness", "bloom", "bloomStyle", "lensFlare", "npcPlayerEngines", "fov", "cameraShake",
-                         "sensitivity", "invertPitch", "invertYaw", "invertDrillY", "invertDrillX", "gyroSteering", "gyroSensitivity", "haptics", "stickDeadzone", "mouseDeadzone", "launchCamera", "autoAdvanceDialogue", "inputHints",
-                         "pirateEvents", "capitalShips", "tutorialHints", "levelPitch",
-                     })
-                PlayerPrefs.DeleteKey(Prefix + key);
-            PlayerPrefs.Save();
-            cache.Clear();
-            GoF2Remake.Flight.GameControls.ResetToDefaults();   // the key bindings too
-            Changed?.Invoke();
+            GoF2Remake.Flight.GameControls.ResetToDefaults();
+            var all = new List<string>();
+            foreach (var group in new[] { SoundKeys, GraphicsKeys, ControlsKeys, GameplayKeys, LanguageKeys }) all.AddRange(group);
+            Reset(all);
         }
 
         // PlayerPrefs reads go through a cache: game code reads some options every frame.

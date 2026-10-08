@@ -471,10 +471,38 @@
     color: var(--gof-text);
 }
 
+/* Remake (#62): a dealer / stored ship's stat compared with the ship flown (ItemInfo.ShipStatsCompared). */
+.stat-compare {
+    flex-direction: row;
+    align-items: center;
+}
+
+.stat-arrow {
+    width: 57px;
+    height: 32px;
+    margin-left: 8px;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
 .detail-text {
     margin-top: 14px;
     font-size: 20px;
     color: var(--gof-text);
+    white-space: normal;
+}
+
+/* Remake: the ship's Kaamo Club mods under its description (ItemInfo.FillModLines: hangar, carrier, item window). */
+.kaamo-mods {
+    margin-top: 14px;
+    padding: 8px 12px;
+    border-left-width: 3px;
+    border-left-color: #FFA630;
+    background-color: rgba(255, 166, 48, 0.08);
+}
+
+.kaamo-mod-line {
+    font-size: 18px;
+    color: #FFC872;
     white-space: normal;
 }
 

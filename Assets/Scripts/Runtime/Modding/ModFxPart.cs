@@ -129,10 +129,13 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>Restarts every part under 'root'; returns the longest lifetime.</summary>
-        public static float RestartAll(GameObject root)
+        public static float RestartAll(GameObject root) => RestartAll(root.GetComponentsInChildren<ModFxPart>(true));
+
+        /// <summary>RestartAll on parts collected beforehand (GunRig: per shot and per hit, without a hierarchy walk).</summary>
+        public static float RestartAll(ModFxPart[] parts)
         {
             float l = 0f;
-            foreach (var p in root.GetComponentsInChildren<ModFxPart>(true)) { p.Restart(); l = Mathf.Max(l, p.lifetimeMs); }
+            foreach (var p in parts) { p.Restart(); l = Mathf.Max(l, p.lifetimeMs); }
             return l;
         }
     }

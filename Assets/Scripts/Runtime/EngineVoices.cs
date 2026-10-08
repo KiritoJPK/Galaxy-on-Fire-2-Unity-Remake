@@ -25,7 +25,10 @@ namespace GoF2Remake.Flight
             public AudioSource source;
             public int eventId;
             public float baseVolume, gain, audible;
+            public bool loudest;   // among the event's MaxPerEvent loudest this frame
         }
+
+        static readonly int[] Events = { 46, 47, 48 };   // not a new array every frame
 
         static readonly List<Voice> voices = new List<Voice>();
         static readonly List<Voice> candidates = new List<Voice>();
@@ -69,7 +72,7 @@ namespace GoF2Remake.Flight
             voices.RemoveAll(x => x.source == null);
             var at = Listener();
             float dtMs = Time.unscaledDeltaTime * 1000f;
-            foreach (int id in new[] { 46, 47, 48 })
+            foreach (int id in Events)
             {
                 candidates.Clear();
                 foreach (var v in voices)
@@ -81,11 +84,12 @@ namespace GoF2Remake.Flight
                     if (v.audible > 0f) candidates.Add(v);
                 }
                 candidates.Sort((a, b) => b.audible.CompareTo(a.audible));
+                foreach (var v in voices) v.loudest = false;
+                for (int i = 0; i < candidates.Count && i < MaxPerEvent; i++) candidates[i].loudest = true;   // was IndexOf per voice
                 foreach (var v in voices)
                 {
                     if (v.eventId != id) continue;
-                    int rank = candidates.IndexOf(v);
-                    bool on = rank >= 0 && rank < MaxPerEvent;
+                    bool on = v.loudest;
                     v.gain = Mathf.MoveTowards(v.gain, on ? 1f : 0f, dtMs / (on ? FadeInMs : FadeOutMs));
                     v.source.volume = v.baseVolume * v.gain * Settings.SfxVolume;
                 }

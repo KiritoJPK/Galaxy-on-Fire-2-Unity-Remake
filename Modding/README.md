@@ -3,6 +3,9 @@
 A mod is a folder (or a `.zip`) of plain files: JSON for data, PNG for images. Mods contain no code, so a mod you download can't
 harm your computer. Players turn mods on and off in the main menu's **Mods** screen.
 
+**Making a mod with an AI assistant:** `Modding/ai/gof2-modding` is this guide condensed for Claude, ChatGPT and the like,
+with every original item, ship, system and station number in `reference.md`. See `Modding/ai/README.md` for how to use it.
+
 What mods can do so far:
 
 - **Add new items**: weapons, missiles, equipment and goods. Each new item is based on an existing one and takes its model,
@@ -11,7 +14,11 @@ What mods can do so far:
 - **Give weapons their own look and sound**: projectiles, muzzle flashes and impacts from your own sprites or 3D models,
   your own shot and explosion sounds.
 - **Add new ships**: your own 3D model (glTF / GLB) with its stats, weapon mounts, turrets, engine glows and textures, sold
-  by visitors in the Space Lounges.
+  by visitors in the Space Lounges and by the ordinary ship dealers.
+- **Add blueprints**: for ships (skins too) and items, with their ingredients and autocomplete price, found in lounges, in
+  hackable derelict freighters and in the wrecks of the ships the player destroys.
+- **Add new-game options**: a card the player switches on when starting a new game (like "All Canon Ships"), and content
+  that only appears with it, or only later in the game (after leaving Mido, after the Supernova...).
 - **Change existing ships**: armour, cargo, price, slots, handling, and their model.
 - **Add star systems and stations**: on the star map, linked by jumpgates, with their own orbits, shops and bars, their own
   station models (glTF / GLB), planets and suns, and their own hangars and bars to dock in.
@@ -37,6 +44,11 @@ The **Open mods folder** button in the Mods screen opens the folder the selected
 one above; on a phone the screen shows its path). The selected mod's details show where it is installed. After copying a
 mod in, press **Refresh**. New mods start turned off.
 
+Or press **Import mod** and pick the mod's `.zip` file with the system's file picker (Android, Windows, Linux with
+zenity or kdialog installed, macOS, the Windows Store version; not iOS): the game checks that it is a mod and puts it into the
+Mods folder as `<id>.zip`. A mod with the same id is replaced (the game asks first) and stays on if it was. **Delete** removes
+the selected mod from the device after asking; the mods that need it are turned off.
+
 The game keeps what it makes from a mod's textures (and its ships' hangar shadows) in a cache, so later starts load faster;
 an edited texture is made again by itself. If a mod still looks wrong after you changed it, press **Rebuild cache**: every
 mod cache is deleted and the mods load again.
@@ -53,8 +65,6 @@ plasma_arsenal.zip            plasma_arsenal.zip
 └─ items.json                    ├─ preview.png
                                  └─ items.json
 ```
-
-The `.gof2mod` extension works too (it's the same zip).
 
 ## mod.json
 
@@ -146,6 +156,7 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 | `defaultEconomy` | The same fields again, used when the player picked the Default Economy (the PC / Mac prices) for their game. |
 | `fx` | A weapon's own look and sound, see [Weapon effects](#weapon-effects). |
 | `icon` | Its own shop icon: a PNG in the mod, 180 x 88 like the originals (frame and background included; copy one from `Assets/Resources/GoF2Icons` to start from). Without it the item shows its base item's icon. An `override` with `icon` gives an original item a new one. |
+| `available` | A [condition](#conditions) that must hold before shops stock it or it turns up in loot (an `override` can hold back an original item too). |
 
 ### Stats
 
@@ -320,6 +331,8 @@ A list of entries, like items.json: `"id"` adds a ship, `"override"` changes one
 | `materials` | Optional. Replace the model's own materials, see below. |
 | `throttleGlow`, `extraGlows` | Optional. Parts of the hull that glow with the throttle, see below. |
 | `lounge` | Optional. A visitor in the Space Lounges sells it: in systems of `systemRace` (-1 = any), from story step `minCampaign` (in free play from rank `minRank`), `chance` % each time a bar fills with new visitors. |
+| `dealer` | Optional. The ordinary ship dealers may stock it: `{ "chance": 2, "systemRace": -1, "minTechLevel": 0 }`, `chance` % (decimals allowed) each time a station's dealer list is made, at stations of `systemRace` systems (-1 = any) with at least that tech level. Not the special yards (Kothar, Quineros, Thynome...). |
+| `available` | Optional. A [condition](#conditions) that must hold before it is sold anywhere (dealers and lounges). |
 
 The model's own materials (base colour, metallic-roughness, normal map, emission, transparency) are used as they are. glTF
 from Blender works: File > Export > glTF 2.0, format glTF Binary (.glb), +Y up. Projects made in Unity can use the
@@ -510,7 +523,9 @@ story off.
 | Field | |
 |---|---|
 | `name`, `description` | The entry's title and text (strings, or per language). |
-| `image` | The entry's picture, a PNG (16:9 looks best). |
+| `image` | The campaign's card, shown beside the game's three campaign cards and picked the same way: a PNG like theirs, 290 x 448 or a multiple (580 x 896 is sharp). It is cropped to the card. |
+| `imageHover` | Optional. The card while it is selected (fades in, like the game's cards). |
+| `showTitle` | `true` (default): the name and the mod on a plate at the card's foot. `false` when the art has its own title. |
 | `startStation` | **Required.** Where the game begins, docked (a number or `"mod_id:station_id"`). |
 | `startShip` | **Required.** The player's first ship. |
 | `credits` | The money the player starts with. Default 0. |
@@ -525,6 +540,109 @@ story off.
 
 A campaign's mod usually depends on the mods with its galaxy, ships and items, so turning it on turns them on too. Saves
 remember the campaign; loading one asks for its mods like any modded save.
+
+## New-game options
+
+`gameoptions.json` adds cards to the **Game options** panel of Start new game (after the difficulty and the economy), beside
+the Kaamo Club, Hardcore and Tutorials switches. Each card is a switch the player turns on or off for the game they start; the
+game remembers it in its saves, and your content asks for it with `option(...)` in its [conditions](#conditions).
+
+```json
+[
+    {
+        "id": "canon_ships",
+        "name": "All Canon Ships",
+        "description": "The ships of Galaxy on Fire 3D and 3 join the game as you progress.",
+        "image": "cards/canon_ships.png",
+        "showTitle": false,
+        "default": true
+    }
+]
+```
+
+| Field | |
+|---|---|
+| `id` | **Required.** The option's id within your mod; conditions name it `option(<mod id>:<id>)` (or `option(<id>)` when no other mod has that id). |
+| `name`, `description` | The card's name (on its plate and in the tooltip) and its description (the tooltip). |
+| `image` | The card's art, like a campaign card: 290 x 448 or a multiple. Without one the card is plain with its name. |
+| `imageHover` | Optional. The art while the card is selected. |
+| `showTitle` | `true` (default): the name and the mod on a plate at the card's foot; `false` when the art has its own title. |
+| `default` | The switch's position the first time (afterwards the player's last choice). Also what a multiplayer session plays with. |
+
+Two cards show at a time; more scroll sideways (drag, wheel, or the arrow keys / D-pad). A game started before your mod was
+installed has every option off.
+
+## Conditions
+
+Several fields take a condition: `available` on items, ships and blueprints, and the quests' "Starts when". It is written in
+the event graphs' expression language and is checked when it matters (a shop's stock, a lounge's visitors, a kill...):
+
+| Word | |
+|---|---|
+| `option(mod_id:option_id)` | 1 when that new-game option is on in this game. |
+| `won(main)`, `won(valkyrie)`, `won(supernova)` | 1 when that campaign's story is finished in this game. |
+| `systemsvisited` | How many star systems the player has docked in (2 or more: they have left Mido). |
+| `campaign` | The story step (-1 in free play and mod campaigns). |
+| `rank`, `credits`, `kills`, `station`, `system`, `ship` | The player's rank, credits, kills, where they are docked / flying, the ship they fly. |
+| `visited(station)`, `has(item)`, `cargo(item)`, `quest(name)` | A station docked at; how many of an item the player has (mounted too) / has in the hold; a quest under way (1) or done (2). |
+
+Combine them with `and`, `or`, `not`, comparisons and arithmetic:
+
+```json
+"available": "option(canon_ships:canon_ships) and systemsvisited >= 2"
+"available": "option(canon_ships:canon_ships) and won(supernova)"
+```
+
+A condition the game can't read counts as false, and the mod shows a warning in the Mods screen.
+
+## Blueprints
+
+`blueprints.json` adds blueprints, built in the hangar's **Blueprints** tab like the game's own: invest the ingredients (or
+autocomplete), and the product is made at the station where the first ingredient went in.
+
+```json
+[
+    {
+        "id": "valkyrie",
+        "ship": "canon_ships:valkyrie",
+        "ingredients": [ { "item": 155, "amount": 400 }, { "item": 127, "amount": 60 }, { "item": 122, "amount": 100 } ],
+        "autocomplete": 1500000,
+        "available": "option(canon_ships:canon_ships) and won(supernova)",
+        "lounge": { "chance": 3, "price": 400000, "systemRace": -1 },
+        "derelict": { "chance": 2, "race": "terran" },
+        "drops": [ { "race": "pirate", "chance": 1 }, { "race": "vossk", "chance": 0.5 } ]
+    },
+    {
+        "id": "valkyrie_gold",
+        "ship": "canon_ships:valkyrie_gold",
+        "requiresShip": "canon_ships:valkyrie",
+        "ingredients": [ { "item": 154, "amount": 1000 }, { "item": 165, "amount": 100 }, { "item": 122, "amount": 300 } ],
+        "autocomplete": false,
+        "unlocked": true,
+        "available": "option(canon_ships:canon_ships) and won(supernova)"
+    }
+]
+```
+
+| Field | |
+|---|---|
+| `id` | **Required.** The blueprint's id within your mod. |
+| `ship` or `item` | **Required, one of them.** What it makes: a ship (yours, another mod's or an original's number) or an item (a secondary weapon comes 10 at a time, like the game's). An item that already has a blueprint gets yours instead. |
+| `ingredients` | **Required.** `{ "item", "amount" }` each: goods, ores and cores, and items too (the player demounts them first). |
+| `requiresShip` | Optional. Only built while flying that ship, which it then replaces: a skin ("Valkyrie, 1000 t Gold, 100 Golden Cores, 300 Energy Cells"). The ship's Kaamo Club upgrades stay. |
+| `autocomplete` | `true` (default): the game's price, 1.25 x the product's price. A number: that price. `false`: it can't be autocompleted. |
+| `available` | A [condition](#conditions) before any source offers it. |
+| `unlocked` | `true`: the player knows it as soon as it is available (the next docking), without finding it. |
+| `lounge` | A Space Lounge visitor sells it: `chance` % each time a bar fills with new visitors, for `price` (default half the product's price), in `systemRace` systems (-1 = any). |
+| `derelict` | `chance` % of the orbits visited hold a derelict freighter (`race`: terran, vossk, nivelian, midorian or any) to dock at and hack; it leaves the blueprint in a data container. |
+| `drops` | A ship the player destroys may leave it in a data container: `race` (terran, vossk, nivelian, midorian, pirate, void, specter or any), `chance` % per kill (decimals allowed). |
+
+A blueprint found in a data container is learnt when the tractor beam pulls the container in ("Blueprint found: ..."). A
+ship's blueprint shows the ship in the Blueprints tab, and the finished ship waits at the station where it was built: there
+it replaces the player's ship like a purchase (the old one is traded in at its price, or parked in the Kaamo Club when the
+player owns it and has no ship of that type stored), the equipment moving over as far as it fits.
+
+Every source stops offering a blueprint once the player knows it.
 
 ## Hangars and bars
 
@@ -601,7 +719,7 @@ text/de.json
 The keys are `items.<id>.name` / `items.<id>.description`, `ships.<id>.name` / `ships.<id>.description`,
 `systems.<id>.name` and `stations.<id>.name` (for an override the number: `items.12.name`). The game uses the player's
 language, then English, then the plain text. Language codes: `en`, `de`, `fr`, `es`, `it`, `pt`, `ru`, `pl`, `nl`,
-`ar`, `ja`, `ko`.
+`ar`, `ja`, `ko`, `zh`, `hi`.
 
 ## Quests and bar missions
 

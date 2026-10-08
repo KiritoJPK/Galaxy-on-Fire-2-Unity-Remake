@@ -147,15 +147,53 @@ namespace GoF2Remake.Flight
             }
             Damaged?.Invoke(this, dmg, byNpc);
             if (dead && SaveFromDeath != null && SaveFromDeath()) dead = false;   // the player's emergency system
-            if (dead) { killedByNpc = byNpc; Die(); }
+            if (dead) { killedByNpc = byNpc; Die(true); }
         }
 
-        /// <summary>Destroys it with its explosion and sound (a mined asteroid: PlayerEgo::stopMining sets HP to -1).</summary>
+        /// <summary>Destroys it with its explosion and sound (a mined asteroid: PlayerEgo::stopMining sets HP to -1 and clears
+        /// the loot flag, so no crate; multiplayer: another game destroyed it and dropped the crate there).</summary>
         public void Explode()
         {
             if (!Alive) return;
             if (hitpoints != null) hitpoints.hull = 0;
-            Die();
+            Die(false);
+        }
+
+        // Gun's broad phase (MayContain): a sphere around the hit volume, measured once a frame.
+        int broadFrame = -1;
+        Vector3 broadCentre;
+        float broadReach, boxesLocalReach;
+        Bounds[] broadBoxes;
+
+        /// <summary>False when 'point' (metres) can't be inside the hit volume, so Contains would be false too: a sphere
+        /// around the cube or the boxes, its centre and size taken on the first call each 'frame' (Time.frameCount), with a
+        /// margin for the target still moving later in the frame. Every bullet was tested against every target with several
+        /// engine calls per pair (the destroyed check, the transform, its position); this is plain arithmetic. A destroyed
+        /// target: false.</summary>
+        public bool MayContain(Vector3 point, int frame)
+        {
+            if (broadFrame != frame)
+            {
+                broadFrame = frame;
+                if (this == null) { broadReach = -1f; return false; }
+                var t = transform;
+                broadCentre = t.position;
+                if (boxes != null && boxes.Length > 0)
+                {
+                    if (!ReferenceEquals(boxes, broadBoxes))
+                    {
+                        broadBoxes = boxes;
+                        boxesLocalReach = 0f;
+                        foreach (var b in boxes) boxesLocalReach = Mathf.Max(boxesLocalReach, b.center.magnitude + b.extents.magnitude);
+                    }
+                    var s = t.lossyScale;
+                    broadReach = boxesLocalReach * Mathf.Max(Mathf.Abs(s.x), Mathf.Max(Mathf.Abs(s.y), Mathf.Abs(s.z)));
+                }
+                else broadReach = radius * 1.7321f;   // the cube's corner
+                // How far a ship can still move this frame after being measured (at most ~1 m/ms), plus 10 m.
+                broadReach += 10f + Time.deltaTime * 1000f;
+            }
+            return broadReach >= 0f && (point - broadCentre).sqrMagnitude <= broadReach * broadReach;
         }
 
         /// <summary>Gun::calcCharacterCollision: 'point' (metres) inside the cube, or inside a local box.</summary>
@@ -188,9 +226,10 @@ namespace GoF2Remake.Flight
             return transform.TransformPoint(best);
         }
 
-        void Die()
+        void Die(bool loot)
         {
             hp = 0f;
+            if (loot && isAsteroid && oreItem >= 0) DropAsteroidCrate();
             if (!customDeath)
             {
                 foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = false;
@@ -224,6 +263,19 @@ namespace GoF2Remake.Flight
             }
             Died?.Invoke(this);
             if (!customDeath) All.Remove(this);
+        }
+
+        /// <summary>PlayerAsteroid::update 0xf7060: an asteroid destroyed by a hit (shot, rammed, a blast; its loot flag +0x48
+        /// is set by the constructor and only mining clears it) leaves a crate: class A (quality 7) 4 % with 1 core (ore + 11,
+        /// Novanium's 218), the others 20 % with 1-3 t of its ore; KIPlayer::createCrate(1) the rock container 0x421e
+        /// asteroid_01_junk, (2) 0x421f asteroid_void_junk for Void Crystals (164). The asteroid's KIPlayer race is -1: no
+        /// race rules on the capture.</summary>
+        void DropAsteroidCrate()
+        {
+            bool classA = quality == 7;
+            if (UnityEngine.Random.Range(0, 100) > (classA ? 3 : 19)) return;
+            var stack = new GoF2Remake.Data.ItemStack(classA ? CoreItem : oreItem, classA ? 1 : UnityEngine.Random.Range(0, 3) + 1);
+            Crate.Spawn(transform.position, new[] { stack }, -1, oreItem == 164 ? Crate.LookVoidRock : Crate.LookRock);
         }
 
         /// <summary>A dead ship relaunched (KIPlayer::revive): full pools.</summary>

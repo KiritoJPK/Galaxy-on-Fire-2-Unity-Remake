@@ -1,6 +1,7 @@
 // CombatAssets.cs
 // What ship combat needs that can't be loaded by name (Resources/GoF2Combat/CombatAssets, made by GoF2 > Build > Combat Assets; Reference/research/ship_combat.md 5, 8 and npc_traffic_ai.md 8):
-//   crates      container_003_terran / 004_vossk / 002_nivelian / 001_midorian / 005_void (KIPlayer::createCrate)
+//   crates      container_003_terran / 004_vossk / 002_nivelian / 001_midorian / 005_void (KIPlayer::createCrate), the shot
+//               asteroids' asteroid_01_junk / asteroid_void_junk (types 1 / 2), the junk's space_junk_004 (type 3)
 //   wrecks      cargo_003_terran / 004_vossk / 002_nivelian / 001_midorian _explosion_anim, battleship_terran_explosion_anim
 //   explosion   Explosion type 0: explosion_anim_lookat_alpha (+ _add child), 3..9 explosion_debris streaks
 //   tractor     beam meshes of items 68, 69, 70, 194 (projectile_068..070, v_projectile_194)
@@ -47,6 +48,8 @@ namespace GoF2Remake.Flight
         public GameObject[] junk;
         [Tooltip("KIPlayer::createCrate(3): the destroyed junk's container, mesh 0x4218 space_junk_004.")]
         public GameObject junkCrate;
+        [Tooltip("KIPlayer::createCrate(1) / (2): a shot asteroid's crate, meshes 0x421e asteroid_01_junk / 0x421f asteroid_void_junk.")]
+        public GameObject asteroidCrate, voidAsteroidCrate;
         [Tooltip("Sound 46: one picked per ship.")]
         public AudioClip[] enemyEngines;
         [Tooltip("Sound 47: one picked per ship.")]
@@ -92,6 +95,12 @@ namespace GoF2Remake.Flight
 
         static CombatAssets cached;
         public static CombatAssets Load() => cached != null ? cached : cached = Resources.Load<CombatAssets>(ResourcePath);
+
+        /// <summary>KIPlayer::createCrate(type)'s mesh: 1 the rock 0x421e, 2 the Void rock 0x421f, 3 the junk container 0x4218,
+        /// else the race's container.</summary>
+        public GameObject CrateModel(int look, int race) =>
+            look == Flight.Crate.LookRock ? asteroidCrate : look == Flight.Crate.LookVoidRock ? voidAsteroidCrate
+            : look == Flight.Crate.LookJunk ? junkCrate : Crate(race);
 
         public GameObject Crate(int race) => crates == null || crates.Length < 5 ? null
             : race == 0 ? crates[0] : race == 1 ? crates[1] : race == 3 ? crates[3] : race == 9 ? crates[4] : crates[2];

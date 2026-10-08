@@ -77,6 +77,8 @@ namespace GoF2Remake.Flight
         AudioSource sfx;
         AudioClip dockSound, turnSound, solvedSound;
         Vector3 approachLocal, dockLocal, dockDirLocal, pivotLocal;
+        Transform takenObject;   // the approach point reserved (SpacePoints.Take) while approaching / docked
+        int takenPoint = -1;
         Vector3 fromPos, toPos;
         Quaternion fromRot, toRot;
         float phaseMs, tickMs;
@@ -109,6 +111,7 @@ namespace GoF2Remake.Flight
             var points = SpacePoints.Set(target.SpacePointSet);
             if (!NearestPoints(target, points)) return false;
             Target = target;
+            if (takenPoint >= 0) { takenObject = target.transform; SpacePoints.Take(takenObject, takenPoint); }
             State = Phase.Approach;
             weapons?.ResetGunDelay();   // PlayerEgo::approachDockingPoint
             phaseMs = 0f;
@@ -145,20 +148,33 @@ namespace GoF2Remake.Flight
             ship.autopilotTarget = null;
             Target = null;
             State = Phase.Idle;
+            FreePoint();
         }
 
-        /// <summary>The nearest approach point to the player and the docking point nearest that (object-local Unity).</summary>
+        void FreePoint()
+        {
+            if (takenPoint >= 0) SpacePoints.Free(takenObject, takenPoint);
+            takenObject = null;
+            takenPoint = -1;
+        }
+
+        /// <summary>The nearest free approach point to the player (KIPlayer::getNearestNavigationPoint; one another ship has
+        /// taken only when every one is taken) and the docking point nearest that (object-local Unity).</summary>
         bool NearestPoints(NpcShip target, List<SpacePoints.Point> points)
         {
             float best = float.MaxValue;
-            bool found = false;
+            bool found = false, free = false;
+            takenPoint = -1;
             var local = target.transform.InverseTransformPoint(ship.transform.position);
-            foreach (var p in points)
+            for (int i = 0; i < points.Count; i++)
             {
+                var p = points[i];
                 if (p.type != SpacePoints.Approach) continue;
+                bool isFree = !SpacePoints.IsTaken(target.transform, i);
+                if (free && !isFree) continue;
                 var l = ToLocal(p.engine);
                 float d = (l - local).sqrMagnitude;
-                if (d < best) { best = d; approachLocal = l; found = true; }
+                if (d < best || (isFree && !free)) { best = d; approachLocal = l; found = true; free = isFree; takenPoint = isFree ? i : -1; }
             }
             if (!found) return false;
             best = float.MaxValue;
@@ -201,6 +217,7 @@ namespace GoF2Remake.Flight
             PlayerDocked = IsDocked;
             // TargetFollowCamera::setLookAtCam(true): the camera stays where it is and keeps the ship in view.
             if (State != Phase.Entering && State != Phase.Docked && State != Phase.Leaving) return;
+            if (PlayerTurret.ViewActive(gameObject)) return;   // the turret view's camera (docked: the original allows it)
             var cam = Camera.main;
             if (cam != null && chase != null && !chase.enabled)
                 cam.transform.rotation = Quaternion.LookRotation(ship.transform.position - cam.transform.position, Vector3.up);
@@ -364,6 +381,7 @@ namespace GoF2Remake.Flight
         {
             State = Phase.Idle;
             Target = null;
+            FreePoint();
             Hacking = null;
             TransferLabel = null;
             ship.externalControl = false;

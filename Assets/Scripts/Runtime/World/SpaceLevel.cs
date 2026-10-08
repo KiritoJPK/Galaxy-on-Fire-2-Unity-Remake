@@ -303,6 +303,7 @@ namespace GoF2Remake.World
                 FreeLook.Blocked = () => Cutscene || !LaunchCameraOver || (Mining != null && Mining.State != Mining.Phase.Idle)
                                          || (Docking != null && Docking.Busy) || (Navigation != null && Navigation.Jumping)
                                          || (SystemJump != null && SystemJump.Cinematic) || (Health != null && Health.Dead);
+            if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && Docking.IsDocked && Docking.Hacking == null && !Cutscene;
             Navigation.Docking = Docking;
             Navigation.Ships = Traffic.Ships;
             Collision.docking = Docking;
@@ -653,7 +654,7 @@ namespace GoF2Remake.World
             var ship = db.Ship(shipIndex);
             var equipment = new System.Collections.Generic.List<ItemData>();
             foreach (var e in Session.Equipment) { var it = db.Item(e.item); if (it != null) equipment.Add(it); }
-            if (ship != null) ctrl.stats = Database.BuildFlightStats(ship, equipment, Session.HasMod(3) ? 1 : 0);
+            if (ship != null) ctrl.stats = Database.BuildFlightStats(ship, equipment, Session.ModLevel(3));
             ctrl.stats.cargoAffectsHandling = Session.IsExtreme;
             ctrl.stats.cargoCapacity = Mathf.Max(1, Shop.MaxLoad(db));
             ctrl.stats.cargoLoad = Shop.CargoLoad();
@@ -711,7 +712,7 @@ namespace GoF2Remake.World
             var ctrl = root.AddComponent<ShipController>();
             var equipment = new System.Collections.Generic.List<ItemData>();
             foreach (var e in Session.Equipment) { var it = db.Item(e.item); if (it != null) equipment.Add(it); }
-            if (ship != null) ctrl.stats = Database.BuildFlightStats(ship, equipment, Session.HasMod(3) ? 1 : 0);   // mod 3: handling +0.2
+            if (ship != null) ctrl.stats = Database.BuildFlightStats(ship, equipment, Session.ModLevel(3));   // mod 3: handling +0.2 per level
             // PlayerEgo ctor: +0x235 = Status::hardCoreMode(), the cargo load then weighs on the handling.
             ctrl.stats.cargoAffectsHandling = Session.IsExtreme;
             ctrl.stats.cargoCapacity = Mathf.Max(1, Shop.MaxLoad(db));
@@ -846,13 +847,14 @@ namespace GoF2Remake.World
 
         /// <summary>MGame::OnTouchEnd -> LevelScript::skipSequence: the player tried to fly (steer, throttle, boost, fire, a
         /// tap, any key or button except the pause and autopilot-menu ones) during the start sequence.</summary>
-        /// <summary>Any key but Esc and the autopilot menu's (Q / E by default, GameControls), a click, a tap, a stick or a
-        /// controller button but Menu and the autopilot menu's (View) this frame (also the station's skip for the hangar
-        /// flights).</summary>
+        /// <summary>Any key but Esc and the flight menus' (Q / E / V / K by default, GameControls), a click, a tap, a stick or a
+        /// controller button but Menu and the menus' (View, D-pad left) this frame (also the station's skip for the hangar
+        /// flights). The menu keys do nothing during the fly-in (FlightHud), so they don't skip it either.</summary>
         public static bool PlayerTriedToFly()
         {
             var kb = GoF2Remake.Multiplayer.NetChat.Keys;
-            bool menuKey = GameControls.AutopilotMenu.WasPressedThisFrame();
+            bool menuKey = GameControls.AutopilotMenu.WasPressedThisFrame() || GameControls.ActionsMenu.WasPressedThisFrame()
+                           || GameControls.Wingmen.WasPressedThisFrame() || GameControls.KhadorDrive.WasPressedThisFrame();
             if (kb != null && kb.anyKey.wasPressedThisFrame && !kb.escapeKey.wasPressedThisFrame && !menuKey) return true;
             var mouse = Mouse.current;
             if (mouse != null && (mouse.leftButton.wasPressedThisFrame || mouse.rightButton.wasPressedThisFrame)) return true;

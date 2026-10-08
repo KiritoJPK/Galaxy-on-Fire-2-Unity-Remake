@@ -16,7 +16,7 @@ namespace GoF2Remake.Data
     [Serializable]
     public class SaveData
     {
-        public const int CurrentVersion = 15;
+        public const int CurrentVersion = 16;
 
         public int version = CurrentVersion;
         public string savedAtUtc;
@@ -98,6 +98,8 @@ namespace GoF2Remake.Data
         // version 15: a hardcore (permadeath) game and the run it belongs to (Session.Hardcore / RunId)
         public bool hardcore;
         public string runId;
+        // version 16: the mods' new-game options on in this game (Session.ModGameOptions, Modding.ModGameOptions)
+        public List<string> modGameOptions;
 
         [Serializable]
         public class KnownPrice { public int item, price, system; }
@@ -174,6 +176,28 @@ namespace GoF2Remake.Data
             return deleted;
         }
 
+        /// <summary>Remake (players' suggestion): the menus' hold-to-delete (SaveSlotRow). The file is moved to Saves/Deleted
+        /// (a time-stamped copy, the newest 20 kept) rather than destroyed, so a slip can still be undone by hand.</summary>
+        public static bool Delete(int slot)
+        {
+            if (!Exists(slot)) return false;
+            try
+            {
+                string bin = Path.Combine(Dir, "Deleted");
+                Directory.CreateDirectory(bin);
+                string to = Path.Combine(bin, $"slot_{slot:00}_{DateTime.Now:yyyyMMdd-HHmmss}.json");
+                if (File.Exists(to)) File.Delete(to);
+                File.Move(PathOf(slot), to);
+                File.SetLastWriteTimeUtc(to, DateTime.UtcNow);   // the pruning keeps the newest deletions
+                var old = new DirectoryInfo(bin).GetFiles("slot_*.json");
+                Array.Sort(old, (a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
+                for (int i = 20; i < old.Length; i++) old[i].Delete();
+                Debug.Log($"SaveGame: slot {slot} deleted (moved to {bin})");
+                return true;
+            }
+            catch (Exception e) { Debug.LogWarning($"SaveGame: couldn't delete slot {slot}: {e.Message}"); return false; }
+        }
+
         /// <summary>ModStation::autosave: slot 0, not for a game without playing time.</summary>
         public static void AutoSave()
         {
@@ -243,6 +267,7 @@ namespace GoF2Remake.Data
                 modCampaign = Session.ModCampaign ?? "",
                 hardcore = Session.Hardcore,
                 runId = Session.RunId ?? "",
+                modGameOptions = new List<string>(Session.ModGameOptions),
                 campaignMission = Session.CampaignMission,
                 station = Session.StationIndex,
                 previousStation = Session.PreviousStationIndex,
@@ -366,6 +391,9 @@ namespace GoF2Remake.Data
                                 return "a broken bar visitor";
                 }
             if (s.kaamoShips != null && s.kaamoShips.Exists(k => k == null || !Ship(k.ship))) return "an unknown ship in the Kaamo Club";
+            if (s.kaamoShips != null)
+                foreach (var k in s.kaamoShips)
+                    if (Stacks(k.equipment, "Kaamo Club ships' equipment") is string e5) return e5;
             if (s.version >= 6 && s.hasParkedShip)
             {
                 if (s.parkedShip == null || !Ship(s.parkedShip.ship)) return "an unknown parked ship";
@@ -439,6 +467,7 @@ namespace GoF2Remake.Data
             }
             Session.FreePlay = s.freePlay;
             Session.ModCampaign = s.modCampaign ?? "";
+            Session.ModGameOptions = new HashSet<string>(s.modGameOptions ?? new List<string>());
             Session.StoryMission = s.storyMission ?? new StoryMission();
             Session.StoryStepStart = s.storyStepStart;
             Session.StoryRadioPending = s.storyRadioPending;

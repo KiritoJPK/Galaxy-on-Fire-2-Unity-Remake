@@ -5,7 +5,7 @@
 //                                        reachable over USB; UWP: the package's LocalState/Mods)
 //   <the game's folder>/Mods             Windows / Linux / macOS players
 //   <the project>/Mods                   the Editor (git-ignored)
-// Each mod is a folder or a .zip / .gof2mod archive with a mod.json (ModManifest). The player turns mods on and off in
+// Each mod is a folder or a .zip archive with a mod.json (ModManifest). The player turns mods on and off in
 // the main menu's mod browser (PlayerPrefs "mods_enabled": the ids in load order, one per line); new mods start off.
 // What is on is Active: the enabled, unbroken mods whose dependencies are on, in load order with dependencies first.
 // A multiplayer session replaces it (BeginSession): a session without modded content has none, one that allows it has

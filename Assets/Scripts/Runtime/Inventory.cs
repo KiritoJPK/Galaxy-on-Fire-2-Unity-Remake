@@ -85,12 +85,16 @@ namespace GoF2Remake.Data
         public int ship;
         public int race;
         public List<int> mods = new List<int>();
+        /// <summary>Remake (Settings.KaamoKeepsEquipment): the items left mounted on the stored hull, secondaries with their
+        /// ammo; null or empty = a bare hull (the original's, and saves from before).</summary>
+        public List<ItemStack> equipment = new List<ItemStack>();
 
-        public StoredShip(int ship, int race, List<int> mods)
+        public StoredShip(int ship, int race, List<int> mods, List<ItemStack> equipment = null)
         {
             this.ship = ship;
             this.race = race;
             this.mods = mods != null ? new List<int>(mods) : new List<int>();
+            this.equipment = equipment != null ? new List<ItemStack>(equipment) : new List<ItemStack>();
         }
     }
 }

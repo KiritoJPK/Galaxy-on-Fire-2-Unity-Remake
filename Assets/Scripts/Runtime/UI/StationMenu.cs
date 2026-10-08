@@ -881,6 +881,7 @@ namespace GoF2Remake.UI
             else if (status != null && status.IsOpen) { Play(buttonRelease); status.Close(); }
             else if (lounge != null && lounge.ChatOpen) { Play(buttonRelease); lounge.CloseChat(); }
             else if (HangarOpen) { Play(buttonRelease); if (!hangarWindow.Back()) CloseHangar(); }
+            else if (SystemMenuOpen && sysPage == SysPage.Options && optionsView != null && optionsView.CloseResetPrompt()) Play(buttonRelease);   // the defaults prompt first
             else if (SystemMenuOpen && sysPage != SysPage.Main) { Play(buttonRelease); ShowSystemPage(SysPage.Main); }
             else if (SystemMenuOpen) { Play(buttonRelease); CloseSystemMenu(); }
             else if (level != null && level.View == StationView.Lounge) { Play(buttonRelease); level.SetView(StationView.Hangar); }
@@ -1188,6 +1189,13 @@ namespace GoF2Remake.UI
             if (pendingChecked || level == null || level.Station == null) return false;
             pendingChecked = true;
             var moved = Blueprints.CollectPending(level.Database, level.Station.index);
+            // Remake mods: a ship blueprint's ship finished for this station is taken now, like a bought ship.
+            string ships = new Hangar(level.Database, level.Stock).DeliverBuiltShips();
+            if (ships != null)
+            {
+                level.ReplacePlayerShip(Session.ShipIndex);
+                if (moved.Count == 0) { ShowDialog(ships, null, true); return true; }
+            }
             if (moved.Count == 0) return false;
             string text = Localization.Get(213);
             foreach (var p in moved) text += $"\n{p.quantity}x {ItemInfo.ItemName(p.item)}";
@@ -1262,9 +1270,10 @@ namespace GoF2Remake.UI
         void BuildOptionsView()
         {
             optionsView = new OptionsView(() => { Play(buttonRelease); ShowSystemPage(SysPage.Main); }, true);
-            foreach (var b in new[] { optionsView.BackButton, optionsView.DefaultsButton })
+            foreach (var b in new[] { optionsView.BackButton, optionsView.DefaultsButton, optionsView.CancelButton, optionsView.ResetTabButton, optionsView.ResetAllButton })
                 b.RegisterCallback<PointerDownEvent>(_ => Play(buttonPush), TrickleDown.TrickleDown);
             optionsView.DefaultsRestored += () => Play(buttonRelease);
+            optionsView.FooterChanged += () => Select(optionsView.FooterFocus);   // the defaults prompt opened / closed
             optionsView.Changed += c => { if (c.def.kind == OptionKind.Choice || c.def.kind == OptionKind.Toggle) Play(buttonRelease); };
             optionsView.TabChanged += () => Select(optionsView.ActiveTab);
             systemMenu.Add(optionsView.Root);
@@ -1446,12 +1455,31 @@ namespace GoF2Remake.UI
             {
                 int slot = i;
                 var save = SaveGame.Preview(i);
-                var row = SaveSlotRow.Build(level.Database, i, save, Localization.Extra("autosaveHint", "Saved automatically when you dock"));
+                var row = SaveSlotRow.Build(level.Database, i, save, Localization.Extra("autosaveHint", "Saved automatically when you dock"), DeleteSlot);
                 row.RegisterCallback<PointerDownEvent>(_ => Play(buttonPush), TrickleDown.TrickleDown);
-                row.clicked += () => { Play(buttonRelease); if (sysPage == SysPage.Load) PickLoadSlot(slot, save != null); else PickSaveSlot(slot, save != null); };
+                row.clicked += () =>
+                {
+                    if (SaveSlotRow.HoldUsed(row)) return;
+                    Play(buttonRelease);
+                    if (sysPage == SysPage.Load) PickLoadSlot(slot, save != null); else PickSaveSlot(slot, save != null);
+                };
                 row.RegisterCallback<FocusInEvent>(_ => { if (!DragScroll.PointerActive) saveSlotList.ScrollTo(row); });
                 saveSlotList.Add(row);
             }
+            SaveSlotRow.AttachHint(saveSlotList);
+        }
+
+        /// <summary>Remake: a slot held down (SaveSlotRow): deleted, the list rebuilt with the same row selected.</summary>
+        void DeleteSlot(int slot)
+        {
+            if (!SaveGame.Delete(slot)) return;
+            Play(buttonRelease);
+            root.schedule.Execute(() =>
+            {
+                if (!SavePageOpen) return;
+                BuildSaveSlots();
+                if (slot < saveSlotList.contentContainer.childCount) Select(saveSlotList.contentContainer.ElementAt(slot));
+            });
         }
 
         /// <summary>MenuTouchWindow load mode: a used slot, after 523 (the progress since the last save is lost), is loaded
@@ -1652,16 +1680,16 @@ namespace GoF2Remake.UI
                     var row = optionsView.RowOf(f);
                     if (optionsView.IsTab(f)) optionsView.StepTab(dir);
                     else if (row != null) row.Step(dir);
-                    else if (f == optionsView.BackButton || f == optionsView.DefaultsButton)
-                        Select(dir < 0 ? optionsView.BackButton : optionsView.DefaultsButton);
+                    else if (optionsView.IsFooter(f)) Select(optionsView.FooterStep(f, dir));   // Back / Default settings, or the prompt
                     else Select(optionsView.ActiveTab);
                 }
                 else
                 {
                     int step = e.direction == NavigationMoveEvent.Direction.Up ? -1 : 1;
                     int next = at < 0 ? 0 : at + step;
-                    if (step > 0 && f == optionsView.BackButton) next = at;
-                    if (step < 0 && f == optionsView.DefaultsButton) next = at - 2;
+                    // The footer is one row: down from it stays, up from any of its buttons goes to the item before it.
+                    if (step > 0 && optionsView.IsFooter(f)) next = at;
+                    if (step < 0 && optionsView.IsFooter(f)) next = optionsView.FooterStart(nav) - 1;
                     Select(nav[Mathf.Clamp(next, 0, nav.Count - 1)]);
                 }
                 e.StopPropagation();
