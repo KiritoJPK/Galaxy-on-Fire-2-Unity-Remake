@@ -346,8 +346,18 @@ namespace GoF2Remake.World
             // [0-1] the two top turrets, slid 1200 in (they slide out in the cutscene), [2-21] 20 pirates asleep far ahead.
             var t0 = StationTurrets[0];
             var t1 = StationTurrets[1];
-            BattleTurret(false, 0, t0.pos + new Vector3(1200, 0, 0), new Vector3(0, 0, t0.rz));
-            BattleTurret(false, 0, t1.pos - new Vector3(1200, 0, 0), new Vector3(0, 0, t1.rz));
+            // Modified: the turrets' slide was measured against the original (Unity units / degrees, see the constants after
+            // Build78): X from each turret's start to its end, rotation X from TurretStartRotX78 to 0, Y always 0, Z
+            // from +-TurretStartRollDeg78 to +-TurretRollDeg78. Y and Z positions from the table.
+            float mz = TurretMirrorZ78, mr = TurretRotZ78;
+            // Modified: relative to where the station actually is (like 80's host), not the origin.
+            var host78 = level.Station != null ? ToGame(level.Station.transform.position) : Vector3.zero;
+            var tr0 = BattleTurret(false, 0, host78 + new Vector3(TurretSide0_78 * TurretStartX0_78 / M, t0.pos.y, t0.pos.z * mz), new Vector3(0, 0, Mathf.Sign(t0.rz) * TurretRollDeg78 * Mathf.Deg2Rad * mr));
+            var tr1 = BattleTurret(false, 0, host78 + new Vector3(TurretSide1_78 * TurretStartX1_78 / M, t1.pos.y, t1.pos.z * mz), new Vector3(0, 0, Mathf.Sign(t1.rz) * TurretRollDeg78 * Mathf.Deg2Rad * mr));
+            // Modified: the start pose (rotation X = TurretStartRotX78, Y = 0, Z = +-TurretStartRollDeg78; the Z sign is the
+            // spawn's: 87 -> +, 273 (= -87) -> -).
+            if (tr0 != null) { rollSign0_78 = tr0.transform.eulerAngles.z > 180f ? -1f : 1f; tr0.transform.rotation = Quaternion.Euler(TurretStartRotX78, 0f, rollSign0_78 * TurretStartRollDeg78); }
+            if (tr1 != null) { rollSign1_78 = tr1.transform.eulerAngles.z > 180f ? -1f : 1f; tr1.transform.rotation = Quaternion.Euler(TurretStartRotX78, 0f, rollSign1_78 * TurretStartRollDeg78); }
             for (int i = 2; i < 22; i++)
             {
                 var at = new Vector3(-17000 + 2000 * (i - 2) + R(2000), R(10000) - 5000, 155000 + R(10000));
@@ -358,10 +368,30 @@ namespace GoF2Remake.World
             level.EndStartSequence();
             Player.rotation = Quaternion.LookRotation(Dir(new Vector3(0, 0, 1)), Vector3.up);
             EnterCutscene(false);
+            // Modified: in the original the ship leaves the station at its full default speed (100 % throttle) and keeps
+            // flying; EnterCutscene(false) parked it at the door (speed 0). The flight model flies it instead, input locked.
+            Ship.externalControl = false;
+            Ship.inputLocked = true;
+            Ship.SetThrottle(1f);
             cam.LookAt(new Vector3(2000, -1500, 16000), level.Station != null ? level.Station.transform : Player);
             PauseAnimation(level.Station);
             Step = 1;
         }
+
+        /// <summary>Modified: the two top turrets of 78, tuned against the original game (the table's X put them on swapped
+        /// sides, and the remake swung them about Y instead of X).</summary>
+        const float TurretSide0_78 = 1f;           // turret [0]'s side: +X
+        const float TurretSide1_78 = -1f;          // turret [1]'s side: -X
+        const float TurretStartX0_78 = 177.1f;     // turret [0]: |X| where its slide starts (Unity units, measured)
+        const float TurretStartX1_78 = 176f;       // turret [1]: |X| where its slide starts (Unity units, measured)
+        const float TurretEndX0_78 = 216.1f;       // turret [0]: |X| where its slide ends (Unity units, measured)
+        const float TurretEndX1_78 = 215f;         // turret [1]: |X| where its slide ends (Unity units, measured)
+        const float TurretStartRotX78 = 180f;      // rotation X at the start of the slide (degrees, measured); it ends at 0
+        float rollSign0_78 = 1f, rollSign1_78 = -1f;   // each turret's Z rotation sign
+        const float TurretStartRollDeg78 = 93f;    // |Z rotation| at the start of the slide (degrees, measured)
+        const float TurretRollDeg78 = 87f;         // |Z rotation| at the end of the slide (degrees; the table has 90)
+        const float TurretRotZ78 = 1f;             // the turrets' z rotation sign (-1 = flipped)
+        const float TurretMirrorZ78 = 1f;          // front / back (-1 = mirrored)
 
         void Build79()
         {
@@ -485,12 +515,14 @@ namespace GoF2Remake.World
         }
 
         /// <summary>The hyper_drive fx (scale 20 / 30): anim state 3 then 1 = played once, facing the camera.</summary>
-        void SpawnHyperDrive(Vector3 gamePos, float scale)
+        void SpawnHyperDrive(Vector3 gamePos, float scale, bool texture78 = false)
         {
+            fxFixed = false;   // Modified: billboarded unless a level pins it (78)
             if (fx != null) Object.Destroy(fx);
             fx = null;
             if (assets == null || assets.hyperDrive == null) return;
             fx = Object.Instantiate(assets.hyperDrive, ToUnity(gamePos), (cam.Camera != null ? cam.Camera.rotation : Quaternion.identity) * Quaternion.Euler(0f, 180f, 0f));
+            if (texture78) ReplaceFxTexture78(fx);   // Modified: before the fades / animation pick up the materials
             fx.transform.localScale *= scale;
             GunRig.StripForFx(fx);
             GunRig.EnableFades(fx);   // the parts' `extra` fade-out
@@ -545,7 +577,7 @@ namespace GoF2Remake.World
         public void LateTick(float dtMs)
         {
             cam.LateTick(dtMs);
-            FaceCamera(fx);
+            if (!fxFixed) FaceCamera(fx);   // Modified: 78's jump is aligned with the station, not the camera
             // The fx plays once (anim state 3, then 1) and is gone at its end.
             if (fx != null && (fxMs += dtMs) >= fxLength) { Object.Destroy(fx); fx = null; }
         }
@@ -816,7 +848,27 @@ namespace GoF2Remake.World
         void Tick78(float dtMs)
         {
             var station = level.Station;
-            if (T >= 7901f && station != null && !animStarted) { animStarted = true; PartAnimation.PlayOnce(station); }
+            if (T >= 7901f && station != null && !animStarted)
+            {
+                animStarted = true;
+                float unfoldMs = PartAnimation.PlayOnce(station);
+                // Modified: the ship stops and faces the station at the end of the unfolding's first part (StopAtUnfold78 of
+                // the whole animation; see below).
+                stopAtT78 = T + (unfoldMs > 0f ? unfoldMs * StopAtUnfold78 : 0f);
+            }
+            if (animStarted && !stopped78 && T >= stopAtT78)
+            {
+                // Modified: at the end of the unfolding's first part the ship stops at once and faces the station (computer
+                // controlled again, speed 0).
+                stopped78 = true;
+                Ship.externalControl = true;
+                playerSpeed = 0f;
+                if (station != null)
+                {
+                    var to = station.transform.position - Player.position;
+                    if (to.sqrMagnitude > 1e-6f) Player.rotation = Quaternion.LookRotation(to, Vector3.up);
+                }
+            }
             switch (Step)
             {
                 case 1:
@@ -835,7 +887,7 @@ namespace GoF2Remake.World
                     if (T >= 18001f)
                     {
                         cam.LookAt(new Vector3(8000, 31000, -9000), station != null ? station.transform : Player);
-                        SetPlayerVisible(false);
+                        // Modified: the player's ship stays visible through the rest of the cutscene (was SetPlayerVisible(false)).
                         Step = 5;
                     }
                     break;
@@ -845,13 +897,13 @@ namespace GoF2Remake.World
                     Step = 6;
                     break;
                 case 6:
-                    if (SlideTurret(S(1), 0.3f, dtMs)) { turretMoved = 0f; Step = 7; }
+                    if (SlideTurret(S(0), TurretSide0_78, TurretStartX0_78, TurretEndX0_78, rollSign0_78, dtMs)) { turretMoved = 0f; Step = 7; }   // Modified: [0] first (was [1])
                     break;
                 case 7:
                     if (T >= 27001f) Step = 8;
                     break;
                 case 8:
-                    if (SlideTurret(S(0), -0.3f, dtMs) && stepMs >= 2001f)
+                    if (SlideTurret(S(1), TurretSide1_78, TurretStartX1_78, TurretEndX1_78, rollSign1_78, dtMs) && stepMs >= 2001f)   // Modified: [1] second (was [0])
                     {
                         cam.LookAt(new Vector3(-12000, 5000, 15000), station != null ? station.transform : Player);
                         Step = 9;
@@ -860,7 +912,20 @@ namespace GoF2Remake.World
                 case 9:
                     cam.SetDolly(new Vector3(-0.7f, 1f, 3f));
                     cam.Rumble = Mathf.Clamp01(stepMs / 10000f);
-                    if (stepMs >= 6000f) { SpawnHyperDrive(new Vector3(0, 0, 14000), 20f); Step = 10; }
+                    if (stepMs >= 6000f)
+                    {
+                        SpawnHyperDrive(new Vector3(0, 0, 14000), 20f, texture78: true);
+                        // Modified: the jump aligned with the station instead of facing the camera (values from the
+                        // Inspector, Unity units relative to the station: position, rotation, scale).
+                        if (fx != null)
+                        {
+                            var st = station != null ? station.transform.position : Vector3.zero;
+                            fx.transform.SetPositionAndRotation(st + HyperDrivePos78, Quaternion.Euler(HyperDriveRot78));
+                            fx.transform.localScale = Vector3.one * HyperDriveScale78;
+                            fxFixed = true;
+                        }
+                        Step = 10;
+                    }
                     break;
                 case 10:
                     cam.SetDolly(new Vector3(-0.7f, 1f, 4f));
@@ -896,6 +961,7 @@ namespace GoF2Remake.World
                     if (stepMs >= 5000f)
                     {
                         SetPlayerVisible(true);
+                        Ship.inputLocked = false;   // Modified: the controls back (locked in Build78)
                         LeaveCutscene();
                         Step = 13;
                     }
@@ -903,16 +969,59 @@ namespace GoF2Remake.World
             }
         }
         bool animStarted, musicPlayed;
+        // Modified: 78's hyperdrive fx, aligned with the station (Unity units / degrees, measured in the Inspector).
+        static readonly Vector3 HyperDrivePos78 = new Vector3(0f, -150f, -450f);
+        static readonly Vector3 HyperDriveRot78 = new Vector3(0f, 0f, 0f);
+        const float HyperDriveScale78 = 8f;
+        bool fxFixed;   // the fx keeps its own rotation (no FaceCamera)
 
-        /// <summary>78 steps 6 / 8: a top turret slides out (translate(dx * dt, 0, 0)) and swings round (rotate(-0.0009 dt))
-        /// until it has moved 1100 units. True when done.</summary>
-        bool SlideTurret(NpcShip turret, float speed, float dtMs)
+        // Modified: 78's hyperdrive can use its own texture (only in this cutscene; the other jumps keep the normal one).
+        // The image goes in Assets/Resources/ under this path, without the extension (e.g. Assets/Resources/GoF2Custom/
+        // hyperdrive_78.png -> "GoF2Custom/hyperdrive_78"). Empty = no change.
+        const string HyperDriveTexture78 = "GoF2Custom/hyperdrive_78";
+        // Only the parts whose current texture has this name are changed (empty = every part of the fx). The names are
+        // shown in the Console when a custom texture is applied ("[78] hyperdrive textures: ...").
+        const string HyperDriveTextureOriginal78 = "";
+
+        void ReplaceFxTexture78(GameObject go)
+        {
+            if (go == null || string.IsNullOrEmpty(HyperDriveTexture78)) return;
+            var names = new System.Collections.Generic.HashSet<string>();
+            var tex = Resources.Load<Texture2D>(HyperDriveTexture78);
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                foreach (var m in r.materials)   // per-instance copies: the prefab's materials stay untouched
+                {
+                    foreach (var prop in new[] { "_BaseMap", "_MainTex" })
+                    {
+                        if (!m.HasProperty(prop)) continue;
+                        var cur = m.GetTexture(prop);
+                        if (cur != null) names.Add(cur.name);
+                        if (tex == null) continue;
+                        if (!string.IsNullOrEmpty(HyperDriveTextureOriginal78) && (cur == null || cur.name != HyperDriveTextureOriginal78)) continue;
+                        m.SetTexture(prop, tex);
+                    }
+                }
+            if (tex != null) Debug.Log($"[78] hyperdrive textures: {string.Join(", ", names)} -> {tex.name}");
+        }
+        // Modified: the stop in front of the station (78), at the end of the first of its unfolding's two parts.
+        const float StopAtUnfold78 = 0.5f;   // fraction of the unfolding animation (0.5 = halfway, 1 = its end)
+        bool stopped78;
+        float stopAtT78;
+
+        /// <summary>78 steps 6 / 8: a top turret slides out at 0.3 u/ms until it has moved 1100 units, swinging round as it
+        /// goes. True when done.</summary>
+        // Modified: driven from the measured start / end poses (side = +1 / -1): X from startX to endX, rotation X
+        // from TurretStartRotX78 to 0, Y kept at 0, Z from TurretStartRollDeg78 to TurretRollDeg78 with the turret's sign
+        // (the remake swung it about Y).
+        bool SlideTurret(NpcShip turret, float side, float startX, float endX, float rollSign, float dtMs)
         {
             if (turret == null || turretMoved >= 1100f) return true;
-            float d = Mathf.Abs(speed) * dtMs;
-            turretMoved += d;
-            turret.transform.position += ToUnity(new Vector3(speed * dtMs, 0, 0));
-            turret.transform.Rotate(Vector3.right, -0.0009f * dtMs * Mathf.Rad2Deg, Space.Self);
+            turretMoved = Mathf.Min(turretMoved + 0.3f * dtMs, 1100f);
+            float k = turretMoved / 1100f;
+            float hostX = level.Station != null ? level.Station.transform.position.x : 0f;
+            var p = turret.transform.position;
+            turret.transform.position = new Vector3(hostX + side * Mathf.Lerp(startX, endX, k), p.y, p.z);
+            turret.transform.rotation = Quaternion.Euler(Mathf.Lerp(TurretStartRotX78, 0f, k), 0f, rollSign * Mathf.Lerp(TurretStartRollDeg78, TurretRollDeg78, k));
             return turretMoved >= 1100f;
         }
 
