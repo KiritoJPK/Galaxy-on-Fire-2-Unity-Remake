@@ -239,7 +239,8 @@ namespace GoF2Remake.World
             // the sun just as it explodes.
             helper = new GameObject("Cutscene helper");
             helper.transform.rotation = Quaternion.LookRotation(Dir(-LightGame), Vector3.up);
-            helper.transform.position = ToUnity(luurPos + LightGame * 100000f) + helper.transform.right * 200000f * M;
+            // Modified: the helper's right is multiplied by HelperSide89 (the previous remake behaviour = 1).
+            helper.transform.position = ToUnity(luurPos + LightGame * 100000f) + helper.transform.right * 200000f * M * HelperSide89;
             cam.LookAt(luurPos + new Vector3(10000, 1500, -20000), helper.transform);
             c.MusicOwned = true;
             c.PlayMusic(sn?.supernovaIntro, false);
@@ -856,6 +857,13 @@ namespace GoF2Remake.World
             level.Dock();
         }
 
+        // Modified: tuning for mission 89's opening shot. 1 = previous remake behaviour, -1 = mirrored.
+        // With 1 the helper started on the wrong side (Unity's transform.right is mirrored relative to the original
+        // engine's right after the z flip), so the camera looked into empty space instead of past Luur toward the sun.
+        const float HelperSide89 = -1f;   // which side the look-at helper starts on and the way it drifts
+        const float DollyX89 = 1f;        // camera dolly on X
+        const float DollyZ89 = 1f;        // camera dolly on Z
+
         // 89 (LevelScript.c 2473-2647).
         void Tick89(float dtMs)
         {
@@ -864,8 +872,9 @@ namespace GoF2Remake.World
             {
                 // k isn't clamped: from 35 s the dolly runs back.
                 float k = 1f - T / 35000f;
-                cam.SetDolly(new Vector3(k, 0, 2f * k));
-                helper.transform.position -= helper.transform.right * 7f * dtMs * (1f - T / 50000f) * M;
+                // Modified: adjustable signs (previous remake behaviour = 1, 1, 1).
+                cam.SetDolly(new Vector3(k * DollyX89, 0, 2f * k * DollyZ89));
+                helper.transform.position -= helper.transform.right * 7f * dtMs * (1f - T / 50000f) * M * HelperSide89;
             }
             var freighter = S(11);
             if (freighter != null) freighter.transform.position += freighter.transform.forward * dtMs * M;

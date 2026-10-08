@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!1 &4089416986338932425
@@ -172,7 +173,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8821984687212185429, guid: 180e9860250a830439451c7274461120, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.55
+      value: -0.55
       objectReference: {fileID: 0}
     - target: {fileID: 8821984687212185429, guid: 180e9860250a830439451c7274461120, type: 3}
       propertyPath: m_LocalRotation.w

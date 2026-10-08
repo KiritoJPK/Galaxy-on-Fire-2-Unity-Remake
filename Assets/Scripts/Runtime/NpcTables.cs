@@ -47,6 +47,19 @@ namespace GoF2Remake.Flight
             return pool[Random.Range(0, pool.Length)];
         }
 
+        /// <summary>Remake (World.CapitalShips' escorts): one of the dearer half of the race's fighters (by ships.json price), as
+        /// Globals::getRandomEnemyFighter would pick them otherwise.</summary>
+        public static int StrongFighter(Database db, int race)
+        {
+            int[] pool;
+            if (race == 1 && Story.Dlc1Won) pool = new[] { 9, 41, 39 };
+            else if (!Fighters.TryGetValue(race, out pool)) pool = Fighters[8];
+            var sorted = new List<int>(pool);
+            sorted.Sort((a, b) => (db.Ship(b)?.price ?? 0).CompareTo(db.Ship(a)?.price ?? 0));
+            int pick = sorted[Random.Range(0, Mathf.Max(1, (sorted.Count + 1) / 2))];
+            return Modding.ModCampaigns.TrafficShip(race, pick);
+        }
+
         /// <summary>Freighter ship index and its race (30 % Nivelian in Terran systems and the other way round).</summary>
         public static (int ship, int race) RandomFreighter(int systemRace)
         {

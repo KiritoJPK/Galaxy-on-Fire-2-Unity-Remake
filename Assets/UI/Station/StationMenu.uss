@@ -482,7 +482,7 @@
 }
 
 /* Remake: Inspect ship (StationMenu.SetupInspect). The camera orbits the ship while the menu is away; only the ship's name,
-   Back and the controls show. */
+   Back and the controls show (OrbitViewUi: .orbit-view-* in GoF2Common.uss, shared with the flight's Action Freeze). */
 .inspect-overlay {
     display: none;
     position: absolute;
@@ -496,86 +496,3 @@
     display: flex;
 }
 
-.inspect-title {
-    position: absolute;
-    left: 64px;
-    top: 40px;
-    font-size: 34px;
-    letter-spacing: 6px;
-    color: #FFFFFF;
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-}
-
-.inspect-footer {
-    position: absolute;
-    left: 40px;
-    right: 40px;
-    bottom: 40px;
-    flex-direction: row;
-    align-items: center;
-}
-
-.inspect-back {
-    min-width: 170px;
-    padding: 16px 24px;
-    margin: 0 16px 0 0;
-    font-size: 22px;
-    letter-spacing: 3px;
-    white-space: nowrap;
-    -unity-text-align: middle-center;
-    color: #FFFFFF;
-    background-color: rgba(62, 200, 255, 0.12);
-    border-width: 2px;
-    border-color: var(--gof-cyan);
-    border-radius: 4px;
-}
-
-.can-hover .inspect-back:hover {
-    background-color: rgba(62, 200, 255, 0.28);
-}
-
-/* The controls at the top right, opposite the ship's name (the footer holds the buttons). */
-.inspect-hints {
-    position: absolute;
-    top: 30px;
-    right: 40px;
-    left: 600px;
-    flex-direction: row;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    align-items: center;
-}
-
-.inspect-hints .hint {
-    margin-left: 10px;
-}
-
-/* Hide UI: nothing over the view (a short click / tap or H / Y brings it back). */
-.inspect-overlay--clean .inspect-title,
-.inspect-overlay--clean .inspect-hints,
-.inspect-overlay--clean .inspect-footer,
-.inspect-overlay--clean .inspect-message {
-    display: none;
-}
-
-/* "Screenshot saved." above the footer. */
-.inspect-message {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 130px;
-    font-size: 24px;
-    letter-spacing: 3px;
-    -unity-text-align: middle-center;
-    color: #FFFFFF;
-    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
-}
-
-/* Hide UI / Screenshot / Back in the hints are clickable (a tap on touch). */
-.can-hover .inspect-hint--action:hover {
-    background-color: rgba(62, 200, 255, 0.28);
-}
-
-.inspect-hint--action:active {
-    background-color: rgba(62, 200, 255, 0.4);
-}

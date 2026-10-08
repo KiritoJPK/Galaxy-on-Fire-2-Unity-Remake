@@ -295,7 +295,7 @@ namespace GoF2Remake.World
                         campaign.PlayLoop(1, assets?.engineBroken, 0.115f);    // 161 Engine_09_Broken, looped
                     }
                     if (soundsPlayed) playerSpeed *= Mathf.Pow(0.98f, dtMs / 33.3f);
-                    if (Over(13)) cam.SetDolly(new Vector3(-0.2f, 0f, 0.3f));
+                    if (Over(13)) cam.SetDolly(new Vector3(0.4f, 0f, -0.2f));
                     if (Triggered(14)) Step = 6;
                     break;
                 case 6:
@@ -382,7 +382,10 @@ namespace GoF2Remake.World
                     break;
                 case 14:
                     Tumble(dtMs / 5000f);
-                    cam.SetDolly(new Vector3(-2f, 0f, 0f));
+                    {
+                        var f = Player.forward;
+                        cam.SetDolly(new Vector3(f.x, f.y, -f.z) * playerSpeed);
+                    }
                     if (stepMs >= 12000f) { cam.LookAtUnity(Player.position + ToUnity(new Vector3(-3000, 3500, -6700)), Player); Step = 15; }
                     break;
                 case 15:

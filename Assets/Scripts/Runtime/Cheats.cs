@@ -29,7 +29,7 @@ namespace GoF2Remake.Data
         /// <summary>The flags an admin's /cheat can grant: the command's word and the flag's key.</summary>
         public static readonly (string word, string key)[] Flags =
         {
-            ("god", "godMode"), ("ammo", "infiniteAmmo"), ("cooldown", "noSecondaryCooldown"), ("boost", "noBoostCooldown"),
+            ("god", "godMode"), ("ammo", "infiniteAmmo"), ("cooldown", "noSecondaryCooldown"), ("primary", "noPrimaryCooldown"), ("boost", "noBoostCooldown"),
             ("onehit", "oneHitKills"), ("locks", "instantLocks"), ("shopping", "freeShopping"), ("jumps", "freeJumps"),
         };
 
@@ -65,6 +65,8 @@ namespace GoF2Remake.Data
         public static bool GodMode { get => On("godMode"); set => Set("godMode", value); }
         public static bool InfiniteAmmo { get => On("infiniteAmmo"); set => Set("infiniteAmmo", value); }
         public static bool NoSecondaryCooldown { get => On("noSecondaryCooldown"); set => Set("noSecondaryCooldown", value); }
+        /// <summary>The primary guns fire again at once while held (no reload; the bullet pool still limits the shots in flight).</summary>
+        public static bool NoPrimaryCooldown { get => On("noPrimaryCooldown"); set => Set("noPrimaryCooldown", value); }
         /// <summary>The booster is ready again as soon as a boost ends (no recharge; a booster is still needed).</summary>
         public static bool NoBoostCooldown { get => On("noBoostCooldown"); set => Set("noBoostCooldown", value); }
         public static bool OneHitKills { get => On("oneHitKills"); set => Set("oneHitKills", value); }

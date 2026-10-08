@@ -471,6 +471,30 @@
     display: none;
 }
 
+/* ---- the carrier's resupply window (CarrierShopWindow, the hangar shop's HangarWindow.uss): the flight HUD's markings
+   out of its way, the key hints in one row under it like the station's ---------------------------------------------- */
+
+.hud-shop .radar-ellipse,
+.hud-shop .nav-markers,
+.hud-shop .crosshair,
+.hud-shop .lock-ring,
+.hud-shop .dock-prompt,
+.hud-shop .lock-plate,
+.hud-shop .nav-buttons,
+.hud-shop .speed-panel,
+.hud-shop .orbit-info {
+    display: none;
+}
+
+.hud-shop .hints {
+    flex-direction: row;
+    align-items: center;
+}
+
+.hud-shop .hints .hint {
+    margin-right: 10px;
+}
+
 /* ---- Khador Drive / cloak charge (Hud::draw 0x1933f6, #48): the frame 0x53a (GoF2Hud/charge_frame, 408 x 69), the
    striped fill 0x539 (charge_fill, 388 x 14: blue in the middle, yellow at the ends) revealed from the centre outward
    (jumpChargeFill clips, jumpChargeStripes holds the whole image still under it), the text in the frame's lower panel. */
@@ -947,7 +971,8 @@
     display: none;
 }
 
-/* Action Freeze (PhotoMode): the HUD hidden, the logo 0x534 at the top-right, the footer with Back and Save (remake). */
+/* Action Freeze (PhotoMode): the HUD hidden; the overlay is Inspect ship's (OrbitViewUi, .orbit-view-* in GoF2Common.uss)
+   with the remake logo in the footer (the original: the logo 0x534 at the top right and the footer with Back). */
 /* MGame::OnRender2D in cinematic mode draws only the menu window and the lens flare: the hacking game and the object
    docking's transfer counter (on the root, outside #hud) go too. */
 .hud-photo #hud,
@@ -969,48 +994,20 @@
     display: flex;
 }
 
-.photo-overlay--turning .photo-logo,
-.photo-overlay--turning .photo-footer {
+/* The original hides the footer while a finger turns the camera; the remake's whole overlay goes. */
+.photo-overlay--turning .orbit-view-title,
+.photo-overlay--turning .orbit-view-hints,
+.photo-overlay--turning .orbit-view-footer {
     opacity: 0;
 }
 
+/* The remake logo at the footer's right end, Back at its left (OrbitViewUi). */
 .photo-logo {
-    position: absolute;
-    right: 24px;
-    top: 24px;
-    width: 281px;
-    height: 97px;
-    -unity-background-scale-mode: stretch-to-fill;
-}
-
-.photo-message {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 140px;
-    -unity-text-align: middle-center;
-    font-size: 26px;
-    color: #FFFFFF;
-    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
-}
-
-.photo-footer {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 96px;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 32px;
-    background-color: rgba(0, 10, 25, 0.55);
-}
-
-.photo-button {
-    min-width: 240px;
-    height: 60px;
-    font-size: 22px;
+    width: 232px;
+    height: 80px;
+    margin-left: auto;
+    background-image: url("project://database/Assets/UI/MainMenu/Images/logo_gof2_remake.png");
+    -unity-background-scale-mode: scale-to-fit;
 }
 
 /* ---- top readout (Hud::draw, Hud+0x3d4 at the top right): the time limit or the cargo hold, the volatile bar, the

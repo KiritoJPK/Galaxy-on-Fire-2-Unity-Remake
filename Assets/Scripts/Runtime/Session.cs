@@ -105,6 +105,9 @@ namespace GoF2Remake.Data
         /// destroyed, the highest credits, the hull % on the last arrival at a station (Survivor).</summary>
         public static int AsteroidsDestroyed, OreMined, CoresMined, CratesSalvaged, JunkDestroyed, BattleshipsDestroyed, HighestCredits;
         public static int LastArrivalHullPercent = 100;
+        /// <summary>Remake (World.CapitalShips): the playing time (PlaySeconds) from which a carrier / Vossk battleship carries
+        /// loot again (an hour after the last one the player destroyed with its crate).</summary>
+        public static float CapitalLootReadyAt;
         /// <summary>Medal 22 (Harum-Scarum): docked with no weapon or no equipment item mounted, taken when the station loads
         /// (the original checks the medals at docking, before the hangar can change the loadout; the remake's check waits for
         /// the landing and the conversations, and stripping the ship meanwhile earned it, #46). Not saved: a load docks anew.</summary>
@@ -389,6 +392,7 @@ namespace GoF2Remake.Data
             Medals = new int[45];
             AsteroidsDestroyed = OreMined = CoresMined = CratesSalvaged = JunkDestroyed = BattleshipsDestroyed = HighestCredits = 0;
             LastArrivalHullPercent = 100;
+            CapitalLootReadyAt = 0f;
             ArrivedWithoutGear = false;
             OreTypesMined = new HashSet<int>();
             BoozeBought = AlienRemainsCollected = 0;

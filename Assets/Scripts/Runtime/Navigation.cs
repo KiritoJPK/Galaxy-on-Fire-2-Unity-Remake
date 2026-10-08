@@ -175,7 +175,8 @@ namespace GoF2Remake.Flight
                 if (t.kind != Kind.DockingTarget) continue;
                 var s = t.dockingShip;
                 t.name = s != null ? s.Target.displayName ?? "" : "";
-                t.hidden = s == null || s.Gone || !s.Target.Alive || s.DockingType <= 0 || s.RadarHidden || s.Hidden || s.Inactive;
+                t.hidden = s == null || s.Gone || !s.Target.Alive || s.DockingType <= 0 || s.RadarHidden || s.Hidden || s.Inactive
+                           || (s.DockingType == ObjectDocking.Resupply && (s.Target.hostileToPlayer || CapitalShips.InBattle(s)));   // a hostile or fighting carrier (CapitalShips)
                 if (t.hidden && (Locked == t || Candidate == t)) { Locked = Candidate = null; LockTimer = 0f; }
             }
         }
@@ -355,9 +356,10 @@ namespace GoF2Remake.Flight
         /// <summary>The open menu is the quick (action) menu, not the autopilot's.</summary>
         public bool MenuIsActions { get; private set; }
 
-        public void OpenMenu(bool actions = false)
+        /// <summary>'force': whatever flies the ship (the carrier's resupply menu while docked at it).</summary>
+        public void OpenMenu(bool actions = false, bool force = false)
         {
-            if (actions ? !CanOpenActions : !CanOpenMenu) return;
+            if (!force && (actions ? !CanOpenActions : !CanOpenMenu)) return;
             MenuIsActions = actions;
             MenuOpen = true;
             if (weapons != null) weapons.Blocked = true;

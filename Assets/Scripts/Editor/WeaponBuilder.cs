@@ -146,6 +146,8 @@ namespace GoF2Remake.EditorTools
             audio.buttonRelease = EventClips(events, 123).FirstOrDefault();
             audio.messageInfo = EventClips(events, 126).FirstOrDefault();
             audio.buttonInfo = EventClips(events, 97).FirstOrDefault();
+            audio.shopBuy = EventClips(events, 0x65).FirstOrDefault();   // Button_to_ship (the carrier's resupply window)
+            audio.hangarAtmo = EventClips(events, 95).FirstOrDefault();    // the hangar ambience's loop (under the carrier's window)
             audio.boosters = new[] { 38, 39, 40, 41, 1102 }.Select(id => EventClips(events, id).FirstOrDefault()).ToArray();
             audio.miningLanding = FindClip(clips, "Mining_Landing");
             audio.miningDrillBroken = FindClip(clips, "Mining_Drill_Broken");

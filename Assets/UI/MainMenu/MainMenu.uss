@@ -1198,6 +1198,19 @@
     border-left-color: var(--gof-line);
 }
 
+/* The game options panel holds four toggles (the Kaamo Club, Hardcore, Tutorials, Capital ships) and Start: tighter so it
+   fits the panel's 80 % height. */
+#gameOptionsPanel .choice-button--toggle {
+    margin-top: 10px;
+    margin-bottom: 0;
+    padding: 11px 20px;
+}
+
+#gameOptionsPanel .choice-desc {
+    margin-top: 3px;
+    font-size: 15px;
+}
+
 .choice-button--toggle.choice-button--on {
     border-left-color: var(--gof-amber);
 }

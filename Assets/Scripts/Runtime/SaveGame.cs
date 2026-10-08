@@ -56,6 +56,7 @@ namespace GoF2Remake.Data
         public int[] medals;
         public int asteroidsDestroyed, oreMined, coresMined, cratesSalvaged, junkDestroyed, battleshipsDestroyed, highestCredits, lastArrivalHullPercent = 100;
         public List<int> oreTypesMined, coreTypesMined;
+        public float capitalLootReadyAt;   // remake: World.CapitalShips' loot cooldown (playing time)
         public int boozeBought, alienRemainsCollected;   // v8
         public List<int> boozeTypes;
         public int agentsTalkedTo, offersDeclined, offersRepeated, acceptedBlindRisk, acceptedBlindMap, containersDelivered, passengersDelivered;
@@ -280,7 +281,7 @@ namespace GoF2Remake.Data
                 blueprints = Session.Blueprints, pendingProducts = Session.PendingProducts, goodsProduced = Session.GoodsProduced,
                 medals = Session.Medals, asteroidsDestroyed = Session.AsteroidsDestroyed, oreMined = Session.OreMined, coresMined = Session.CoresMined,
                 cratesSalvaged = Session.CratesSalvaged, junkDestroyed = Session.JunkDestroyed, battleshipsDestroyed = Session.BattleshipsDestroyed,
-                highestCredits = Session.HighestCredits, lastArrivalHullPercent = Session.LastArrivalHullPercent,
+                highestCredits = Session.HighestCredits, lastArrivalHullPercent = Session.LastArrivalHullPercent, capitalLootReadyAt = Session.CapitalLootReadyAt,
                 oreTypesMined = new List<int>(Session.OreTypesMined), coreTypesMined = new List<int>(Session.CoreTypesMined),
                 boozeBought = Session.BoozeBought, alienRemainsCollected = Session.AlienRemainsCollected, boozeTypes = new List<int>(Session.BoozeTypes),
                 informerFailed = Session.InformerFailed,
@@ -477,6 +478,7 @@ namespace GoF2Remake.Data
                 Session.AsteroidsDestroyed = s.asteroidsDestroyed; Session.OreMined = s.oreMined; Session.CoresMined = s.coresMined;
                 Session.CratesSalvaged = s.cratesSalvaged; Session.JunkDestroyed = s.junkDestroyed; Session.BattleshipsDestroyed = s.battleshipsDestroyed;
                 Session.HighestCredits = s.highestCredits; Session.LastArrivalHullPercent = s.lastArrivalHullPercent;
+                Session.CapitalLootReadyAt = s.capitalLootReadyAt;
                 Session.OreTypesMined = new HashSet<int>(s.oreTypesMined ?? new List<int>());
                 Session.BoozeBought = s.boozeBought; Session.AlienRemainsCollected = s.alienRemainsCollected;
                 Session.BoozeTypes = new HashSet<int>(s.boozeTypes ?? new List<int>());

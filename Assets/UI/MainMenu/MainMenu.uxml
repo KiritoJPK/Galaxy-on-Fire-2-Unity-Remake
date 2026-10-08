@@ -96,6 +96,10 @@
                         <ui:Label name="tutorialLabel" class="choice-title gof-semibold" picking-mode="Ignore" />
                         <ui:Label name="tutorialDesc" class="choice-desc" picking-mode="Ignore" />
                     </ui:Button>
+                    <ui:Button name="capitalToggle" class="choice-button choice-button--toggle">
+                        <ui:Label name="capitalLabel" class="choice-title gof-semibold" picking-mode="Ignore" />
+                        <ui:Label name="capitalDesc" class="choice-desc" picking-mode="Ignore" />
+                    </ui:Button>
                     <ui:Button name="gameOptionsStart" class="choice-button choice-button--start">
                         <ui:Label name="gameOptionsStartLabel" class="choice-title gof-semibold" picking-mode="Ignore" />
                         <ui:Label name="gameOptionsStartDesc" class="choice-desc" picking-mode="Ignore" />

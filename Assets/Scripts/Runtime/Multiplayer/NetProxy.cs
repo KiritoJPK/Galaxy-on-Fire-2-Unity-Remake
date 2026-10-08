@@ -55,6 +55,11 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<byte> life = new NetworkVariable<byte>(Flying, Read, Owner);
         readonly NetworkVariable<float> explosionScale = new NetworkVariable<float>(1f, Read, Owner);
         readonly NetworkVariable<bool> leavesWreck = new NetworkVariable<bool>(false, Read, Owner);
+        // The owner's hit boxes (Target.boxes) by their volumes: -1 the cube, a static object's id (a killable capital ship,
+        // CapitalShips), or FreighterVolumes + ship * 16 + race (freighters, the battleship).
+        readonly NetworkVariable<int> hitVolume = new NetworkVariable<int>(-1, Read, Owner);
+        const int FreighterVolumes = 100000;
+        int boxesFor = -1;
         // A takeover's spawn spec (NetOrbit): -1 = not taken over (fixed objects, turrets, story ships, wingmen).
         readonly NetworkVariable<int> specShip = new NetworkVariable<int>(-1, Read, Owner);
         readonly NetworkVariable<byte> specGroup = new NetworkVariable<byte>(0, Read, Owner);
@@ -190,6 +195,8 @@ namespace GoF2Remake.Multiplayer
                 explosionScale.Value = ship.IsFixed ? ship.Spec.explosionScale : ship.IsFreighter ? 6f : 1f;   // NpcShip.UpdateDying
                 leavesWreck.Value = ship.IsFixed || ship.IsFreighter;
                 var spec = ship.Spec;
+                hitVolume.Value = spec.freighter ? FreighterVolumes + spec.ship * 16 + Mathf.Clamp(spec.race, 0, 15)
+                                : spec.capitalEnhanced && spec.fixedObject != null && spec.collisionId >= 0 ? spec.collisionId : -1;
                 bool adoptable = !ship.MissionShip && spec.fixedObject == null && spec.turretAssembly == null && spec.convoyRole == 0 && spec.dockingType == 0
                                  && spec.wantedIndex < 0 && (spec.group == NpcGroup.Local || spec.group == NpcGroup.Raider
                                  || spec.group == NpcGroup.Freighter || spec.group == NpcGroup.Escort);
@@ -474,6 +481,14 @@ namespace GoF2Remake.Multiplayer
             // Dying / dead (a tumble, a wreck, destroyed junk): not alive here either, so shots pass it like on the owner's.
             target.hp = life.Value == Flying ? Mathf.Max(0.001f, hull.Value) * target.maxHp : 0f;
             target.radius = radius.Value;
+            if (boxesFor != hitVolume.Value)
+            {
+                // The owner's hit boxes (NpcShip.Setup): shots hit the hull, not only the cube at its centre.
+                boxesFor = hitVolume.Value;
+                int v = boxesFor;
+                target.boxes = v >= FreighterVolumes ? NpcShip.LocalBoxes(CollisionVolume.ForFreighter((v - FreighterVolumes) / 16, (v - FreighterVolumes) % 16))
+                             : v >= 0 ? NpcShip.LocalBoxes(CollisionVolume.ForStaticObject(v)) : null;
+            }
             target.untargetable = hidden.Value || life.Value != Flying;
             // A mission ship's name only for the mission's team (its owner and their squad).
             bool team = !missionShip.Value || NetSquad.SameClient(OwnerClientId, NetPlayer.Local);

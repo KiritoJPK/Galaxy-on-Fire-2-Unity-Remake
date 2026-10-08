@@ -1809,23 +1809,15 @@ namespace GoF2Remake.UI
         {
             inspectOverlay = new VisualElement { name = "inspectOverlay", pickingMode = PickingMode.Ignore };
             inspectOverlay.AddToClassList("inspect-overlay");
-            inspectTitle = new Label { pickingMode = PickingMode.Ignore };
-            inspectTitle.AddToClassList("inspect-title");
-            inspectTitle.AddToClassList("gof-semibold");
+            inspectTitle = OrbitViewUi.Title();   // the overlay is shared with Action Freeze (OrbitViewUi, .orbit-view-* in GoF2Common.uss)
             inspectOverlay.Add(inspectTitle);
             var footer = new VisualElement { pickingMode = PickingMode.Ignore };
-            footer.AddToClassList("inspect-footer");
-            inspectBack = new Button(EndInspect) { text = Localization.Extra("hudBack", "BACK"), focusable = false };
-            inspectBack.AddToClassList("inspect-back");
-            inspectBack.AddToClassList("gof-semibold");
-            inspectBack.RegisterCallback<PointerDownEvent>(_ => Play(buttonPush), TrickleDown.TrickleDown);
+            footer.AddToClassList("orbit-view-footer");
+            inspectBack = OrbitViewUi.Back(EndInspect, () => Play(buttonPush));
             footer.Add(inspectBack);
-            inspectMessage = new Label { pickingMode = PickingMode.Ignore };
-            inspectMessage.AddToClassList("inspect-message");
-            inspectMessage.AddToClassList("gof-semibold");
+            inspectMessage = OrbitViewUi.Message();
             inspectOverlay.Add(inspectMessage);
-            inspectHints = new VisualElement { pickingMode = PickingMode.Ignore };
-            inspectHints.AddToClassList("inspect-hints");
+            inspectHints = OrbitViewUi.Hints();
             inspectOverlay.Add(inspectHints);   // top right
             inspectOverlay.Add(footer);
             root.Add(inspectOverlay);   // the last child: over the blocker that keeps the menu's own input out meanwhile
@@ -1862,7 +1854,7 @@ namespace GoF2Remake.UI
         void SetInspectUiHidden(bool hidden)
         {
             inspectUiHidden = hidden;
-            inspectOverlay?.EnableInClassList("inspect-overlay--clean", hidden);
+            inspectOverlay?.EnableInClassList("orbit-view--clean", hidden);
             FpsCounter.Suppressed = hidden || inspectCapturing;
         }
 
@@ -1897,65 +1889,14 @@ namespace GoF2Remake.UI
 
         void BuildInspectHints(InputKind kind)
         {
-            if (inspectHints == null) return;
-            inspectHints.Clear();
-            string T(string key, string english) => Localization.Extra(key, english);
-            void Add(string label, System.Action click, params VisualElement[] glyphs)
-            {
-                var h = new VisualElement { pickingMode = click != null ? PickingMode.Position : PickingMode.Ignore };
-                h.AddToClassList("hint");
-                foreach (var g in glyphs) { g.pickingMode = PickingMode.Ignore; h.Add(g); }
-                var l = new Label(label) { pickingMode = PickingMode.Ignore };
-                l.AddToClassList("hint-label");
-                l.AddToClassList("gof-semibold");
-                h.Add(l);
-                if (click != null)
-                {
-                    h.AddToClassList("inspect-hint--action");
-                    h.RegisterCallback<PointerDownEvent>(_ => Play(buttonPush));
-                    h.RegisterCallback<ClickEvent>(_ => click());   // the actions play their own release sound
-                }
-                inspectHints.Add(h);
-            }
-            string rotate = T("inspectRotate", "ROTATE"), zoom = T("inspectZoom", "ZOOM"), back = T("hudBack", "BACK");
-            string hide = T("inspectHideUi", "HIDE UI"), shot = T("inspectScreenshot", "SCREENSHOT");
-            System.Action hideUi = () => { Play(buttonRelease); SetInspectUiHidden(true); };
-            System.Action screenshot = () => { Play(buttonRelease); TakeInspectScreenshot(); };
-            if (kind == InputKind.KeyboardMouse)
-            {
-                Add(rotate, null, InputGlyph.Key(T("inspectDrag", "DRAG"), true), InputGlyph.Key("W"), InputGlyph.Key("A"), InputGlyph.Key("S"), InputGlyph.Key("D"));
-                Add(zoom, null, InputGlyph.Key(T("inspectWheel", "WHEEL"), true), InputGlyph.Key("+"), InputGlyph.Key("-"));
-                Add(hide, hideUi, InputGlyph.Key("H"));
-                Add(shot, screenshot, InputGlyph.Key("ENTER", true));
-                Add(back, EndInspect, InputGlyph.Key("ESC"));
-            }
-            else if (kind == InputKind.Gamepad)
-            {
-                Add(rotate, null, InputGlyph.Pad(PadButton.LeftStick), InputGlyph.Pad(PadButton.RightStick));
-                Add(zoom, null, InputGlyph.Pad(PadButton.LeftTrigger), InputGlyph.Pad(PadButton.RightTrigger));
-                Add(hide, hideUi, InputGlyph.Pad(PadButton.Y));
-                Add(shot, screenshot, InputGlyph.Pad(PadButton.A));
-                Add(back, EndInspect, InputGlyph.Pad(PadButton.B));
-            }
-            else
-            {
-                Add(T("inspectTouch", "DRAG TO ROTATE · PINCH TO ZOOM"), null);
-                Add(hide, hideUi);
-                Add(shot, screenshot);
-            }
+            OrbitViewUi.BuildHints(inspectHints, kind, new[] { "W", "A", "S", "D" },
+                () => { Play(buttonRelease); SetInspectUiHidden(true); },
+                () => { Play(buttonRelease); TakeInspectScreenshot(); },
+                EndInspect, () => Play(buttonPush));
         }
 
         /// <summary>A pointer on one of the footer's buttons (while they show): a click there isn't a drag (screen pixels, y up).</summary>
-        bool OverInspectButton(Vector2 screen)
-        {
-            if (inspectUiHidden || root.panel == null) return false;
-            var p = RuntimePanelUtils.ScreenToPanel(root.panel, new Vector2(screen.x, Screen.height - screen.y));
-            if (inspectBack != null && inspectBack.worldBound.Contains(p)) return true;
-            if (inspectHints != null)
-                foreach (var h in inspectHints.Children())
-                    if (h.pickingMode == PickingMode.Position && h.worldBound.Contains(p)) return true;   // the clickable hints
-            return false;
-        }
+        bool OverInspectButton(Vector2 screen) => !inspectUiHidden && OrbitViewUi.OverControl(root, inspectBack, inspectHints, screen);
 
         void UpdateInspect()
         {

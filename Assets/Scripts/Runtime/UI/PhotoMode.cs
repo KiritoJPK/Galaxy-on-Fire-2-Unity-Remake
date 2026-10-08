@@ -11,6 +11,9 @@
 // The original's share buttons (61 Facebook, 60 Save to library) are never drawn nor handled in this build (the capture
 // countdown is always -1, SaveImageToPhotosAlbum is an empty stub). Remake-only: 60 saves a PNG (PC: Pictures/Galaxy on
 // Fire 2, Android: MediaStore Pictures/Galaxy on Fire 2) and shows 55 / 56; no upload. Plain class driven by PauseMenu.
+// Remake: the overlay is the hangar's Inspect ship one (OrbitViewUi): "ACTION FREEZE" at the top left, the controls as
+// hints at the top right (Hide UI H / Y, Screenshot Enter / P / A, Back clickable), Back and the remake logo in the
+// footer; Hide UI clears the screen until a short click / tap or H / Y again; + / - (Page Up / Down) zoom too.
 
 using System;
 using System.Collections;
@@ -29,8 +32,9 @@ namespace GoF2Remake.UI
         const float M = 0.05f, FrameMs = 1000f / 30f;
         const float MinDistance = 1500f, MaxDistance = 20000f;
 
-        readonly VisualElement root, overlay;
+        readonly VisualElement root, overlay, hints;
         readonly Label message;
+        readonly Button back;
         readonly MonoBehaviour host;
         Camera cam;
         ChaseCamera chase;
@@ -40,13 +44,17 @@ namespace GoF2Remake.UI
         bool chaseWasEnabled;
         float px, py, distance, wheel, messageMs;
         Vector2 fling, lastPointer;
-        bool dragging, capturing;
+        bool dragging, capturing, uiHidden;
+        float dragTravel;
+        InputKind hintsKind = (InputKind)(-1);
         int draggingFinger = -1;
         float pinchSpan = -1f;
 
         public bool Active { get; private set; }
         /// <summary>Back: the pause menu takes over again.</summary>
         public event Action Exited;
+        /// <summary>The flight HUD's button sounds: push (true) on a press, release (false) on a click.</summary>
+        public Action<bool> ButtonSound;
 
         public PhotoMode(VisualElement hudRoot, MonoBehaviour coroutineHost)
         {
@@ -54,22 +62,20 @@ namespace GoF2Remake.UI
             host = coroutineHost;
             overlay = new VisualElement { pickingMode = PickingMode.Ignore };
             overlay.AddToClassList("photo-overlay");
-            var logo = new VisualElement { pickingMode = PickingMode.Ignore };
-            logo.AddToClassList("photo-logo");
-            var tex = Resources.Load<Texture2D>("GoF2Hud/photo_logo");
-            if (tex != null) logo.style.backgroundImage = new StyleBackground(tex);
-            overlay.Add(logo);
-            message = new Label { pickingMode = PickingMode.Ignore };
-            message.AddToClassList("photo-message");
+            var title = OrbitViewUi.Title();
+            title.text = Localization.Get(59).ToUpperInvariant();   // Action Freeze
+            overlay.Add(title);
+            message = OrbitViewUi.Message();
             overlay.Add(message);
-            var footer = new VisualElement();
-            footer.AddToClassList("photo-footer");
-            var back = new Button(Exit) { text = Localization.Get(170).ToUpperInvariant(), focusable = false };
-            back.AddToClassList("photo-button");
-            var save = new Button(Save) { text = Localization.Get(60).ToUpperInvariant(), focusable = false };
-            save.AddToClassList("photo-button");
+            hints = OrbitViewUi.Hints();
+            overlay.Add(hints);   // top right
+            var footer = new VisualElement { pickingMode = PickingMode.Ignore };
+            footer.AddToClassList("orbit-view-footer");
+            back = OrbitViewUi.Back(() => { ButtonSound?.Invoke(false); Exit(); }, () => ButtonSound?.Invoke(true));
             footer.Add(back);
-            footer.Add(save);
+            var logo = new VisualElement { pickingMode = PickingMode.Ignore };
+            logo.AddToClassList("photo-logo");   // remake: the title screen's remake logo (FlightHud.uss), not 0x534's Full HD one
+            footer.Add(logo);
             overlay.Add(footer);
             root.Add(overlay);
         }
@@ -97,6 +103,8 @@ namespace GoF2Remake.UI
             wheel = 0f;
             messageMs = 0f;
             message.text = "";
+            SetUiHidden(false);
+            BuildHints();
             root.AddToClassList("hud-photo");
             FpsCounter.Suppressed = true;   // not in the photos either
             overlay.AddToClassList("photo-overlay--shown");
@@ -107,6 +115,7 @@ namespace GoF2Remake.UI
         {
             if (!Active) return;
             Active = false;
+            SetUiHidden(false);
             root.RemoveFromClassList("hud-photo");
             FpsCounter.Suppressed = false;
             overlay.RemoveFromClassList("photo-overlay--shown");
@@ -125,7 +134,11 @@ namespace GoF2Remake.UI
             var pad = Gamepad.current;
             if ((kb != null && (kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) || (pad != null && pad.buttonEast.wasPressedThisFrame))
             { Exit(); return false; }
-            if ((kb != null && kb.enterKey.wasPressedThisFrame) || (pad != null && pad.buttonSouth.wasPressedThisFrame)) Save();
+            if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.pKey.wasPressedThisFrame))
+                || (pad != null && pad.buttonSouth.wasPressedThisFrame)) Save();
+            if ((kb != null && kb.hKey.wasPressedThisFrame) || (pad != null && pad.buttonNorth.wasPressedThisFrame))
+            { ButtonSound?.Invoke(false); SetUiHidden(!uiHidden); }
+            if (InputMode.Current != hintsKind) BuildHints();
 
             float scale = 1080f / Mathf.Max(1, Screen.height);   // the original's pixels: a 1080-high canvas
             Vector2 delta = Vector2.zero;
@@ -148,12 +161,12 @@ namespace GoF2Remake.UI
                 pinchSpan = -1f;
                 Vector2? pos = null;
                 if (down == 1) pos = ts.primaryTouch.position.ReadValue();
-                else if (Mouse.current != null && Mouse.current.leftButton.isPressed && !OverFooter(Mouse.current.position.ReadValue()))
-                    pos = Mouse.current.position.ReadValue();
-                if (pos.HasValue && !(down == 1 && draggingFinger < 0 && OverFooter(pos.Value)))
+                else if (Mouse.current != null && Mouse.current.leftButton.isPressed) pos = Mouse.current.position.ReadValue();
+                if (pos.HasValue && (dragging || !OverControl(pos.Value)))
                 {
-                    if (!dragging) { dragging = true; lastPointer = pos.Value; draggingFinger = down == 1 ? 1 : -1; }
+                    if (!dragging) { dragging = true; lastPointer = pos.Value; draggingFinger = down == 1 ? 1 : -1; dragTravel = 0f; }
                     delta = (pos.Value - lastPointer) * scale;
+                    dragTravel += delta.magnitude;
                     delta.y = -delta.y;   // screen y up -> the original's y down
                     lastPointer = pos.Value;
                     fling = delta;
@@ -164,6 +177,8 @@ namespace GoF2Remake.UI
                     dragging = false;
                     draggingFinger = -1;
                     if (fling.magnitude <= 3f) fling = Vector2.zero;
+                    // The UI hidden: a short click / tap (no drag) brings it back.
+                    if (uiHidden && dragTravel < 8f) { fling = Vector2.zero; SetUiHidden(false); }
                 }
             }
             // MGame::OnUpdate (cinematic mode, 0x1aec2c): the pitch is clamped to +-200 only in the fling branch, when the
@@ -181,6 +196,9 @@ namespace GoF2Remake.UI
             {
                 delta.x += ((kb.leftArrowKey.isPressed ? 1 : 0) - (kb.rightArrowKey.isPressed ? 1 : 0)) * 4f * frames;
                 delta.y += ((kb.downArrowKey.isPressed ? 1 : 0) - (kb.upArrowKey.isPressed ? 1 : 0)) * 4f * frames;
+                // Remake: + / - (Page Up / Down) zoom like the triggers.
+                distance += ((kb.minusKey.isPressed || kb.numpadMinusKey.isPressed || kb.pageDownKey.isPressed ? 1 : 0)
+                           - (kb.equalsKey.isPressed || kb.numpadPlusKey.isPressed || kb.pageUpKey.isPressed ? 1 : 0)) * 200f * frames;
             }
             if (pad != null)
             {
@@ -204,7 +222,25 @@ namespace GoF2Remake.UI
             return true;
         }
 
-        bool OverFooter(Vector2 screen) => screen.y < Screen.height * 0.12f;
+        bool OverControl(Vector2 screen) => !uiHidden && OrbitViewUi.OverControl(root, back, hints, screen);
+
+        void SetUiHidden(bool hidden)
+        {
+            uiHidden = hidden;
+            overlay.EnableInClassList("orbit-view--clean", hidden);
+        }
+
+        /// <summary>The controls for the current input kind (again when it changes); the mouse's hover only with keys / mouse.</summary>
+        void BuildHints()
+        {
+            hintsKind = InputMode.Current;
+            overlay.EnableInClassList("can-hover", hintsKind == InputKind.KeyboardMouse);
+            OrbitViewUi.BuildHints(hints, hintsKind, new[] { "↑", "←", "↓", "→" },
+                () => { ButtonSound?.Invoke(false); SetUiHidden(true); },
+                () => { ButtonSound?.Invoke(false); Save(); },
+                () => { ButtonSound?.Invoke(false); Exit(); },
+                () => ButtonSound?.Invoke(true));
+        }
 
         /// <summary>rotateAroundTarget(-0.005 py, -0.005 px, 0) at the distance, looking at the ship (MGame::OnUpdate 0x1af324).
         /// The game's ship frame has +x on the ship's left (Unity's is mirrored, (-x, y, z)), so in Unity the yaw is +0.005 px
@@ -230,6 +266,7 @@ namespace GoF2Remake.UI
         {
             capturing = true;
             overlay.style.visibility = Visibility.Hidden;
+            yield return null;   // a frame drawn without the overlay
             yield return new WaitForEndOfFrame();
             bool ok = false;
             try

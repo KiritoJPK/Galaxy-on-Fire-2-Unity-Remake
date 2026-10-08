@@ -21,6 +21,10 @@ namespace GoF2Remake.Flight
         public AudioClip buttonPush, buttonRelease, messageInfo;
         [Tooltip("97 Button_Info: the hangar's item info window (HangarWindow::OnTouchEnd case 0).")]
         public AudioClip buttonInfo;
+        /// <summary>0x65 Button_to_ship: a purchase (remake: the carrier's resupply window, UI.CarrierShopWindow).</summary>
+        public AudioClip shopBuy;
+        /// <summary>95 Station_Atmo_Hangar3, the hangar ambience's loop: under the carrier's resupply window (remake).</summary>
+        public AudioClip hangarAtmo;
         public AudioClip miningLanding;
         public AudioClip miningDrillBroken;
         public AudioClip autopilotOn;

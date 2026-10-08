@@ -14986,7 +14986,7 @@
    "pack": "valkyrie",
    "category": "turrets",
    "origin": "PlayerEgo::checkForTurret (0xa722c) (same code in CutScene::checkForTurret); turret item index -> meshes item 0xb5",
-   "notes": "Hierarchy: pivot (empty, +0x2c) -> {base +0xdc, gun +0x28}. Gun offset from literal pool (s16,s18,s20).",
+   "notes": "Hierarchy: pivot (empty, +0x2c) -> {base +0xdc, gun +0x28}. Gun offset from literal pool (s16,s18,s20). Remake: the gun offset turned with the base, (0,88,11) (see v_autoturret_003).",
    "root": 0,
    "parts": [
     {
@@ -15033,7 +15033,7 @@
      "position": [
       0.0,
       88.0,
-      -11.0
+      11.0
      ],
      "rotation": [
       0.0,
@@ -15055,7 +15055,7 @@
    "pack": "valkyrie",
    "category": "turrets",
    "origin": "PlayerEgo::checkForTurret (0xa722c) (same code in CutScene::checkForTurret); turret item index -> meshes item 0xb6",
-   "notes": "Hierarchy: pivot (empty, +0x2c) -> {base +0xdc, gun +0x28}. Gun offset from literal pool (s16,s18,s20). The (34,88,1.6) offset of v_autoturret_003 decodes oddly (x=34) - verify visually.",
+   "notes": "Hierarchy: pivot (empty, +0x2c) -> {base +0xdc, gun +0x28}. Gun offset from literal pool (s16,s18,s20). The (34,88,1.6) offset of v_autoturret_003 decodes oddly (x=34) - verify visually. Remake: written turned with the base, (-34,88,-1.6): checkForTurret translates the gun in its own (turned) frame, and the base here turns inside the pivot; unturned the gun sat on the far side of the base, inside it (the hangar's assembly, which turns the whole object, was right).",
    "root": 0,
    "parts": [
     {
@@ -15100,9 +15100,9 @@
      "variant": "",
      "condition": "",
      "position": [
-      34.0,
+      -34.0,
       88.0,
-      1.6
+      -1.6
      ],
      "rotation": [
       0.0,

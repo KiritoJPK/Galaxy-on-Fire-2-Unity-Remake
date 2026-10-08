@@ -402,6 +402,7 @@ namespace GoF2Remake.Flight
                 var gun = r.gun;
                 if (!gun.isSecondary && primaryHeld)
                 {
+                    if (Cheats.NoPrimaryCooldown) gun.reloadAcc = gun.reloadMs + 1f;   // remake debug: reloaded at once
                     int b = Fire(gun);
                     if (b >= 0) OnShot(r, Sounds(r));
                 }

@@ -35,6 +35,8 @@ namespace GoF2Remake.Flight
     {
         public enum Phase { Idle, Approach, Entering, Docked, Leaving }
         public const int DropOff = 1, Pickup = 2, Hackable = 3;
+        /// <summary>Remake: the carrier's resupply dock (World.CapitalShips; the flight HUD's resupply menu while docked).</summary>
+        public const int Resupply = 4;
 
         const float M = 0.05f;
         const float EnterMs = 2000f, LeaveMs = 1500f, ApproachReachUnits = 1400f;
@@ -99,6 +101,11 @@ namespace GoF2Remake.Flight
         public bool Dock(NpcShip target)
         {
             if (target == null || target.DockingType <= 0 || State != Phase.Idle) return false;
+            if (target.DockingType == Resupply)
+            {
+                string refusal = CapitalShips.DockRefusal(target);
+                if (refusal != null) { Say(refusal); return false; }
+            }
             var points = SpacePoints.Set(target.SpacePointSet);
             if (!NearestPoints(target, points)) return false;
             Target = target;
@@ -226,7 +233,8 @@ namespace GoF2Remake.Flight
             toRot = Quaternion.LookRotation(nose.sqrMagnitude > 1e-6f ? nose : ship.transform.forward, q * upLocal);
             if (chase != null) chase.enabled = false;
             SetExhaust(false);
-            Play(dockSound);
+            // Remake: no sound at the carrier (Docking_Landing sounded like mining there; nothing fitting yet).
+            if (Target.DockingType != Resupply) Play(dockSound);
         }
 
         void UpdateEntering(float dtMs)

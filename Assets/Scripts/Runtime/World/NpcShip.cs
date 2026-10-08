@@ -147,6 +147,8 @@ namespace GoF2Remake.World
         public void OnRemoteHit(ulong client, int dmg)
         {
             if (alwaysEnemy || IsWingman || Race == Standing.Pirate || Race == Standing.Void || Race == Standing.Specter) return;
+            // Remake (CapitalShips): a capital ship, its turrets and escorts turn on another player's squad at the first hit.
+            if (Spec.capitalEnhanced && (Spec.capital != 0 || Spec.capitalPart)) { aggressors.Add(client); return; }
             int total = (remoteHullDamage.TryGetValue(client, out int d) ? d : 0) + dmg;
             remoteHullDamage[client] = total;
             if (total >= Hp.maxHull * (Session.IsExtreme ? 0.25f : 0.50f)) aggressors.Add(client);
@@ -206,8 +208,12 @@ namespace GoF2Remake.World
                 if (gun != null) yield return gun;
                 if (secondGun != null) yield return secondGun;
                 if (empGun != null) yield return empGun;
+                foreach (var g in ExtraGuns) yield return g;
             }
         }
+        /// <summary>Remake: guns another component fires for this ship (a capital ship's missiles, CapitalShip), for the
+        /// multiplayer shot mirrors.</summary>
+        public readonly List<Gun> ExtraGuns = new List<Gun>();
         /// <summary>The ship's model (its pose is what a multiplayer proxy follows), else the ship itself.</summary>
         public Transform Model => model != null ? model : transform;
         /// <summary>Resources path of the assembled prefab it was built from (Traffic), for multiplayer proxies.</summary>
@@ -370,7 +376,7 @@ namespace GoF2Remake.World
             Target.plateWanted = spec.wantedIndex >= 0;
             Target.radius = (spec.hitRadius > 0f ? spec.hitRadius : NpcTables.HitRadiusUnits) * M;
             Target.hitpoints = new Hitpoints(spec.hitpoints > 0 ? spec.hitpoints : NpcTables.Hull(kind, spec.ship));
-            Target.hitpoints.SetEmp(NpcTables.Emp(kind), NpcTables.EmpRecoveryMs(kind));   // also with a hull override
+            Target.hitpoints.SetEmp(spec.empPoints > 0 ? spec.empPoints : NpcTables.Emp(kind), NpcTables.EmpRecoveryMs(kind));   // also with a hull override
             Target.hp = Target.maxHp = Target.hitpoints.maxHull;
             Target.displayName = !string.IsNullOrEmpty(spec.name) ? spec.name : spec.nameText >= 0 ? Localization.Get(spec.nameText) : null;
             if (spec.speed > 0f) speed = baseSpeed = spec.speed;
@@ -392,6 +398,8 @@ namespace GoF2Remake.World
                 obstacle = gameObject.AddComponent<Obstacle>();
                 obstacle.projectFromVolume = false;
                 obstacle.volumes = CollisionVolume.ForStaticObject(spec.collisionId);
+                // Remake (CapitalShips): a killable capital ship is hit on its collision boxes, not the +-1000 cube at its centre.
+                if (spec.capitalEnhanced) Target.boxes = LocalBoxes(obstacle.volumes);
             }
             if (spec.deadButSelectable) ShowWreckAtEnd();
             Target.Damaged += OnDamaged;
@@ -446,7 +454,7 @@ namespace GoF2Remake.World
         }
 
         /// <summary>The world-axis boxes as local hit boxes (Target.Contains) for the ship's fixed rotation.</summary>
-        static Bounds[] LocalBoxes(List<CollisionVolume> volumes)
+        public static Bounds[] LocalBoxes(List<CollisionVolume> volumes)
         {
             var inv = Quaternion.Inverse(GameForward);
             var list = new List<Bounds>();
@@ -484,6 +492,7 @@ namespace GoF2Remake.World
             // PlayerFighter::revive 0xf3de0: a revived Void ship or Specter carries nothing (the Void's remains come at death).
             loot = Spec.noLoot || Race == Standing.Void || Race == Standing.Specter ? new List<ItemStack>() : RollLoot();
             crate = null;
+            crateDropped = false;
             if (engine != null && engine.clip != null) engine.Play();
         }
 
@@ -505,7 +514,7 @@ namespace GoF2Remake.World
                     // Pitch counter -600 .. +100 ms at 2 pi / 4096 rad per ms: about 52.7 deg up, 8.8 deg down.
                     pitchMax = 600f * TurretAim.RadPerMs, pitchMin = -100f * TurretAim.RadPerMs,
                 };
-            gunBase = NpcTables.GunDamage(Spec, false, true, out gunSpeed);
+            gunBase = (int)(NpcTables.GunDamage(Spec, false, true, out gunSpeed) * Spec.gunFactor);   // gunFactor: the remake's CapitalShips
             // Level::assignGuns: a sentry gun object (0x49c0 / 0x49c1 / 0x49c2 = sn_sentry_gun_001..003) fires its item's
             // shot (211 / 212 / 213: attr 9 damage, 11 reload, 12 lifetime, 13 speed); at 0x9e (Harval's, always enemy)
             // x1.5 damage, x1.2 speed and x5 hull; the LevelScript ctor of 0x9e scales their damage by 0.3.
@@ -529,8 +538,9 @@ namespace GoF2Remake.World
             var item = db.Item(Spec.race == 1 ? 15 : 20);
             if (item != null)
             {
+                // Remake (CapitalShips): an enhanced turret's shots fly 3600 ms (57 600 units), past its 50 000-unit reach.
                 gun = new Gun(item, gunBase, NpcTables.GunReloadMs, NpcTables.GunPool,
-                                  NpcTables.GunLifetimeMs, gunSpeed) { owner = Target };
+                                  Spec.capitalEnhanced ? World.CapitalShips.TurretLifetimeMs : NpcTables.GunLifetimeMs, gunSpeed) { owner = Target };
                 rig = new GunRig(gun, WeaponFx.Load(item.index), fxRootRef, turretBarrel, 2);
                 gun.Hit += OnGunHit;
             }
@@ -546,7 +556,8 @@ namespace GoF2Remake.World
                 turretTarget = PickTurretTarget();
             }
             if (turretTarget == null) return;
-            var at = turretTarget.transform.position + turretTarget.transform.forward * TurretLeadUnits * M;
+            var at = Spec.capitalEnhanced && turretTarget.boxes != null && turretTarget.boxes.Length > 0 ? TurretAimPoint(turretTarget, turretBarrel.position)
+                   : turretTarget.transform.position + turretTarget.transform.forward * TurretLeadUnits * M;
             bool aligned = turretAim.Step(at, dtMs);
             if (turretAim.LimitHit) { turretIgnored = turretTarget; turretPickMs += dtMs; return; }   // out of reach: dropped
             if (!aligned || !shootingEnabled) return;
@@ -586,7 +597,7 @@ namespace GoF2Remake.World
                 bool candidate = PlayerOwned ? !e.isPlayer && e.isShip && e.hostileToPlayer
                                : e.isPlayer ? Target.hostileToPlayer : e.isShip && e.race >= 0 && Standing.RacesHostile(e.race, Race);
                 if (!candidate) continue;
-                float d = (e.transform.position - transform.position).magnitude;
+                float d = (TurretAimPoint(e, transform.position) - transform.position).magnitude;
                 if (d >= bestD) continue;
                 if (e == turretIgnored) { ignored = e; continue; }
                 bestD = d;
@@ -594,6 +605,11 @@ namespace GoF2Remake.World
             }
             return best ?? ignored;
         }
+
+        /// <summary>Where a turret measures and aims: the target's position, or (remake, World.CapitalShips) for an enhanced
+        /// turret the nearest point of a big ship's hull (Target.NearestPoint: a capital ship 3 km long is in reach long before
+        /// its centre).</summary>
+        Vector3 TurretAimPoint(Target e, Vector3 from) => Spec.capitalEnhanced ? e.NearestPoint(from) : e.transform.position;
 
         /// <summary>The Terran battleship died: every turret of the level takes 9 999 999 (not credited to the player).</summary>
         public void DestroyAsTurret()
@@ -1588,7 +1604,9 @@ namespace GoF2Remake.World
                 return;
             }
             if (Spec.group == NpcGroup.Outpost) traffic.PirateStationAction(false);   // a pirate base's outpost destroyed
-            if (Spec.ship == 14) traffic.DestroyTurrets();   // PlayerFixedObject::update: every turret of the level goes too
+            // PlayerFixedObject::update: every turret of the level goes too (remake, CapitalShips: an enhanced one's own only; in a
+            // fleet battle the Vossk battleship's stay).
+            if (Spec.ship == 14) { if (Spec.capitalEnhanced) traffic.DestroyCapitalTurrets(Spec); else traffic.DestroyTurrets(); }
             if (IsFixed || IsFreighter)
             {
                 // PlayerFixedObject::update 0x17f6b4: record 22 (23 for the battleship and the Pirate Outpost) on the wreck,
@@ -1601,7 +1619,7 @@ namespace GoF2Remake.World
             {
                 DropCrate();
                 // PlayerFixedObject::update state 3: the hull swapped for the wreck animation (plays once), smoke.
-                dyingMs = 20000f;
+                dyingMs = Spec.deathMs > 0f ? Spec.deathMs : 20000f;
                 if (Spec.wreckPrefab != null && modelGo != null)
                 {
                     wreck = Instantiate(Spec.wreckPrefab, transform, false);
@@ -1697,6 +1715,8 @@ namespace GoF2Remake.World
             if (obstacle != null && !IsFixed) obstacle.volumes = CollisionVolume.ForWreck(Spec.ship, Race);   // setWreckedMeshId
             // A Pirate Outpost's wreck (0x37a3 -> wreck volume 5): in state 4 only the wreck volumes collide.
             else if (obstacle != null && Spec.fixedObject == "station_pirates") obstacle.volumes = CollisionVolume.ForWreckId(5);
+            // Remake (CapitalShips): a capital ship without a wreck leaves nothing to fly into.
+            else if (obstacle != null && Spec.capitalEnhanced && wreck == null) obstacle.volumes = new List<CollisionVolume>();
             if (!IsFreighter) DropCrate();
         }
 
@@ -1728,9 +1748,17 @@ namespace GoF2Remake.World
             if (s != null) s.amount = Mathf.Max(0, s.amount - amount);
         }
 
+        /// <summary>Remake (CapitalShips): the cargo it drops when it dies (a capital ship's crate).</summary>
+        public void SetLoot(List<ItemStack> items) => loot = items ?? new List<ItemStack>();
+
+        bool crateDropped;
+
         void DropCrate()
         {
-            if (loot.Count == 0 || assets == null) return;
+            // A fixed object dropped its crate as it died (OnDied) and again at the end of its dying (UpdateDying): a pirate
+            // outpost's loot came twice. One crate per death.
+            if (crateDropped || loot.Count == 0 || assets == null) return;
+            crateDropped = true;
             var prefab = assets.Crate(Race);
             var go = prefab != null ? Instantiate(prefab, transform.position, Random.rotation) : new GameObject("Crate");
             go.name = "Crate";

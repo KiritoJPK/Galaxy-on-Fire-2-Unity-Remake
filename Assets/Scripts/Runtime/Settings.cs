@@ -187,6 +187,9 @@ namespace GoF2Remake.Data
         /// and any completed lock replaces the old one); off (default) = the remake's smarter lock (CombatRadar).</summary>
         public static bool OriginalTargetLock { get => GetBool("originalTargetLock", false); set => SetBool("originalTargetLock", value); }
         public static bool PirateEvents { get => GetBool("pirateEvents", true); set => SetBool("pirateEvents", value); }
+        /// <summary>Remake (players' suggestion): the capital ships fight back (World.CapitalShips): escorts, stronger turrets,
+        /// a killable carrier and Vossk battleship with loot, the carrier's Inflicts and its resupply dock. Off = the original.</summary>
+        public static bool CapitalShips { get => GetBool("capitalShips", false); set => SetBool("capitalShips", value); }
 
         /// <summary>DialogueWindow::update: with voice, turn the page once the line has ended.</summary>
         public static bool AutoAdvanceDialogue { get => GetBool("autoAdvanceDialogue", true); set => SetBool("autoAdvanceDialogue", value); }
@@ -239,7 +242,7 @@ namespace GoF2Remake.Data
                          "masterVolume", "musicVolume", "sfxVolume", "voiceVolume", "displayMode", "resolutionWidth", "resolutionHeight",
                          "frameRate", "renderScale", "upscaler", "upscalerQuality", "msaa", "quality", "brightness", "bloom", "bloomStyle", "lensFlare", "npcPlayerEngines", "fov", "cameraShake",
                          "sensitivity", "invertPitch", "invertYaw", "invertDrillY", "invertDrillX", "gyroSteering", "gyroSensitivity", "haptics", "stickDeadzone", "mouseDeadzone", "launchCamera", "autoAdvanceDialogue", "inputHints",
-                         "pirateEvents", "tutorialHints", "levelPitch",
+                         "pirateEvents", "capitalShips", "tutorialHints", "levelPitch",
                      })
                 PlayerPrefs.DeleteKey(Prefix + key);
             PlayerPrefs.Save();

@@ -150,6 +150,7 @@ namespace GoF2Remake.World
             ship.Setup(this, db, spec, prefab, fxRoot);
             if (spec.turretAssembly == null && spec.fixedObject == null && !spec.freighter && (spec.ship == 45 || spec.ship == 51))
                 AttachFighterTurret(ship);
+            if (spec.capital != 0 && spec.capitalEnhanced) CapitalShip.Attach(ship, this, db);   // remake option (CapitalShips)
             return ship;
         }
 
@@ -550,6 +551,40 @@ namespace GoF2Remake.World
         public void DestroyTurrets()
         {
             foreach (var s in Ships.ToArray()) s.DestroyAsTurret();
+        }
+
+        /// <summary>Remake (CapitalShips' fleet battles): a line of the race's radio (a generic face, like Radio) with a literal
+        /// text, queued after the waiting ones.</summary>
+        public void RaceRadio(string text, int race)
+        {
+            if (RadioBlocked || string.IsNullOrEmpty(text)) return;
+            int image = race == 0 ? 64 : race == 2 ? 65 : race == 3 ? 21 : race == 8 ? 9 : 63;
+            Say(new Chatter { text = text, speaker = Localization.Get(1597 + image),
+                              portrait = AgentGenerator.CreatePortrait(true, race == 0 || race == 2 || race == 3 ? race : 1) });
+        }
+
+        /// <summary>Remake (CapitalShips): a bounty paid in flight (the HUD's bounty message).</summary>
+        public void PayBounty(int reward)
+        {
+            Session.Credits += reward;
+            BountyCollected?.Invoke(reward);
+        }
+
+        /// <summary>Remake (CapitalShips): a fleet battle's two capital ships both still stand.</summary>
+        public bool FleetBattleRaging
+        {
+            get
+            {
+                int n = 0;
+                foreach (var s in Ships) if (s.Spec.fleetBattle && !s.Gone && s.Current == NpcShip.State.Fly && s.Target.Alive) n++;
+                return n >= 2;
+            }
+        }
+
+        /// <summary>Remake (CapitalShips): a killable carrier / Vossk battleship died: its own turrets go with it.</summary>
+        public void DestroyCapitalTurrets(SpawnSpec host)
+        {
+            foreach (var s in Ships.ToArray()) if (s.Spec.capitalHost == host) s.DestroyAsTurret();
         }
 
         /// <summary>createRadioMessage kinds 0 / 1 say nothing at one of step 59's target stations (Status+0x90).</summary>
@@ -958,6 +993,7 @@ namespace GoF2Remake.World
             var introAtmo = StoryAssets.Load()?.introAtmo;
             if (introAtmo != null && music.clip == introAtmo && music.isPlaying) { music.volume = fade * Settings.MusicVolume * Events.EventScreen.SceneMusic; return; }
             int cat = HostileCount <= 0 ? 0 : HostileCount <= 2 ? 1 : HostileCount <= 4 ? 2 : 3;
+            if (cat < 2 && FleetBattleRaging) cat = 2;   // remake (CapitalShips): a fleet battle plays the battle music
             // At campaign 0x91 (the plasma array's destruction) a calm orbit never brings the calm track back.
             if (cat == 0 && musicCategory > 0 && !Session.FreePlay && Session.CampaignMission == 0x91) cat = musicCategory;
             // Radar::draw: an uncovered Most Wanted criminal -> 151; hostile Specters (race 10) -> 149 / 150.

@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -44,6 +45,8 @@ MonoBehaviour:
   buttonRelease: {fileID: 8300000, guid: f750573b55cc8f94e89d05317bb88edb, type: 3}
   messageInfo: {fileID: 8300000, guid: b2ce5b1021312cd4ca8d44159becb0bf, type: 3}
   buttonInfo: {fileID: 8300000, guid: 9c8a98dadab77c246afa6c29d470eb23, type: 3}
+  shopBuy: {fileID: 8300000, guid: bdeb0640989cb314d8e382d38f30f7fb, type: 3}
+  hangarAtmo: {fileID: 8300000, guid: 09f7fa9e47e2acd4f8b849151d882e08, type: 3}
   miningLanding: {fileID: 8300000, guid: 22f4ba10c63579f4c82835653e3a6e5f, type: 3}
   miningDrillBroken: {fileID: 8300000, guid: 75e4f8840c6d33749b003f40101bed36, type: 3}
   autopilotOn: {fileID: 8300000, guid: fedfb68e425a4e8409dd9dcd7ecf23fa, type: 3}

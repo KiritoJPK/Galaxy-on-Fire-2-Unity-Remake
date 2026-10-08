@@ -851,3 +851,91 @@
     border-color: var(--gof-amber);
     background-color: rgba(255, 166, 48, 0.16);
 }
+
+/* ---- remake: the orbit views around the player's ship, Inspect ship (station) and Action Freeze (flight), OrbitViewUi:
+   the title at the top left, the controls at the top right, Back in the footer, the message above it ---------------- */
+
+.orbit-view-title {
+    position: absolute;
+    left: 64px;
+    top: 40px;
+    font-size: 34px;
+    letter-spacing: 6px;
+    color: #FFFFFF;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.orbit-view-footer {
+    position: absolute;
+    left: 40px;
+    right: 40px;
+    bottom: 40px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.orbit-view-back {
+    min-width: 170px;
+    padding: 16px 24px;
+    margin: 0 16px 0 0;
+    font-size: 22px;
+    letter-spacing: 3px;
+    white-space: nowrap;
+    -unity-text-align: middle-center;
+    color: #FFFFFF;
+    background-color: rgba(62, 200, 255, 0.12);
+    border-width: 2px;
+    border-color: var(--gof-cyan);
+    border-radius: 4px;
+}
+
+.can-hover .orbit-view-back:hover {
+    background-color: rgba(62, 200, 255, 0.28);
+}
+
+/* The controls at the top right, opposite the ship's name (the footer holds the buttons). */
+.orbit-view-hints {
+    position: absolute;
+    top: 30px;
+    right: 40px;
+    left: 600px;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.orbit-view-hints .hint {
+    margin-left: 10px;
+}
+
+/* Hide UI: nothing over the view (a short click / tap or H / Y brings it back). */
+.orbit-view--clean .orbit-view-title,
+.orbit-view--clean .orbit-view-hints,
+.orbit-view--clean .orbit-view-footer,
+.orbit-view--clean .orbit-view-message {
+    display: none;
+}
+
+/* "Screenshot saved." above the footer. */
+.orbit-view-message {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 130px;
+    font-size: 24px;
+    letter-spacing: 3px;
+    -unity-text-align: middle-center;
+    color: #FFFFFF;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* Hide UI / Screenshot / Back in the hints are clickable (a tap on touch). The views put can-hover on their own overlay
+   for the mouse. */
+.can-hover .orbit-view-hint--action:hover {
+    background-color: rgba(62, 200, 255, 0.28);
+}
+
+.orbit-view-hint--action:active {
+    background-color: rgba(62, 200, 255, 0.4);
+}

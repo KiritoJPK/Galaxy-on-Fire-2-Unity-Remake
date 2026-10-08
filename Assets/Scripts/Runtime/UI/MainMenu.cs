@@ -287,6 +287,7 @@ namespace GoF2Remake.UI
             Bind("economyAndroidButton", () => PickEconomy(Economy.Android));
             Bind("gameOptionsStart", () => BeginGame(pendingEconomy));
             Bind("tutorialToggle", () => { Settings.TutorialHints = !Settings.TutorialHints; RefreshTutorialToggle(); });
+            Bind("capitalToggle", () => { Settings.CapitalShips = !Settings.CapitalShips; RefreshCapitalToggle(); });
             Bind("kaamoToggle", () => { KaamoFromStart = !KaamoFromStart; RefreshKaamoToggle(); });
             Bind("hardcoreToggle", () => { hardcoreNext = !hardcoreNext; RefreshHardcoreToggle(); });
             Bind("ngPlusToggle", () => { newGamePlus = !newGamePlus && ngPlusSave != null; RefreshNgPlus(false); });
@@ -799,6 +800,7 @@ namespace GoF2Remake.UI
         {
             pendingEconomy = economy;
             RefreshTutorialToggle();   // the option may have changed in Options meanwhile
+            RefreshCapitalToggle();
             var desc = root.Q<Label>("gameOptionsStartDesc");
             if (desc != null) desc.text = $"{Session.DifficultyName(pendingDifficulty)}  ·  {Session.EconomyName(economy)}";
             OpenPanel("gameOptionsPanel");
@@ -881,6 +883,23 @@ namespace GoF2Remake.UI
             if (desc != null)
                 desc.text = Localization.Extra("tutorialDesc",
                     "Popups that explain the controls, the hangar, the map and the missions the first time you meet them. Also in Options > Gameplay.");
+        }
+
+        /// <summary>Remake (players' suggestion): the capital ship enhancements (Settings.CapitalShips, also in Options >
+        /// Gameplay) as a game option before the start.</summary>
+        void RefreshCapitalToggle()
+        {
+            var b = root.Q<Button>("capitalToggle");
+            if (b == null) return;
+            bool on = Settings.CapitalShips;
+            b.EnableInClassList("choice-button--on", on);
+            var label = root.Q<Label>("capitalLabel");
+            if (label != null)
+                label.text = $"{Localization.Extra("capitalTitle", "Capital ships")}: {(on ? Localization.Extra("capitalOn", "Enhanced") : Localization.Extra("capitalOff", "Original"))}".ToUpperInvariant();
+            var desc = root.Q<Label>("capitalDesc");
+            if (desc != null)
+                desc.text = Localization.Extra("capitalDesc",
+                    "Battleships and carriers get escorts and stronger turrets; carriers and Vossk battleships can be destroyed for loot, carriers launch Inflicts and let trusted pilots dock to resupply. Also in Options > Gameplay.");
         }
 
         void BeginGame(Economy economy)
@@ -2057,6 +2076,7 @@ namespace GoF2Remake.UI
             RefreshKaamoToggle();
             RefreshHardcoreToggle();
             RefreshTutorialToggle();
+            RefreshCapitalToggle();
             Set("extremeLabel", T(25));
             Set("extremeDesc", Localization.Extra("extremeDesc", "For veterans who finished the game: tougher enemies and a harsher economy."));
             Set("loadTitle", T(29));

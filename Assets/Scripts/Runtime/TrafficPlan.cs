@@ -77,6 +77,16 @@ namespace GoF2Remake.Flight
         public int pirateEvent;            // remake: EventOutpost / EventBoss / EventTurret (TrafficPlan.AddPirateEvent), 0 = none
         public bool eventDangerous;        // ... in a Dangerous system: the bigger bounty (Traffic.PirateEventDone)
         public const int EventOutpost = 1, EventBoss = 2, EventTurret = 3;
+        // Remake (Settings.CapitalShips, World.CapitalShips): the capital ship enhancements.
+        public int capital;                // the host: CapitalBattleship / CapitalCarrier / CapitalVossk, 0 = none
+        public bool capitalPart;           // one of its turrets or escorts (its turrets go with it: Traffic.DestroyCapitalTurrets)
+        public SpawnSpec capitalHost;      // ... and whose
+        public bool capitalEnhanced;       // built with the option on (hit boxes, CapitalShip on the host)
+        public bool fleetBattle;           // a fleet battle's capital ship (TrafficPlan.AddFleetBattle) ...
+        public SpawnSpec battleFoe;        // ... and the enemy capital ship it closes in on
+        public float deathMs = -1f;        // a fixed object's dying time before the big explosion (-1 = its wreck animation or 20 s)
+        public int empPoints = -1;         // the EMP pool (-1 = NpcTables.Emp)
+        public const int CapitalBattleship = 1, CapitalCarrier = 2, CapitalVossk = 3;
     }
 
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
@@ -212,6 +222,10 @@ namespace GoF2Remake.Flight
             bool carrier = terran && Random.Range(0, 100) < 30 && cm > 0x67;
             // The supernova system (27) before campaign 0x9e (Status::inSupernovaSystem): nothing but the story's.
             if (story && system.index == 27 && cm < 0x9e) { local = jumpers = freighters = raiders = 0; raidersOn = terran = vossk = false; }
+            // Remake (CapitalShips): now and then a fleet battle (a Terran and a Vossk capital ship with their wings) instead of
+            // the single capital ship special.
+            bool fleetBattle = FleetBattleHere(station, system, sysRace, baseSystem, story);
+            if (fleetBattle) terran = vossk = false;
             if (terran || vossk) freighters--;
             // A pirate raid on a traveller (initStreamOutPosition): rnd(100) < rank + 20 (40 Extreme) moves the pirates'
             // point toward the arriving player (Route::setNewCoords(player position / f); f is lost in the decompile,
@@ -255,7 +269,8 @@ namespace GoF2Remake.Flight
                     position = new Vector3(s * (Random.Range(0, 60000) - 80000), Random.Range(0, 40000) - 20000, Random.Range(0, 160000) - 80000),
                 });
             }
-            if (terran || vossk) AddCapitalShip(list, terran, carrier, station);
+            if (terran || vossk) AddCapitalShip(db, list, terran, carrier, station);
+            if (fleetBattle) AddFleetBattle(db, list, station);
             // 4 raiders (the loot orbits': Player::setHitpoints(2 x max), speed 3.5, each at the player + (20000 +- rnd 50000,
             // 10000 +- rnd 50000, 20000 +- rnd 50000))
             int raidersFrom = list.Count;
@@ -514,32 +529,111 @@ namespace GoF2Remake.Flight
             new Vector3(15624, -787, -7569), new Vector3(0, 4901, 3084),
         };
 
-        static void AddCapitalShip(List<SpawnSpec> list, bool terran, bool carrier, int station)
+        static void AddCapitalShip(Database db, List<SpawnSpec> list, bool terran, bool carrier, int station)
         {
-            Vector3 host;
-            if (terran && !carrier)
+            int kind = !terran ? SpawnSpec.CapitalVossk : carrier ? SpawnSpec.CapitalCarrier : SpawnSpec.CapitalBattleship;
+            // The original's boxes in createMission: the battleship's, the carrier's and the Vossk battleship's.
+            System.Func<Vector3> roll = kind == SpawnSpec.CapitalBattleship
+                ? () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 10000) - 5000, Random.Range(0, 80000) + 40000)
+                : kind == SpawnSpec.CapitalCarrier
+                ? () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 40000) - 20000, Random.Range(0, 80000) + 100000)
+                : () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 40000) - 20000, Random.Range(0, 80000) + 60000);
+            // Remake option: escorts, stronger turrets, the killable carrier / Vossk battleship (World.CapitalShips).
+            AddCapitalShipAt(db, list, kind, ClearOfStation(station, CapitalVolumes(kind), roll), Settings.CapitalShips);
+        }
+
+        static List<CollisionVolume> CapitalVolumes(int kind) => kind == SpawnSpec.CapitalBattleship ? CollisionVolume.ForFreighter(14, 0)
+            : CollisionVolume.ForStaticObject(kind == SpawnSpec.CapitalCarrier ? 2005 : 2006);
+
+        /// <summary>A capital ship of 'kind' (SpawnSpec.Capital*) at 'host' (game units) with its turrets, enhanced (escorts,
+        /// killable: World.CapitalShips) or as the original's; returns the host's index in the list.</summary>
+        public static int AddCapitalShipAt(Database db, List<SpawnSpec> list, int kind, Vector3 host, bool enhanced)
+        {
+            int first = list.Count;
+            if (kind == SpawnSpec.CapitalBattleship)
             {
-                host = ClearOfStation(station, CollisionVolume.ForFreighter(14, 0),
-                    () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 10000) - 5000, Random.Range(0, 80000) + 40000));
-                list.Add(new SpawnSpec { group = NpcGroup.Special, race = 0, ship = 14, freighter = true, stationary = true, position = host });
+                list.Add(new SpawnSpec { group = NpcGroup.Special, race = 0, ship = 14, freighter = true, stationary = true, position = host,
+                                         capital = SpawnSpec.CapitalBattleship });
                 foreach (var t in BattleshipTurrets) list.Add(Turret(0, host + t.pos, t.rot));
             }
-            else if (terran)
+            else if (kind == SpawnSpec.CapitalCarrier)
             {
-                host = ClearOfStation(station, CollisionVolume.ForStaticObject(2005),   // createMission's carrier box
-                    () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 40000) - 20000, Random.Range(0, 80000) + 100000));
                 list.Add(new SpawnSpec { group = NpcGroup.Special, race = 0, ship = -1, position = host, fixedObject = "sn_carrier_terran_1",
-                                         collisionId = 2005, hitRadius = 0f, hitpoints = 9999999, noLoot = true, stationary = true });
+                                         collisionId = 2005, hitRadius = 0f, hitpoints = 9999999, noLoot = true, stationary = true,
+                                         capital = SpawnSpec.CapitalCarrier });
                 foreach (var t in CarrierTurrets) list.Add(Turret(0, host + t.pos, t.rot));
             }
             else
             {
-                host = ClearOfStation(station, CollisionVolume.ForStaticObject(2006),
-                    () => new Vector3(Random.Range(0, 80000) - 40000, Random.Range(0, 40000) - 20000, Random.Range(0, 80000) + 60000));
                 list.Add(new SpawnSpec { group = NpcGroup.Special, race = 1, ship = -1, position = host, fixedObject = "sn_battleship_vossk",
-                                         collisionId = 2006, hitRadius = 0f, hitpoints = 9999999, noLoot = true, stationary = true, nameText = 1667 });
+                                         collisionId = 2006, hitRadius = 0f, hitpoints = 9999999, noLoot = true, stationary = true, nameText = 1667,
+                                         capital = SpawnSpec.CapitalVossk });
                 foreach (var t in VosskTurrets) list.Add(Turret(1, host + t, Vector3.zero));
             }
+            for (int i = first + 1; i < list.Count; i++) { list[i].capitalPart = true; list[i].capitalHost = list[first]; }
+            if (enhanced) GoF2Remake.World.CapitalShips.Enhance(db, list, first);
+            return first;
+        }
+
+        // ---- remake: fleet battles (World.CapitalShips) -------------------------------------------------------------
+
+        /// <summary>A fleet battle in this orbit: the option on, a Terran or Vossk system (the two at war), past step 103 (the
+        /// carrier's era; the finished game's world too), 3 % per visit; not in the special orbits, a pirate base system, the
+        /// Kaamo siege or a storyline's orbit while a story runs.</summary>
+        static bool FleetBattleHere(int station, SystemData system, int sysRace, bool baseSystem, bool story)
+        {
+            if (!Settings.CapitalShips || (sysRace != 0 && sysRace != 1) || Session.CampaignMission <= 0x67) return false;
+            if (Session.FreePlay && !Session.CompletedWorld) return false;
+            if (baseSystem || KaamoClub.SiegeAt(station) || (story && InStoryline(station))) return false;
+            if (station == 100 || station == 101 || station == 108 || station == 10 || (station >= 102 && station <= 104)) return false;
+            if (system.index == 25 || system.index == 27 || system.index == 32 || system.index == 33) return false;
+            return Random.Range(0, 100) < GoF2Remake.World.CapitalShips.FleetBattleChance;
+        }
+
+        /// <summary>A fleet battle (World.CapitalShips): a Terran carrier or battleship and the Vossk battleship side by side,
+        /// both facing game +Z, BattleSeparationUnits apart across 'centre' (rolled 110 000-150 000 units in front of the
+        /// station, clear of it), each with its turrets and escorts and a wing that loops round the enemy capital ship.</summary>
+        public static void AddFleetBattle(Database db, List<SpawnSpec> list, int station, Vector3? centre = null)
+        {
+            int terranKind = Random.value < 0.5f ? SpawnSpec.CapitalCarrier : SpawnSpec.CapitalBattleship;
+            float side = Random.value < 0.5f ? -1f : 1f;
+            var half = new Vector3(GoF2Remake.World.CapitalShips.BattleSeparationUnits / 2f, 0f, 0f) * side;
+            Vector3 c = centre ?? Vector3.zero;
+            if (centre == null)
+            {
+                var hull = CollisionVolume.ForStation(GoF2Remake.World.OrbitBuilder.StationLook(station), false);
+                for (int tries = 0; tries < 40; tries++)
+                {
+                    c = new Vector3(Random.Range(0, 60000) - 30000, Random.Range(0, 16000) - 8000, Random.Range(0, 40000) + 110000);
+                    if (!Touches(hull, CapitalVolumes(terranKind), c - half) && !Touches(hull, CapitalVolumes(SpawnSpec.CapitalVossk), c + half)) break;
+                }
+            }
+            var terran = list[AddCapitalShipAt(db, list, terranKind, c - half, true)];
+            var vossk = list[AddCapitalShipAt(db, list, SpawnSpec.CapitalVossk, c + half, true)];
+            terran.fleetBattle = vossk.fleetBattle = true;
+            terran.battleFoe = vossk;
+            vossk.battleFoe = terran;
+            AddBattleWing(list, terran, vossk);
+            AddBattleWing(list, vossk, terran);
+        }
+
+        /// <summary>4 + rank / 5 fighters of the capital ship's race beside it, looping round the enemy capital ship (they meet
+        /// the enemy fleet there).</summary>
+        static void AddBattleWing(List<SpawnSpec> list, SpawnSpec own, SpawnSpec foe)
+        {
+            var loop = new Route(true);
+            loop.points.Add(foe.position + new Vector3(0, 8000, -45000));
+            loop.points.Add(foe.position + new Vector3(30000, 4000, 0));
+            loop.points.Add(foe.position + new Vector3(0, 8000, 45000));
+            loop.points.Add(foe.position + new Vector3(-30000, 4000, 0));
+            int n = 4 + Mathf.Min(Session.Rank, 20) / 5;
+            for (int i = 0; i < n; i++)
+                list.Add(new SpawnSpec
+                {
+                    group = NpcGroup.Escort, race = own.race, ship = NpcTables.RandomFighter(own.race), route = loop,
+                    position = own.position + new Vector3(Random.Range(-15000, 15000), Random.Range(-6000, 6000), Random.Range(-20000, 20000)),
+                    capitalPart = true, capitalHost = own, capitalEnhanced = true,
+                });
         }
 
         /// <summary>Remake (#45): the capital ship's box starts 2 km in front of the station, inside the bigger stations (Valadon's

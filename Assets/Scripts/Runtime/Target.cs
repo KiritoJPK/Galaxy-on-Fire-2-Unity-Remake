@@ -165,6 +165,23 @@ namespace GoF2Remake.Flight
             return Mathf.Abs(d.x) < radius && Mathf.Abs(d.y) < radius && Mathf.Abs(d.z) < radius;
         }
 
+        /// <summary>Remake (World.CapitalShips' turrets): the point of its hit boxes nearest 'from' (world), a little inside the
+        /// box so a shot at it lands; its position when it has no boxes.</summary>
+        public Vector3 NearestPoint(Vector3 from)
+        {
+            if (boxes == null || boxes.Length == 0) return transform.position;
+            var local = transform.InverseTransformPoint(from);
+            Vector3 best = transform.InverseTransformPoint(transform.position);
+            float bestD = float.MaxValue;
+            foreach (var b in boxes)
+            {
+                var p = Vector3.MoveTowards(b.ClosestPoint(local), b.center, 3f);
+                float d = (p - local).sqrMagnitude;
+                if (d < bestD) { bestD = d; best = p; }
+            }
+            return transform.TransformPoint(best);
+        }
+
         void Die()
         {
             hp = 0f;

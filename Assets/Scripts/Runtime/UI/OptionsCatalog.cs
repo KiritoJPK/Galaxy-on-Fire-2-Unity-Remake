@@ -305,6 +305,10 @@ namespace GoF2Remake.UI
                 () => Settings.PirateEvents, v => Settings.PirateEvents = v);
             pirateEvents.description = () => X("pirateEventsHelp", "Now and then an orbit holds a pirate outpost with its guards or a pirate boss with escorts; destroying them pays a bounty. Not in the original.");
             list.Add(pirateEvents);
+            var capitalShips = Toggle("capitalShips", OptionPage.Gameplay, () => X("capitalShips", "Capital ship enhancements"),
+                () => Settings.CapitalShips, v => Settings.CapitalShips = v);
+            capitalShips.description = () => X("capitalShipsHelp", "Battleships and carriers get escorts and stronger turrets; the carrier and the Vossk battleship can be destroyed for loot, the carrier launches Inflicts when attacked and lets trusted pilots dock to resupply. Not in the original.");
+            list.Add(capitalShips);
             // #28: the Informer mission's rule for other ships dying after the spy.
             list.Add(Choice("informerRule", OptionPage.Gameplay, () => X("informerRule", "Informer missions"), true,
                 () => new[] { X("informerRemake", "Remake"), X("informerOriginal", "Original") },

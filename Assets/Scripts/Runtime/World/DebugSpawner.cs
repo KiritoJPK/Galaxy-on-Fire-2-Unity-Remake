@@ -56,6 +56,35 @@ namespace GoF2Remake.World
                  : string.Format(Localization.Extra("debugShipsSpawned", "{0} x {1} spawned."), made, shown);
         }
 
+        /// <summary>A capital ship (SpawnSpec.Capital*) with the remake's enhancements (CapitalShips: turrets, escorts, killable,
+        /// whatever the option says) about 3.5 km ahead of the player; the result text.</summary>
+        public static string SpawnCapital(SpaceLevel level, int kind)
+        {
+            if (level == null || level.Traffic == null || level.Player == null) return Localization.Extra("debugNoFlight", "Only in flight.");
+            var p = level.Player.transform;
+            var list = new System.Collections.Generic.List<SpawnSpec>();
+            TrafficPlan.AddCapitalShipAt(level.Database, list, kind, ToGame(p.position + p.forward * 3500f), true);
+            foreach (var s in list) level.Traffic.SpawnShip(s);
+            level.Traffic.ConnectPlayers();
+            return string.Format(Localization.Extra("debugShipSpawned", "{0} spawned."), CapitalName(kind));
+        }
+
+        public static string CapitalName(int kind) => kind == SpawnSpec.CapitalCarrier ? CapitalShips.CarrierName
+            : kind == SpawnSpec.CapitalVossk ? $"{Localization.Get(407)} {Localization.Get(1667)}" : $"{Localization.Get(406)} {Localization.Get(1667)}";
+
+        /// <summary>A fleet battle (TrafficPlan.AddFleetBattle: a Terran and a Vossk capital ship with their wings) centred about
+        /// 7 km ahead of the player, the two side by side across the player's view; the result text.</summary>
+        public static string SpawnFleetBattle(SpaceLevel level)
+        {
+            if (level == null || level.Traffic == null || level.Player == null) return Localization.Extra("debugNoFlight", "Only in flight.");
+            var p = level.Player.transform;
+            var list = new System.Collections.Generic.List<SpawnSpec>();
+            TrafficPlan.AddFleetBattle(level.Database, list, Session.StationIndex, ToGame(p.position + p.forward * 7000f));
+            foreach (var s in list) level.Traffic.SpawnShip(s);
+            level.Traffic.ConnectPlayers();
+            return Localization.Extra("debugFleetBattle", "Fleet battle spawned ahead.");
+        }
+
         /// <summary>An assembled object ahead of the player, far enough out for its size, facing the player, or centred on 'at'
         /// (a Unity position in this orbit, multiplayer's /object ... at x y z); 'name' (/spawn ... named): a HUD marker with
         /// that name on it (Navigation.Kind.Marker: the bracket, name and distance near the crosshair, never locked); the

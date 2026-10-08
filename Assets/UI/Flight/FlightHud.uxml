@@ -2,6 +2,7 @@
     <ui:Template name="Dialogue" src="../Dialogue/Dialogue.uxml" />
     <ui:Style src="../GoF2InputGlyphs.uss" />
     <ui:Style src="FlightHud.uss" />
+    <ui:Style src="../Station/HangarWindow.uss" />
     <ui:Style src="../Dialogue/Dialogue.uss" />
     <ui:VisualElement name="hud" class="hud" picking-mode="Ignore">
         <ui:VisualElement name="mining" class="mining" picking-mode="Ignore" />
