@@ -469,13 +469,25 @@ namespace GoF2Remake.World
             SetPlayerVisible(false);
             cam.LookAt(new Vector3(-20000, 800, 120000), null, Vector3.zero);
             cam.SetDolly(new Vector3(2f, 0f, -4f));
-            // Modified: the Void's battle music, 136 Space_Combat_Void (Space_Battle_Void.ogg, StoryAssets.voidBattle; it stayed
-            // silent after the battlestation's jump: the cutscene starts the level with nothing playing). Fallback: the
-            // system's space track.
+            // Modified: the Void's battle music, Space_Battle_Void (it stayed silent after the battlestation's jump: the
+            // cutscene starts the level with nothing playing). Fallback: the system's space track.
             c.MusicOwned = true;
-            var voidMusic = assets != null ? assets.voidBattle : null;
+            var voidMusic = FindClip(VoidBattleMusic81);
             if (voidMusic == null && level.Traffic != null) voidMusic = level.Traffic.RaceSpaceMusic() ?? level.Traffic.CalmClip();
             if (voidMusic != null) c.PlayMusic(voidMusic, true);
+        }
+
+        const string VoidBattleMusic81 = "Space_Battle_Void";   // Modified: 81's music (the .ogg's name, no extension)
+
+        /// <summary>Modified: an audio clip by name: one already loaded (the game's music sets reference it), else
+        /// Resources/GoF2Custom/&lt;name&gt; (a copy placed there), else null.</summary>
+        static AudioClip FindClip(string name)
+        {
+            foreach (var clip in Resources.FindObjectsOfTypeAll<AudioClip>())
+                if (clip != null && clip.name == name) return clip;
+            var custom = Resources.Load<AudioClip>("GoF2Custom/" + name);
+            if (custom == null) Debug.LogWarning($"Music {name} not found (loaded clips or Resources/GoF2Custom): using the system's track");
+            return custom;
         }
 
         /// <summary>PlayerStation 101's volumes on a scenery battlestation (unrotated: the (0, pi, 0) of the table mirrored).</summary>
@@ -602,6 +614,9 @@ namespace GoF2Remake.World
         public void LateTick(float dtMs)
         {
             cam.LateTick(dtMs);
+            // Modified: 80's fires are re-placed every frame (something resets their position after the first placement:
+            // they showed (-200, 100, 0) instead of the set value).
+            if (built == 80) { PlaceBurn80(burnA, BurnPosA80, BurnRotA80); PlaceBurn80(burnB, BurnPosB80, BurnRotB80); }
             if (!fxFixed) FaceCamera(fx);   // Modified: 78's jump is aligned with the station, not the camera
             // The fx plays once (anim state 3, then 1) and is gone at its end.
             if (fx != null && (fxMs += dtMs) >= fxLength) { Object.Destroy(fx); fx = null; }
@@ -1149,8 +1164,8 @@ namespace GoF2Remake.World
                     if (stepMs >= HitWait80)
                     {
                         var hitPoint = new Vector3(12487, -11451, 5958);
-                        // Modified: the blast HitBlastOffset80 from the hit point (was the hit point itself).
-                        Explosion.Spawn(0, ToUnity(hitPoint + HitBlastOffset80), Vector3.forward, 3f, CombatAssets.Pick(combat?.explosionBig), true);   // sound 18
+                        // Modified: the blast at HitBlastPos80 (Unity world, Inspector value; was the hit point, about 624, -573, -298).
+                        Explosion.Spawn(0, HitBlastPos80, Vector3.forward, 3f, CombatAssets.Pick(combat?.explosionBig), true);   // sound 18
                         // Level+0x58 at the hit point and Level+0x5c at hit + (4500, 0, 1000) (record 24, both emitting for
                         // the rest of the level; the second point drifts +2 u/ms along x in state 9).
                         burnA = new GameObject("Deep science burn A").transform;
@@ -1189,7 +1204,7 @@ namespace GoF2Remake.World
                     }
                     break;
                 case 11:
-                    // Modified: the camera moves along Unity Z only, JumpShotTravel80 further by the end of the cutscene (steps 11-13;
+                    // Modified: the camera moves along Unity Z only, to JumpShotEndZ80 at the end of the cutscene (steps 11-13;
                     // was the dolly (0.5, 0, 0.2) drifting on).
                     JumpShot80(dtMs);
                     if (stepMs >= 4000f)
@@ -1225,8 +1240,8 @@ namespace GoF2Remake.World
         }
 
         // Modified: 80's last shot (the battlestation's jump): the camera goes along Unity Z from where it starts to
-        // JumpShotTravel80 further over the whole shot (steps 11 + 12 + 13 = 4000 + 8000 + 10001 ms), X and Y unchanged.
-        const float JumpShotTravel80 = 8000f;   // Unity metres along +Z: from the shot's start (Z -7000) to Z 1000
+        // JumpShotEndZ80 over the whole shot (steps 11 + 12 + 13 = 4000 + 8000 + 10001 ms), X and Y unchanged.
+        const float JumpShotEndZ80 = 1000f;
         const float JumpShotMs80 = 4000f + 8000f + 10001f;
         float jumpShotMs80, jumpShotStartZ80;
 
@@ -1236,7 +1251,7 @@ namespace GoF2Remake.World
             jumpShotMs80 += dtMs;
             if (cam.Camera == null) return;
             var p = cam.Camera.position;
-            cam.Camera.position = new Vector3(p.x, p.y, Mathf.Lerp(jumpShotStartZ80, jumpShotStartZ80 + JumpShotTravel80, Mathf.Clamp01(jumpShotMs80 / JumpShotMs80)));
+            cam.Camera.position = new Vector3(p.x, p.y, Mathf.Lerp(jumpShotStartZ80, JumpShotEndZ80, Mathf.Clamp01(jumpShotMs80 / JumpShotMs80)));
         }
 
         // Modified: the deep science station's two fires (the "Deep science burn" particle systems under burn A / B), local
@@ -1300,16 +1315,15 @@ namespace GoF2Remake.World
         // Modified: where in its animation the laser is held after the charge-up (0 = its start, 1 = its last frame, where
         // it has already faded out): the charge plays up to there in LaserChargeMs80.
         const float LaserHoldAt80 = 0.85f;
-        // Modified: the hit's blast from the hit point, game units (Unity (740, -550, -370), set in the Inspector).
-        static readonly Vector3 HitBlastOffset80 = new Vector3(2313f, 451f, 1442f);
+        static readonly Vector3 HitBlastPos80 = new Vector3(740f, -550f, -370f);   // Modified: Unity world position of the hit's blast
         PartAnimation[] laserAnims80;
         float[] laserFullOn80;
 
         const float LaserWindow80 = 1700f;   // Modified: ms from the laser appearing to the camera cut (step 2; was 2000): it fires 0.3 s later, the cut stays put
-        const float CamPullBack80 = 3250f;   // Modified: Unity metres along +Z over the shot (from Z -6250 to -3000; X and Y stay put)
+        const float CamEndZ80 = -3000f;      // Modified: the camera's Unity Z at the end of the shot (X and Y stay put)
         float camStartZ80;
 
-        /// <summary>Modified: 80's first shot pulls straight back along Unity Z, from where it starts by CamPullBack80 over the
+        /// <summary>Modified: 80's first shot pulls straight back along Unity Z, from where it starts to CamEndZ80 over the
         /// whole shot (LaserDelay80 + LaserWindow80), X and Y unchanged, still looking at the battlestation.</summary>
         void PullBack80(float shotMs)
         {
@@ -1317,7 +1331,7 @@ namespace GoF2Remake.World
             if (cam.Camera == null) return;
             float k = Mathf.Clamp01(shotMs / (LaserDelay80 + LaserWindow80));
             var p = cam.Camera.position;
-            cam.Camera.position = new Vector3(p.x, p.y, Mathf.Lerp(camStartZ80, camStartZ80 + CamPullBack80, k));
+            cam.Camera.position = new Vector3(p.x, p.y, Mathf.Lerp(camStartZ80, CamEndZ80, k));
         }
 
         // Modified: 81's hyperdrive fx (the battlestation dropping out of hyperspace), Unity units relative to the
