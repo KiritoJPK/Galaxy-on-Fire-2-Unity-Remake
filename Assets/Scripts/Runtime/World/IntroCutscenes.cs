@@ -174,7 +174,10 @@ namespace GoF2Remake.World
         public void LateTick(float dtMs)
         {
             cam.LateTick(dtMs);
-            if (fx != null && cam.Camera != null) fx.transform.rotation = cam.Camera.rotation * Quaternion.Euler(0f, 180f, 0f);   // billboarded to the camera (+180 Y)
+            // LevelScript state 7: setDirection(MatrixGetDir(the camera), (0, 1, 0)). The engine's camera looks down its -z
+            // (MatrixGetLookAt: dir = eye - target), so the fx's +z points at the viewer; the camera's own rotation (+z away)
+            // showed it mirrored, spinning the wrong way.
+            if (fx != null && cam.Camera != null) fx.transform.rotation = cam.Camera.rotation * Quaternion.Euler(0f, 180f, 0f);
         }
 
         /// <summary>Remake: the room the pirates' hiding place keeps clear of asteroids, past the farthest pirate (150 m; the
@@ -295,6 +298,7 @@ namespace GoF2Remake.World
                         campaign.PlayLoop(1, assets?.engineBroken, 0.115f);    // 161 Engine_09_Broken, looped
                     }
                     if (soundsPlayed) playerSpeed *= Mathf.Pow(0.98f, dtMs / 33.3f);
+                    // LevelScript's dolly is (-0.2, 0, 0.3) u/ms; remake (PR #56): (0.4, 0, -0.2), which keeps the slowing ship in view.
                     if (Over(13)) cam.SetDolly(new Vector3(0.4f, 0f, -0.2f));
                     if (Triggered(14)) Step = 6;
                     break;
@@ -383,6 +387,8 @@ namespace GoF2Remake.World
                 case 14:
                     Tumble(dtMs / 5000f);
                     {
+                        // LevelScript's dolly is (-2, 0, 0) u/ms; remake (PR #56): the camera travels with the drifting wreck
+                        // (its direction in game axes, its speed), so it stays in frame.
                         var f = Player.forward;
                         cam.SetDolly(new Vector3(f.x, f.y, -f.z) * playerSpeed);
                     }
@@ -455,7 +461,7 @@ namespace GoF2Remake.World
         {
             HideFx();
             if (assets == null || assets.hyperDrive == null) { fxLength = 2000f; fxMs = 0f; return; }
-            fx = Object.Instantiate(assets.hyperDrive, at, (cam.Camera != null ? cam.Camera.rotation : Quaternion.identity) * Quaternion.Euler(0f, 180f, 0f));
+            fx = Object.Instantiate(assets.hyperDrive, at, (cam.Camera != null ? cam.Camera.rotation : Quaternion.identity) * Quaternion.Euler(0f, 180f, 0f));   // +z at the viewer (LateTick)
             GunRig.EnableFades(fx);   // its parts fade out by their `extra` channel (0 at 3000 ms); without it the fx froze, then vanished
             float len = PartAnimation.PlayOnce(fx);
             fxLength = len > 0f ? len : 3000f;

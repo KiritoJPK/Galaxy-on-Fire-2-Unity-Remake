@@ -14,8 +14,12 @@ namespace GoF2Remake.UI
     {
         static readonly Dictionary<string, Texture2D> icons = new Dictionary<string, Texture2D>();
 
-        /// <summary>The item's shop icon; a mod's item shows its base item's (Modding.ModContent.ItemLook).</summary>
-        public static Texture2D ItemIcon(int item) => Icon($"item_{Modding.ModContent.ItemLook(item):000}");
+        /// <summary>The item's shop icon: a mod's own ("icon" in items.json), else its base item's (Modding.ModContent.ItemLook).</summary>
+        public static Texture2D ItemIcon(int item)
+        {
+            var own = Modding.ModContent.ItemIcon(item);   // a mod's own icon (items.json "icon")
+            return own != null ? own : Icon($"item_{Modding.ModContent.ItemLook(item):000}");
+        }
         /// <summary>The ship's shop icon; a mod's ship its own ("icon" in ships.json), else the Phantom's.</summary>
         public static Texture2D ShipIcon(int ship) =>
             Modding.ModContent.IsModShip(ship) ? Modding.ModShips.Icon(ship) ?? Icon("ship_010") : Icon($"ship_{ship:000}");
@@ -46,7 +50,7 @@ namespace GoF2Remake.UI
         public static string Category(ItemData it) => Localization.Get(221 + it.categoryId);
 
         /// <summary>Attributes the details never list (index, type, price systems, occurrence, prices, Vossk flag, home station).</summary>
-        static readonly HashSet<int> Hidden = new HashSet<int> { 0, 1, 4, 5, 6, 7, 8, 60, 61 };
+        static readonly HashSet<int> Hidden = new HashSet<int> { 0, 1, 4, 5, 6, 7, 8, 60, 61, 100, 102, 103 };
 
         /// <summary>ListItemWindow::set, items: label (DAT_0025875c) and value + unit (LISTITEMWINDOW_UNITS) per attribute.</summary>
         public static List<(string label, string value)> ItemStats(ItemData it)
@@ -99,7 +103,8 @@ namespace GoF2Remake.UI
                     case 22: case 25: case 28: case 46: case 54: case 56: rows.Add((T(157), $"{v} %")); break;
                     case 24: case 29: rows.Add((T(141), $"{v} ms")); break;
                     case 27: rows.Add((T(152), $"{v} ms")); break;
-                    case 32: rows.Add((T(164), $"{v} %")); break;
+                    case 32: if (it.Attr(100) != 1) rows.Add((T(164), $"{v} %")); break;   // a mining beam has no drill handling
+                    case 101: if (it.Attr(100) == 1) rows.Add((T(151), $"{v / 20} m")); break;   // remake: the mining beam's reach
                     case 33: rows.Add((T(144), $"{v} %")); break;
                     case 34: rows.Add((T(145), v.ToString())); break;
                     case 48: rows.Add((T(145), $"{v} t")); break;

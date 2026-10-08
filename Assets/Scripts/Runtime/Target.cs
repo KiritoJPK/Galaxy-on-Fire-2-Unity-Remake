@@ -83,6 +83,9 @@ namespace GoF2Remake.Flight
         /// <summary>Remake: a player's ship boosting (ShipController for the local one, NetPlayer for the others): homing
         /// missiles locked on it lose their lock (Gun). NPC ships never set it.</summary>
         [NonSerialized] public bool boosting;
+        /// <summary>Remake: homing missiles locked on this ship lose their lock for good (Gun): a player boosting or cloaked
+        /// (only players set these two).</summary>
+        public bool ShakesMissiles => boosting || cloaked;
         [Tooltip("The owner handles the death (ships): no automatic explosion, renderers stay on.")]
         public bool customDeath;
         /// <summary>Asked when the hull runs out: true = saved (PlayerEgo::tryToStartEmergencySystem).</summary>

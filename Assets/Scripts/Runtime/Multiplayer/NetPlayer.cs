@@ -466,8 +466,10 @@ namespace GoF2Remake.Multiplayer
             if (target != null)
             {
                 target.cloaked = cloaked;          // NPCs keep chasing but hold their fire (Target.cloaked)
-                target.untargetable = hidden;      // off the radar and the lock from 25 %
-                target.boosting = boost.Value > 0f;   // remake: a boost shakes off the missiles homing on them (Gun)
+                // Off the radar, its markers and the lock (a lock held is dropped, CombatRadar) as soon as the cloak engages,
+                // like the original's Player+0x5e; the auto turrets and sentries ignore it too.
+                target.untargetable = cloaked;
+                target.boosting = boost.Value > 0f;   // remake: a boost (or the cloak) shakes off the missiles homing on them (Gun)
             }
             if (engineLoop != null)
             {

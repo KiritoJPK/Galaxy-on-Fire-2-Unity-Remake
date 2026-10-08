@@ -233,7 +233,7 @@ namespace GoF2Remake.Flight
 
         /// <summary>A quad of QuadScale x the particle's size mapping cell 'cell' of the 8 x 8, 1024 px particles.png, inset half
         /// a texel; -1 = the whole texture (a cell texture of CellMaterial).</summary>
-        static Mesh CellQuad(int cell)
+        internal static Mesh CellQuad(int cell)
         {
             if (cell < 0 ? fullQuad != null : cellQuads[cell] != null) return cell < 0 ? fullQuad : cellQuads[cell];
             const float px = 1f / 1024f, step = 1f / 8f;

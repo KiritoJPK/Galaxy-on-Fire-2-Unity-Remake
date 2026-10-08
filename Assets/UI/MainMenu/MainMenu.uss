@@ -727,7 +727,7 @@
     align-items: center;
     -unity-text-align: middle-left;
     margin: 0 0 4px 0;
-    padding: 6px 10px;
+    padding: 3px 10px;
     background-color: rgba(0, 0, 0, 0.25);
     border-width: 1px;
     border-color: rgba(216, 236, 247, 0.12);
@@ -798,7 +798,7 @@
     flex-direction: row;
     align-items: center;
     flex-shrink: 0;
-    margin: 0 0 8px 0;   /* four rows (Debug menu, Combat, World, Mods) and the Host button fit the card */
+    margin: 0 0 6px 0;
 }
 
 .mp-debug-label {
@@ -814,7 +814,7 @@
 
 .mp-debug-segments .choice-segment {
     flex-basis: 0;
-    min-height: 30px;
+    min-height: 28px;
 }
 
 /* the panel: a fixed height, the server browser takes what the rest leaves */
@@ -852,11 +852,82 @@
 }
 
 .mp-browser {
-    flex-grow: 1.7;
+    flex-grow: 1.4;   /* the host card a little wider: its switches sit two to a row */
 }
 
 .mp-host {
     flex-grow: 1;
+}
+
+/* The host card's settings between the mode tabs and Host. With four switch rows the card stopped fitting at 16:9 and the
+   local network's addresses and port field were squeezed flat; the switches now sit two to a row (.mp-switch-grid) so it
+   fits, and what still doesn't (three or more network adapters, short screens) scrolls (wheel, touch, focus) with the
+   "More options" hint under it (.mp-host-more, MainMenu.UpdateHostMore) instead of being squeezed. */
+.mp-host-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+    margin-bottom: 8px;
+}
+
+.mp-switch-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.mp-switch-grid .mp-debug-row {
+    width: 48.5%;
+    flex-direction: column;
+    align-items: stretch;
+    margin: 0 0 8px 0;
+}
+
+.mp-switch-grid .mp-debug-label {
+    min-width: 0;
+    margin: 0 0 4px 0;
+}
+
+.mp-switch-grid .mp-debug-segments .choice-segment {
+    flex-basis: auto;   /* FRESH / PERSISTENT: each by its text */
+    padding: 0 4px;
+    font-size: 13px;
+}
+
+.mp-switch-grid .mp-debug-segments .choice-segment:last-child {
+    margin-right: 0;
+}
+
+.mp-host-more {
+    display: none;
+    flex-shrink: 0;
+    margin: -4px 0 8px 0;
+    font-size: 13px;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    color: var(--gof-amber);
+}
+
+.mp-host-more--shown {
+    display: flex;
+}
+
+.mp-host-scroll .mp-card-text {
+    margin: 6px 0 10px 0;
+}
+
+.mp-panel .back-button {
+    margin-top: 12px;
+}
+
+.mp-host-scroll .mp-card-fill {
+    flex-grow: 0;
+    min-height: 0;
+    margin-bottom: 12px;
+}
+
+.mp-host-scroll .mp-card-fill--empty {
+    margin-bottom: 0;
 }
 
 .mp-card-head {
@@ -1094,9 +1165,10 @@
     background-color: var(--gof-amber-soft);
 }
 
+/* empty until there is something to say: no room kept for it (the host card needs every pixel at 16:9) */
 .mp-status {
-    min-height: 22px;
-    margin: 18px 0 0 0;
+    min-height: 0;
+    margin: 10px 0 0 0;
     font-size: 16px;
     color: var(--gof-amber);
     white-space: normal;

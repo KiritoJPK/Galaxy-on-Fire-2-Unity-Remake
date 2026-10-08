@@ -179,6 +179,7 @@
                                 <ui:Button name="mpModePrivate" class="choice-segment gof-semibold" />
                                 <ui:Button name="mpModeLocal" class="choice-segment gof-semibold" />
                             </ui:VisualElement>
+                            <ui:ScrollView name="mpHostScroll" class="mp-host-scroll">
                             <ui:Label name="mpHostText" class="mp-card-text" />
                             <ui:VisualElement name="mpHostFill" class="mp-card-fill">
                                 <ui:VisualElement name="mpLocalBox">
@@ -195,6 +196,7 @@
                                 <ui:Label name="mpMaxPlayersLabel" class="mp-label mp-max-label gof-semibold" />
                                 <ui:TextField name="mpMaxPlayers" class="debug-filter mp-max-players" />
                             </ui:VisualElement>
+                            <ui:VisualElement class="mp-switch-grid">
                             <ui:VisualElement class="mp-debug-row">
                                 <ui:Label name="mpDebugLabel" class="mp-label mp-debug-label gof-semibold" />
                                 <ui:VisualElement class="choice-segments mp-debug-segments">
@@ -223,6 +225,9 @@
                                     <ui:Button name="mpModsOn" class="choice-segment gof-semibold" />
                                 </ui:VisualElement>
                             </ui:VisualElement>
+                            </ui:VisualElement>
+                            </ui:ScrollView>
+                            <ui:Label name="mpHostMore" class="mp-host-more gof-semibold" />
                             <ui:Button name="mpHost" class="mp-action gof-semibold" />
                         </ui:VisualElement>
                     </ui:VisualElement>

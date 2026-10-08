@@ -121,7 +121,7 @@ namespace GoF2Remake.Modding
         static readonly HashSet<string> ItemFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "id", "override", "base", "name", "description", "techLevel", "occurrence", "minPrice", "maxPrice", "price",
-            "lowestPriceSystem", "highestPriceSystem", "vosskOnly", "alwaysSoldAt", "stats", "attributes", "defaultEconomy", "fx",
+            "lowestPriceSystem", "highestPriceSystem", "vosskOnly", "alwaysSoldAt", "stats", "attributes", "defaultEconomy", "fx", "icon",
         };
 
         static void ParseItems(ModInfo mod, Parsed p)
@@ -153,6 +153,12 @@ namespace GoF2Remake.Modding
                     if (!ItemFields.Contains(prop.Name)) mod.Warnings.Add($"{ModJson.Where(prop, ItemsFile)}: unknown field \"{prop.Name}\" (ignored)");
                 CheckFields(o, where, mod);
                 if (ModJson.Get(o, "defaultEconomy") is JObject de) CheckFields(de, where + " (defaultEconomy)", mod);
+                if (ModJson.Has(o, "icon"))
+                {
+                    string icon = ModJson.Str(o, "icon");
+                    if (string.IsNullOrEmpty(icon) || !mod.Source.Exists(icon))
+                        mod.Warnings.Add($"{where}: the icon \"{icon}\" isn't in the mod (the base item's is used)");
+                }
                 p.items.Add(d);
             }
         }
@@ -265,6 +271,29 @@ namespace GoF2Remake.Modding
             foreach (var mod in ModManager.Active)
                 foreach (var d in Parse(mod).items)
                     if (d.overrideRef != null && (d.name != null || d.description != null) && TryResolveItem(d.overrideRef, out int t)) itemRenames[t] = d;
+            // Shop icons ("icon"): a new item's own, or an override's for the item it changes (the later mod wins).
+            itemIcons.Clear();
+            foreach (var mod in ModManager.Active)
+                foreach (var d in Parse(mod).items)
+                {
+                    string icon = ModJson.Str(d.json, "icon");
+                    if (string.IsNullOrEmpty(icon) || !mod.Source.Exists(icon)) continue;
+                    if (d.key != null ? itemIndex.TryGetValue(d.key, out int i) : TryResolveItem(d.overrideRef, out i)) itemIcons[i] = d;
+                }
+            // A new item without an icon of its own takes the nearest base's that has one (a copy of a mod item, or of an
+            // original item an override gave an icon); without any, the original look's (ItemLook).
+            foreach (var kv in itemDefAt)
+            {
+                if (itemIcons.ContainsKey(kv.Key)) continue;
+                int at = kv.Key;
+                for (int depth = 0; depth < 16 && itemDefAt.TryGetValue(at, out var def) && TryResolveItem(def.baseRef, out int b) && b != at; depth++)
+                {
+                    at = b;
+                    if (itemIcons.TryGetValue(at, out var src)) { inheritedIcons[kv.Key] = src; break; }
+                }
+            }
+            foreach (var kv in inheritedIcons) itemIcons[kv.Key] = kv.Value;
+            inheritedIcons.Clear();
 
             // Ships: the same, after the original 64.
             shipIndex.Clear(); shipDefAt.Clear(); placeholderShips.Clear(); shipRenames.Clear();
@@ -414,6 +443,19 @@ namespace GoF2Remake.Modding
         {
             EnsureMapping();
             return itemLook.TryGetValue(index, out int l) ? l : index;
+        }
+
+        static readonly Dictionary<int, ItemDef> itemIcons = new Dictionary<int, ItemDef>(), inheritedIcons = new Dictionary<int, ItemDef>();
+
+        /// <summary>An item's shop icon from a mod (items.json "icon": a PNG like the originals' 180 x 88, frame included,
+        /// kept uncompressed), null = none (the item's own, or its base's: ItemLook).</summary>
+        public static Texture2D ItemIcon(int index)
+        {
+            EnsureMapping();
+            if (!itemIcons.TryGetValue(index, out var d)) return null;
+            var t = ModMaterials.Texture(d.mod, ModJson.Str(d.json, "icon"), false, true);
+            if (t != null) t.wrapMode = TextureWrapMode.Clamp;   // a UI image: no bleeding in from the opposite edge
+            return t;
         }
 
         /// <summary>The "mod:id" key of a modded item (also a placeholder's), null for an original one.</summary>

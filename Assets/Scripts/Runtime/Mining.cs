@@ -14,6 +14,14 @@
 //                                 core (ore + 11) into the cargo, "12t Gold" messages, then the asteroid explodes (no crate)
 // The HUD shows the lock ring, the ore plate, the minigame and the prompt; it forwards touch input and the action button.
 // Not yet: stats / medals (Geologist, Miner, Ore Athlete), the Ultrascan class-A markers, the mining plant.
+// Remake, beam mode: a mounted drill item (sort 19) with attribute 100 = 1 is a mining beam (a mod's equipment; Modding/
+// README.md). The lock is the same; there is no approach, landing or minigame and the ship keeps flying: holding fire on
+// the locked asteroid (the guns stay silent meanwhile, WeaponSystem.FireClaimed / BeamClaimsFire) fires the beam straight along the ship's
+// heading, fixed to it: it cuts where that line meets the rock (aim the nose at it), with the minigame's rules
+// (MiningBeamExtraction: layer by layer, attr 33 yield, attr 102 ms per layer) within attr 101 units of its surface
+// (default 24000, the beam lasers' reach on objects, WeaponSystem.BeamTarget); the progress stays with the asteroid when
+// the beam lets go. Every ton flies into the ship (MiningBeamFx) and into the hold as it arrives; a depleted asteroid
+// gives its core (class A) and explodes. While the beam holds, the lock follows the asteroid in a wider box (+-w/5).
 
 using System;
 using System.Collections.Generic;
@@ -64,7 +72,8 @@ namespace GoF2Remake.Flight
 
         /// <summary>What the action button does right now (null = nothing to do with mining).</summary>
         public string PromptText =>
-            State == Phase.Mining ? Localization.Extra("hudMiningStop", "STOP MINING")
+            BeamMode && State == Phase.Idle ? null   // the fire button mines
+            : State == Phase.Mining ? Localization.Extra("hudMiningStop", "STOP MINING")
             : State != Phase.Idle ? Localization.Extra("hudMiningAbort", "ABORT")
             : Locked != null ? Localization.Extra("hudMine", "MINE") : null;
 
@@ -88,6 +97,25 @@ namespace GoF2Remake.Flight
         bool ready;
         Vector3 capturedUp;
         Vector2 touchInput;
+
+        // ---- beam mode (remake) ----
+        /// <summary>The mounted drill is a mining beam (attr 100 = 1): free flight, the fire button mines.</summary>
+        public bool BeamMode { get; private set; }
+        /// <summary>The asteroid the mining beam is cutting this frame (null = the beam is off or out of range).</summary>
+        public Target Beaming { get; private set; }
+        MiningBeamFx beamFx;
+        readonly Dictionary<Target, MiningBeamExtraction> extractions = new Dictionary<Target, MiningBeamExtraction>();
+        float beamRangeUnits, beamLayerMs;
+        int beamYield;
+        /// <summary>The beam is on (fire held on a locked asteroid, in range or not).</summary>
+        bool beamOn;
+        /// <summary>Refused for this press (a full hold): off until the fire button is let go.</summary>
+        bool beamRefused;
+        bool beamRangeSaid;
+        /// <summary>Tons cut since the beam started, by item (the "12t Gold" message when it stops).</summary>
+        readonly Dictionary<int, int> beamCut = new Dictionary<int, int>();
+        Target beamTarget;
+        const float BeamDefaultRangeUnits = 24000f;   // WeaponSystem.BeamObjectCubeUnits
 
         /// <summary>Set by SpaceLevel: station / planet locks and the autopilot come first (Radar::draw order).</summary>
         [NonSerialized] public Navigation navigation;
@@ -113,6 +141,17 @@ namespace GoF2Remake.Flight
             drillSound = new DrillSound(gameObject.AddComponent<AudioSource>(), gameObject.AddComponent<AudioSource>(),
                                         gameObject.AddComponent<AudioSource>(), gameObject.AddComponent<AudioSource>(),
                                         sounds?.miningDrillSlow, sounds?.miningDrill, sounds?.miningDrillAdd2, sounds?.miningDrillSwitch);
+            BeamMode = drill != null && drill.Attr(100) == 1;
+            if (BeamMode)
+            {
+                beamYield = drill.Attr(33, 100);
+                beamRangeUnits = Mathf.Max(1000f, drill.Attr(101, (int)BeamDefaultRangeUnits));
+                beamLayerMs = Mathf.Max(500f, drill.Attr(102, (int)MiningGame.LayerMs));
+                beamFx = gameObject.AddComponent<MiningBeamFx>();
+                beamFx.Setup(ship, db, drill.Attr(103, 228));
+                beamFx.Arrived += OreLanded;
+                if (weapons != null) weapons.FireClaimed = BeamClaimsFire;
+            }
         }
 
         /// <summary>Touch stick for the drill (+y = up on the stick).</summary>
@@ -139,6 +178,7 @@ namespace GoF2Remake.Flight
                 case Phase.Idle:
                     if (navigation != null && navigation.BlocksAsteroidLock) { Candidate = Locked = refusedNoDrill = null; LockFrame = -1; lockTimer = 0f; wasLocked = false; }
                     else UpdateLock(dtMs);
+                    if (BeamMode) UpdateBeam(dtMs);
                     break;
                 case Phase.Approaching:
                 case Phase.Landing:
@@ -164,6 +204,15 @@ namespace GoF2Remake.Flight
         {
             if (GoF2Remake.Multiplayer.NetArenaClient.InMatch) return;   // no mining in an arena match
             var cam = Camera.main;
+            // Remake, beam mode: while the beam holds an asteroid the lock follows it in a wider box (the ship turns and the
+            // rock spins; the crosshair box alone dropped it at every wobble).
+            if (beamOn && beamTarget != null && cam != null && InBox(cam, beamTarget, Screen.width / 5f))
+            {
+                Candidate = Locked = beamTarget;
+                LockFrame = 23;
+                wasLocked = true;
+                return;
+            }
             Target best = null;
             if (cam != null)
             {
@@ -220,7 +269,7 @@ namespace GoF2Remake.Flight
             switch (State)
             {
                 case Phase.Idle:
-                    if (Locked == null) return false;
+                    if (Locked == null || BeamMode) return false;   // beam mode: the fire button mines
                     if (Shop.FreeCargo(db) < 1) { Say(Localization.Get(322)); return false; }   // Cargo hold is full.
                     Say(Localization.Get(546) + ": " + Localization.Get(550));            // Target: Asteroid
                     Play(sounds?.autopilotOn);
@@ -333,10 +382,12 @@ namespace GoF2Remake.Flight
 
         /// <summary>Multiplayer: another player's game destroyed the asteroid: "Mined out by X." (they finished drilling it) or
         /// "X destroyed the asteroid." (shot, rammed, a blast); null = not another player.</summary>
-        string GoneMessage()
+        string GoneMessage() => GoneMessage(Target);
+
+        string GoneMessage(Target asteroid)
         {
             var orbit = GoF2Remake.Multiplayer.NetGame.Active ? GoF2Remake.Multiplayer.NetOrbit.Current : null;
-            if (orbit == null || !orbit.DestroyedBy(Target, out string by, out bool mined)) return null;
+            if (orbit == null || !orbit.DestroyedBy(asteroid, out string by, out bool mined)) return null;
             if (by.Length == 0) by = Localization.Extra("mpAnotherPilot", "another pilot");
             return mined ? string.Format(Localization.Extra("mpMinedOutBy", "Mined out by {0}."), by)
                          : string.Format(Localization.Extra("mpAsteroidDestroyedBy", "{0} destroyed the asteroid."), by);
@@ -486,6 +537,182 @@ namespace GoF2Remake.Flight
             SetExhaust(true);
             drillSound.Stop();
             StopBroken();
+        }
+
+        // ---- beam mode (remake) ----------------------------------------------------------------------------------
+
+        /// <summary>The asteroid's centre on screen within +-'half' px of the crosshair.</summary>
+        bool InBox(Camera cam, Target t, float half)
+        {
+            if (t == null || !t.Alive) return false;
+            var c = cam.WorldToScreenPoint(ship.transform.position + ship.transform.forward * CrosshairDistanceMeters);
+            var p = cam.WorldToScreenPoint(t.transform.position);
+            return c.z > 0f && p.z > 0f && Mathf.Abs(p.x - c.x) < half && Mathf.Abs(p.y - c.y) < half;
+        }
+
+        /// <summary>0..1 of the asteroid the beam has cut, -1 = none (the lock plate).</summary>
+        public float BeamProgress(Target t) => t != null && extractions.TryGetValue(t, out var e) ? e.Progress01 : -1f;
+
+        /// <summary>The fire button is the beam's (WeaponSystem.FireClaimed): while it cuts, or when it could start on the
+        /// locked asteroid (the nose on it, in reach, room in the hold). Otherwise the press stays the guns': a far or missed
+        /// asteroid or a full hold no longer silences them (a locked asteroid behind an enemy did, mid-fight).</summary>
+        bool BeamClaimsFire() =>
+            BeamMode && State == Phase.Idle && (beamOn || (Locked != null && Locked.Alive && !beamRefused && StartRefusal(Locked) == null));
+
+        /// <summary>Metres along the ship's heading to the rock's visible surface (-1 = the heading misses it). The rock's
+        /// surface is about 0.85 of the mesh's bounding radius (the hit radius is 0.7 of it).</summary>
+        float AlongToRock(Target t, out float surface)
+        {
+            surface = t.radius / 0.7f * 0.85f;
+            var oc = ship.transform.position - t.transform.position;
+            float b = Vector3.Dot(oc, ship.transform.forward), disc = b * b - (oc.sqrMagnitude - surface * surface);
+            return disc >= 0f ? Mathf.Max(0f, -b - Mathf.Sqrt(disc)) : -1f;
+        }
+
+        /// <summary>Why the beam can't start on 't' (null = it can; "" = the heading misses the rock: no message).</summary>
+        string StartRefusal(Target t)
+        {
+            float along = AlongToRock(t, out _);
+            if (along < 0f) return "";
+            if (along / M > beamRangeUnits) return Localization.Extra("miningBeamRange", "Asteroid out of range.");
+            if (BeamRoom(t) < 1) return Localization.Get(322);   // Cargo hold is full.
+            return null;
+        }
+
+        /// <summary>Tons the beam may still cut into the hold from 't': a class-A rock keeps one free for its core (the minigame
+        /// pays the core first; the beam pays it last).</summary>
+        int BeamRoom(Target t) => Shop.FreeCargo(db) - (t.quality >= 7 ? 1 : 0);
+
+        readonly List<Target> deadExtractions = new List<Target>();
+
+        /// <summary>Partly cut rocks that went another way (shot, rammed, mined out by another player) leave the table.</summary>
+        void PruneExtractions()
+        {
+            foreach (var t in extractions.Keys) if (t == null || !t.Alive) deadExtractions.Add(t);
+            foreach (var t in deadExtractions) extractions.Remove(t);
+            deadExtractions.Clear();
+        }
+
+        void UpdateBeam(float dtMs)
+        {
+            bool fire = weapons != null && weapons.FireHeld && !weapons.TurretView && !Navigation.InputHalted;
+            if (!fire) { beamRefused = false; beamRangeSaid = false; }
+            var target = fire && !beamRefused ? Locked : null;
+            if (beamTarget != null && target != beamTarget && !beamTarget.Alive)
+            {
+                // Shot, rammed, or (multiplayer) mined out by another player while the beam was on it.
+                string gone = GoneMessage(beamTarget);
+                if (gone != null) Say(gone);
+                extractions.Remove(beamTarget);
+            }
+            if (target == null || !target.Alive) { StopBeam(); return; }
+            if (!beamOn)
+            {
+                // Only where it can cut (BeamClaimsFire): otherwise the guns have the press; the reason once per press.
+                string refusal = StartRefusal(target);
+                if (refusal != null)
+                {
+                    if (refusal.Length > 0 && !beamRangeSaid) { beamRangeSaid = true; Say(refusal); }
+                    return;
+                }
+                beamOn = true;
+                beamCut.Clear();
+            }
+            beamTarget = target;
+
+            // The beam is fixed to the ship: straight along its heading (like the guns, the unbanked root), from the wing
+            // mounts to the point ahead where that line meets the rock; it moves over the rock only as the ship turns. The
+            // rock's visible surface is about 0.85 of the mesh's bounding radius (the hit radius is 0.7 of it: inside the
+            // rock, where the impact, sparks and chunks were hidden). The beams end a little deeper, so they always touch it.
+            var shipPos = ship.transform.position;
+            var fwd = ship.transform.forward;
+            var centre = target.transform.position;
+            float along = AlongToRock(target, out float surface);   // metres to the rock along the nose, -1 = off it
+            bool inRange = along >= 0f && along / M <= beamRangeUnits;
+            if (!inRange)
+            {
+                // Off the rock or out of reach: the beam runs straight ahead to its full length and cuts nothing.
+                if (along >= 0f && !beamRangeSaid) { beamRangeSaid = true; Say(Localization.Extra("miningBeamRange", "Asteroid out of range.")); }
+                Beaming = null;
+                drillSound.Stop();
+                var end = shipPos + fwd * beamRangeUnits * M;
+                beamFx.Aim(end, end, -fwd, false);
+                return;
+            }
+            var contact = shipPos + fwd * along;
+            var normal = (contact - centre).normalized;
+            int room = BeamRoom(target);
+            if (room < 1)
+            {
+                Say(Localization.Get(322));   // Cargo hold is full.
+                beamRefused = true;
+                StopBeam();
+                return;
+            }
+            Beaming = target;
+            beamFx.Aim(contact + fwd * surface * 0.2f, contact, normal, true);
+
+            if (!extractions.TryGetValue(target, out var ex))
+                extractions[target] = ex = new MiningBeamExtraction(target.quality, beamYield, beamLayerMs, Session.IsExtreme);
+            int layer = ex.Layer;
+            int tons = Mathf.Min(ex.Update(dtMs), room);
+            for (int i = 0; i < tons; i++) Launch(target, contact, normal, target.oreItem, false);
+            if (tons > 0) Session.OreTypesMined.Add(target.oreItem);
+            float speed = (MiningGame.LayerSpeeds[Mathf.Clamp(ex.Layer, 0, 6)] - 5f) / 33f * 3f;
+            if (!drillSound.IsPlaying) drillSound.Start(speed); else drillSound.Set(speed);
+            Haptics.Rumble(0.06f + 0.02f * ex.Layer);   // like the drill on target
+            if (ex.Layer != layer && !ex.Depleted) Haptics.Play(Haptics.DrillLayer);
+            if (!ex.Depleted) return;
+
+            // Every layer cut: a class-A asteroid's core comes last (if the hold has room), then the rock goes.
+            if (ex.GotCore && Shop.FreeCargo(db) >= 1)   // the slot BeamRoom kept free
+            {
+                Launch(target, contact, normal, target.CoreItem, true);
+                Session.CoreTypesMined.Add(target.CoreItem);
+            }
+            extractions.Remove(target);
+            Haptics.Play(Haptics.MiningWon);
+            StopBeam();
+            // HP -1: the asteroid's explosion and sound 21, no crate; multiplayer: "Mined out by X." for the others.
+            MiningOut = true;
+            target.Explode();
+            MiningOut = false;
+        }
+
+        /// <summary>A ton (or the core) cut: into the hold at once (PlayerEgo::stopMining's bookkeeping), the chunk flying into
+        /// the ship is the look only (MiningBeamFx).</summary>
+        void Launch(Target from, Vector3 contact, Vector3 normal, int item, bool core)
+        {
+            Shop.AddToCargo(item, 1);
+            if (core) Session.CoresMined++;
+            else Session.OreMined++;
+            beamCut[item] = (beamCut.TryGetValue(item, out int n) ? n : 0) + 1;
+            beamFx.Launch(from, contact, normal, item, core);
+        }
+
+        /// <summary>A chunk reached the ship (its ore is in the hold already).</summary>
+        void OreLanded(int item, bool core) => Haptics.Play(Haptics.DrillTon);
+
+        /// <summary>The beam off: the messages for what it cut ("12t Gold", "1t Gold Core"), the sounds off.</summary>
+        void StopBeam()
+        {
+            Beaming = null;
+            if (!beamOn) return;
+            beamOn = false;
+            // Remake: a fire button still held when the beam stops (mined out, lock lost, hold full) doesn't turn into
+            // gunfire at the next rock: ignored until it is let go (WeaponSystem.SwallowPrimaryPress, as the approach's).
+            if (weapons != null && weapons.FireHeld) weapons.SwallowPrimaryPress();
+            beamTarget = null;
+            beamFx?.Off();
+            drillSound.Stop();
+            foreach (var kv in beamCut) Say($"{kv.Value}t {GameNames.Item(kv.Key)}");
+            beamCut.Clear();
+            PruneExtractions();
+        }
+
+        void OnDestroy()
+        {
+            if (weapons != null) weapons.FireClaimed = null;
         }
 
         void StartBroken()

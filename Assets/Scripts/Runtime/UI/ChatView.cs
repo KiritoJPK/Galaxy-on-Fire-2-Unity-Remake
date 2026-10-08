@@ -21,6 +21,10 @@
 // Phones (TouchScreenKeyboard): the chat opens the on-screen keyboard itself instead of the field's own (hideSoftKeyboard),
 // so it can tell the keyboard's Done / checkmark (sends the line) from Back or a tap outside it (closes, the draft kept);
 // the field's own keyboard only closed and blurred on Done, so the line was never sent.
+// A conversation stays open (remake rework): sending keeps the line (PC, controller: the field keeps the focus; phones: the
+// keyboard comes straight back up), so a player can answer without opening the chat again; Enter / Done on an empty line,
+// Esc, the row's close button or the Chat tab close it. Phones: while typing the chat sits at the top of the screen
+// (.chat--phone.chat--open), where the on-screen keyboard can't cover the line (at 36 % its input row ended up under it).
 // Styles: Resources/GoF2Net/Chat.uss.
 
 using GoF2Remake.Data;
@@ -47,14 +51,14 @@ namespace GoF2Remake.UI
         string completedText;   // the line Tab last wrote (its change event arrives later: not newly typed)
         float nextStats;
         TextField field;
-        Button channel, sendButton;
+        Button channel, sendButton, closeButton;
         Button tab;
         TouchScreenKeyboard keyboard;   // phones: the on-screen keyboard the chat opened (null when none)
         int keyboardFrame = -10;        // the frame it was opened (it may not report Visible straight away)
         AudioSource sound;
         AudioClip messageClip;
         bool open, hooked;
-        int focusTries, swallowFrame = -1, openFrame = -10;
+        int focusTries, swallowFrame = -1, openFrame = -10, suspendFrame = -10;
 
         /// <summary>The panel on 'parent' (again after a UI reload), on the HUD's own GameObject.</summary>
         public static void Attach(GameObject host, VisualElement parent)
@@ -80,7 +84,14 @@ namespace GoF2Remake.UI
             tab = new Button { focusable = false };   // never a stop for the menus' navigation
             tab.AddToClassList("chat-tab");
             // Opened on the press (not the release), and the touch stays off the HUD under it (steering, the fire area).
-            tab.RegisterCallback<PointerDownEvent>(e => { if (!open) Open(); e.StopPropagation(); }, TrickleDown.TrickleDown);
+            // Open, it closes the chat (the press may already have taken the field's focus this frame: Suspend first).
+            tab.RegisterCallback<PointerDownEvent>(e =>
+            {
+                if (open) Close();
+                else if (suspendFrame >= Time.frameCount - 1) field.value = "";   // closed by this very press
+                else Open();
+                e.StopPropagation();
+            }, TrickleDown.TrickleDown);
             box.Add(tab);
             log = new VisualElement { pickingMode = PickingMode.Ignore };
             log.AddToClassList("chat-log");
@@ -112,7 +123,7 @@ namespace GoF2Remake.UI
             // typing ends, the draft stays; otherwise the game's keys would stay off.
             field.RegisterCallback<FocusOutEvent>(e =>
             {
-                if (e.relatedTarget is VisualElement to && (to == channel || to == sendButton)) return;
+                if (e.relatedTarget is VisualElement to && (to == channel || to == sendButton || to == closeButton)) return;
                 if (focusTries > 0) return;   // still opening
                 Suspend();
             });
@@ -121,6 +132,10 @@ namespace GoF2Remake.UI
             sendButton.AddToClassList("chat-channel");
             sendButton.AddToClassList("chat-send");
             row.Add(sendButton);
+            closeButton = new Button(Close) { text = "×" };   // touch / mouse; Esc, B and Enter on an empty line too
+            closeButton.AddToClassList("chat-channel");
+            closeButton.AddToClassList("chat-close");
+            row.Add(closeButton);
             box.Add(row);
             parent.Add(box);
             stats = new Label { name = "netstats", pickingMode = PickingMode.Ignore };
@@ -136,6 +151,7 @@ namespace GoF2Remake.UI
             RefreshChannel();
             Rebuild();
             box.EnableInClassList("chat--open", open);
+            box.EnableInClassList("chat--phone", SoftKeyboard);
         }
 
         void OnDestroy()
@@ -187,7 +203,7 @@ namespace GoF2Remake.UI
             if (status == TouchScreenKeyboard.Status.Done)
             {
                 field.value = text;   // some keyboards hand the last word over only when they close
-                SendLine();
+                SendLine();           // an empty line closes; otherwise the keyboard comes back for the next one
                 return;
             }
             field.Blur();
@@ -306,11 +322,20 @@ namespace GoF2Remake.UI
             Rebuild();
         }
 
+        /// <summary>The send key, Done or Send: the line goes and the chat stays open for the next one (the field keeps the
+        /// focus, a phone's keyboard comes back up); an empty line closes it.</summary>
         void SendLine()
         {
             string line = field.value;
-            Close();
-            if (!string.IsNullOrWhiteSpace(line)) NetChat.Send(line);
+            if (string.IsNullOrWhiteSpace(line)) { Close(); return; }
+            NetChat.Send(line);
+            if (!open) return;   // the command ended the session or left the scene
+            completionLine = null; completionIndex = -1; completedText = null;
+            field.value = "";
+            focusTries = FocusFrames;
+            field.Focus();
+            OpenKeyboard();
+            RefreshSuggestions();
         }
 
         /// <summary>A chat line as rich text (this panel and the multiplayer window's Chat tab).</summary>
@@ -333,6 +358,7 @@ namespace GoF2Remake.UI
         {
             if (!open) return;
             open = false;
+            suspendFrame = Time.frameCount;
             CloseKeyboard();
             box.EnableInClassList("chat--open", false);
             NetChat.SetTyping(false);
@@ -360,7 +386,9 @@ namespace GoF2Remake.UI
             if (sendKey.Length > 0) hints.Add(string.Format(Localization.Extra("mpChatSendHint", "{0} send"), sendKey));
             if (channelKey.Length > 0) hints.Add(string.Format(Localization.Extra("mpChatChannelHint", "{0} channel"), channelKey));
             hints.Add(Localization.Extra("mpChatCloseHint", "Esc close"));
-            field.textEdition.placeholder = string.Join("  ·  ", hints);
+            // Phones: no keys to name.
+            field.textEdition.placeholder = SoftKeyboard ? Localization.Extra("mpChatPhoneHint", "Type a message")
+                : string.Join("  ·  ", hints);
         }
 
         void RefreshChannel()

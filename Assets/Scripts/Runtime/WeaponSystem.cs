@@ -180,6 +180,9 @@ namespace GoF2Remake.Flight
         [NonSerialized] public bool TurretView;
         /// <summary>The fire button is held this frame (not paused, not latched): the turret view fires with it.</summary>
         public bool FireHeld { get; private set; }
+        /// <summary>Remake: asked every frame the fire button is held; true = it fires something else and the primary guns
+        /// stay silent (Mining's beam mode: a mining beam on a locked asteroid).</summary>
+        [NonSerialized] public Func<bool> FireClaimed;
 
         void Awake()
         {
@@ -385,6 +388,7 @@ namespace GoF2Remake.Flight
             bool primaryHeld = !halted && !PrimaryBlocked && (touchPrimary || keyAutofire || (primaryPressed && !primaryLatched));
             FireHeld = primaryHeld;
             if (TurretView) primaryHeld = false;
+            if (primaryHeld && FireClaimed != null && FireClaimed()) primaryHeld = false;   // the mining beam
             if (!halted && !TurretView && useBuiltInInput && fireSecondaryAction.WasReleasedThisFrame() && !secondaryLatched) FireSecondary();
             if (!secondaryPressed) secondaryLatched = false;
             if (!halted && useBuiltInInput && cycleSecondaryAction.WasPressedThisFrame()) CycleSecondary();

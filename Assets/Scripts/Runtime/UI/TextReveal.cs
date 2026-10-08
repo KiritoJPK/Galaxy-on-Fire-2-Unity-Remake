@@ -22,7 +22,8 @@
 //              "missiles"; "mine" only as "mines" or "Mine"), the ore core icon before "core" and the container before
 //              "container" (English)
 // Alien-font pages (AlienText) fade their glyph images in the same rhythm; Arabic / Hebrew pages (joined, right to left)
-// fade in whole instead, so the per-letter tags never split the letter joining. Japanese / Chinese punctuation (。！？、)
+// and Indic ones (Hindi's Devanagari: conjuncts, vowel signs drawn before their consonant) fade in whole instead, so the
+// per-letter tags never split the letter joining or the shaping. Japanese / Chinese punctuation (。！？、)
 // pauses without a following space. All-caps words of item, ship, station and system names ("Micro Gun MKII") never
 // count as shouting. The texts have no rich text tags of their own ('<' is escaped). Checked against all 11 text tables.
 // Plain C#: the owner calls Begin after setting the text, then Tick every frame.
@@ -85,7 +86,7 @@ namespace GoF2Remake.UI
             label.style.opacity = StyleKeyword.Null;
             if (!Settings.AnimatedDialogue) return;
             alien = alienFont && AlienText.CollectGlyphs(label, glyphs);
-            if (!alien && IsRightToLeft(pageText))
+            if (!alien && IsShapedScript(pageText))
             {
                 // The page as it is, faded in whole.
                 whole = true;
@@ -238,10 +239,13 @@ namespace GoF2Remake.UI
 
         // ---- rendering -----------------------------------------------------------------------------------------
 
-        static bool IsRightToLeft(string text)
+        /// <summary>Scripts the per-letter tags would break: Hebrew / Arabic (joined, right to left) and the Indic ones
+        /// (Devanagari to Sinhala: conjuncts and reordered vowel signs are shaped across letters).</summary>
+        static bool IsShapedScript(string text)
         {
             if (text == null) return false;
-            foreach (char c in text) if (c >= '\u0590' && c <= '\u08FF' || c >= '\uFB1D' && c <= '\uFEFC') return true;
+            foreach (char c in text)
+                if (c >= '\u0590' && c <= '\u08FF' || c >= '\u0900' && c <= '\u0DFF' || c >= '\uFB1D' && c <= '\uFEFC') return true;
             return false;
         }
 
@@ -335,9 +339,10 @@ namespace GoF2Remake.UI
 
         static List<IconRule> iconRules;
 
-        /// <summary>Amounts of money: a number (with , . or space thousands) followed by "$" or a credit word.</summary>
+        /// <summary>Amounts of money: a number (with , . or space thousands) followed by "$" or a credit word (Chinese:
+        /// "20,000个信用分", without a space).</summary>
         static readonly System.Text.RegularExpressions.Regex Amount = new System.Text.RegularExpressions.Regex(
-            @"(?<![\p{L}\p{N}])\d{1,3}(?:[,.\u00A0\u202F ]\d{3})+(?![\p{N}])(?=\s?\$|\s+(?:credits?|crédits?|créditos?|crediti|credito|kredyt\w*|кредит\w*|크레딧|クレジット))|(?<![\p{L}\p{N}])\d+(?=\s?\$|\s+(?:credits?|crédits?|créditos?|crediti|credito|kredyt\w*|кредит\w*|크레딧|クレジット))",
+            @"(?<![\p{L}\p{N}])\d{1,3}(?:[,.\u00A0\u202F ]\d{3})+(?![\p{N}])(?=\s?\$|\s+(?:credits?|crédits?|créditos?|crediti|credito|kredyt\w*|кредит\w*|크레딧|クレジット|क्रेडिट)|\s*个?信用分)|(?<![\p{L}\p{N}])\d+(?=\s?\$|\s+(?:credits?|crédits?|créditos?|crediti|credito|kredyt\w*|кредит\w*|크레딧|クレジット|क्रेडिट)|\s*个?信用分)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
         /// <summary>The icon to put before each letter of 'text' (null = none).</summary>

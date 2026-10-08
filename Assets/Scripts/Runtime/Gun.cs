@@ -292,6 +292,10 @@ namespace GoF2Remake.Flight
         public void Update(float dtMs, IReadOnlyList<Target> targets, Target lockTarget)
         {
             reloadAcc += dtMs;
+            // Remake: a lock that went away because its ship cloaked (the radar drops it, an NPC stops homing on a cloaked
+            // target) shakes off the missiles too, so they don't home again on the next lock or when the cloak ends.
+            var previousLock = LastLock;
+            bool dropShaken = Homing && previousLock != null && previousLock != lockTarget && previousLock.ShakesMissiles;
             LastLock = lockTarget;
             lastTargets = targets;
             float limit = FreeLimit;
@@ -302,9 +306,11 @@ namespace GoF2Remake.Flight
             {
                 ref var b = ref bullets[i];
                 if (b.timer <= limit) continue;
-                // Remake: a boost shakes off every missile homing on that ship (players only: the local player's ship and, in
-                // multiplayer, the other players' copies, NetPlayer); they fly straight on. The original has no evasion.
-                if (steer > 0f && !b.lockLost && lockTarget.boosting) { b.lockLost = true; shaken = true; }
+                // Remake: a boost or a cloak shakes off every missile homing on that ship (players only: the local player's
+                // ship and, in multiplayer, the other players' copies, NetPlayer); they fly straight on. The original has no
+                // evasion.
+                if (dropShaken && !b.lockLost) { b.lockLost = true; shaken = true; }
+                if (steer > 0f && !b.lockLost && lockTarget.ShakesMissiles) { b.lockLost = true; shaken = true; }
                 if (steer > 0f && !b.lockLost && lockTarget.isPlayer) IncomingMissiles.Report(this, i, b.position, b.velocity);
                 if (steer > 0f && !b.lockLost && b.age >= homingDelayMs)
                 {
@@ -327,7 +333,7 @@ namespace GoF2Remake.Flight
                     else TestHits(i, ref b, targets);
                 }
             }
-            if (shaken) LockShaken?.Invoke(this, lockTarget);
+            if (shaken) LockShaken?.Invoke(this, dropShaken ? previousLock : lockTarget);
         }
 
         /// <summary>RocketGun::update, sort 40: each rocket winds around its path, phase-shifted by its slot.</summary>

@@ -112,17 +112,17 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>The PNGs a station's materials use (as ModMaterials.FromSpec reads them).</summary>
-        static IEnumerable<(string path, bool linear)> TexturesOf(ModWorld.StationModel s)
+        static IEnumerable<(string path, bool linear, bool normal)> TexturesOf(ModWorld.StationModel s)
         {
             foreach (var m in s.materials)
             {
                 if (m == null) continue;
-                if (!string.IsNullOrEmpty(m.diffuse)) yield return (m.diffuse, false);
-                if (!string.IsNullOrEmpty(m.normal)) yield return (m.normal, true);
-                if (!string.IsNullOrEmpty(m.metallicSmoothness)) yield return (m.metallicSmoothness, true);
-                if (!string.IsNullOrEmpty(m.emission)) yield return (m.emission, false);
-                if (!string.IsNullOrEmpty(m.detailAlbedo)) yield return (m.detailAlbedo, true);
-                if (!string.IsNullOrEmpty(m.detailNormal)) yield return (m.detailNormal, true);
+                if (!string.IsNullOrEmpty(m.diffuse)) yield return (m.diffuse, false, false);
+                if (!string.IsNullOrEmpty(m.normal)) yield return (m.normal, true, true);
+                if (!string.IsNullOrEmpty(m.metallicSmoothness)) yield return (m.metallicSmoothness, true, false);
+                if (!string.IsNullOrEmpty(m.emission)) yield return (m.emission, false, false);
+                if (!string.IsNullOrEmpty(m.detailAlbedo)) yield return (m.detailAlbedo, true, false);
+                if (!string.IsNullOrEmpty(m.detailNormal)) yield return (m.detailNormal, true, true);
             }
         }
 
@@ -134,7 +134,7 @@ namespace GoF2Remake.Modding
             try
             {
                 var textures = new List<Task>();
-                foreach (var (path, linear) in TexturesOf(s)) textures.Add(ModMaterials.PreloadTexture(s.mod, path, linear));
+                foreach (var (path, linear, normal) in TexturesOf(s)) textures.Add(ModMaterials.PreloadTexture(s.mod, path, linear, normal: normal));
                 var file = Task.Run(() => s.mod.Source.ReadBytes(s.model));
                 await Task.WhenAll(textures);
                 var bytes = await file;
@@ -176,8 +176,8 @@ namespace GoF2Remake.Modding
                 foreach (var m in d.materials)
                 {
                     if (m == null) continue;
-                    foreach (var (path, linear) in new[] { (m.diffuse, false), (m.normal, true), (m.metallicSmoothness, true), (m.emission, false), (m.detailAlbedo, true), (m.detailNormal, true) })
-                        if (!string.IsNullOrEmpty(path)) textures.Add(ModMaterials.PreloadTexture(d.mod, path, linear));
+                    foreach (var (path, linear, normal) in new[] { (m.diffuse, false, false), (m.normal, true, true), (m.metallicSmoothness, true, false), (m.emission, false, false), (m.detailAlbedo, true, false), (m.detailNormal, true, true) })
+                        if (!string.IsNullOrEmpty(path)) textures.Add(ModMaterials.PreloadTexture(d.mod, path, linear, normal: normal));
                 }
                 var file = Task.Run(() => d.mod.Source.ReadBytes(d.model));
                 await Task.WhenAll(textures);

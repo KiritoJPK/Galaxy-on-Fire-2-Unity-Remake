@@ -365,7 +365,7 @@ namespace GoF2Remake.UI
                 f.turret = autoTurret != null;
                 f.turretOn = f.turret && autoTurret.AutoEnabled;
                 f.actionArrow = phase == Mining.Phase.Idle && !dockBusy && !turretView
-                                && ((nav != null && nav.Locked != null && nav.PromptText != null) || (mining != null && mining.Locked != null));
+                                && ((nav != null && nav.Locked != null && nav.PromptText != null) || (mining != null && mining.Locked != null && mining.PromptText != null));
                 bool tilt = TiltSteering.Active && (Session.FreePlay || Session.CampaignMission != 48);
                 f.dimStick = tilt || (nav != null && nav.Autopilot) || phase == Mining.Phase.Approaching || dockBusy;
                 f.dimNav = phase != Mining.Phase.Idle || dockBusy;

@@ -22,6 +22,9 @@ namespace GoF2Remake.Modding
             ["energyCells"] = 38, ["fireRateFactor"] = 39, ["damageFactor"] = 40, ["emergencyMs"] = 41, ["timeExtenderMs"] = 42,
             ["timeExtenderCooldownMs"] = 43, ["collectorSpeed"] = 49, ["collectorMagnitude"] = 50, ["collectorRange"] = 51,
             ["gammaShielding"] = 52, ["beamRange"] = 53, ["beamStrength"] = 54, ["beamTargets"] = 55,
+            // Remake-only attributes (100+; the original's end at 61): a drill (sort 19) with miningBeam 1 is a mining beam
+            // (Flight.Mining's beam mode, MiningBeamExtraction, MiningBeamFx).
+            ["miningBeam"] = 100, ["miningBeamRange"] = 101, ["miningBeamLayerMs"] = 102, ["miningBeamLook"] = 103,
             // items.json's statList names
             ["steerable"] = 15, ["handling"] = 17,
             ["loadingTimeMs"] = 11, ["range"] = 12, ["projectileSpeed"] = 13, ["magnitude"] = 14, ["shieldRegenTime"] = 19,

@@ -112,6 +112,45 @@
     border-radius: 2px;
 }
 
+/* The close button at the end of the row (touch, mouse; Esc, B and Enter on an empty line close too). */
+.chat-close {
+    min-width: 44px;
+    margin-left: 6px;
+    font-size: 20px;
+    -unity-text-align: middle-center;
+    color: rgb(216, 236, 247);
+    border-color: rgba(216, 236, 247, 0.4);
+}
+
+/* Phones, typing: the chat at the top of the screen, clear of the on-screen keyboard (which covers the lower half in
+   landscape; at 36 % the input row ended up under it). The Chat tab gives its room to the lines (the row's close button
+   closes), and the "/" suggestions stay short so they never push the line down under the keyboard. */
+.chat--phone.chat--open {
+    top: 8px;
+    width: 760px;
+}
+
+.chat--phone.chat--open .chat-tab {
+    display: none;
+}
+
+.chat--phone .chat-suggest {
+    max-height: 132px;
+    overflow: hidden;
+}
+
+.chat--phone .chat-suggest-row {
+    flex-shrink: 0;   /* cut off at the bottom, never squeezed into each other */
+}
+
+.chat--phone .chat-suggest-hint {
+    display: none;   /* "Tab complete": no Tab key */
+}
+
+.chat--phone .chat-input-row {
+    min-height: 44px;   /* finger-sized */
+}
+
 /* Typing "/": the matching commands over the input line (ChatView.RefreshSuggestions), Tab's pick highlighted. */
 .chat-suggest {
     margin-top: 6px;

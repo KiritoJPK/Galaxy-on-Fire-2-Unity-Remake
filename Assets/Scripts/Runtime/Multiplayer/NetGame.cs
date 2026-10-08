@@ -732,7 +732,22 @@ namespace GoF2Remake.Multiplayer
             Session.UseCompletedWorld();   // free play in the finished game's world (every dealer ship, Ginoya after the supernova)
             Session.StationIndex = Station;
             Session.LaunchedFromStation = false;   // the session starts docked (EnterWorld)
+            // Remake: a modest start instead of resetGame's well-equipped Phantom, so the pilot works up to better ships (a
+            // dedicated server or persistent host keeps their progress in the profile, which replaces this when it loads).
+            Session.ShipIndex = StartShip;
+            Session.Equipment = StartEquipment();
+            Session.Credits = StartCredits;
         }
+
+        /// <summary>A new multiplayer pilot's ship (Betty), credits and loadout.</summary>
+        public const int StartShip = 0, StartCredits = 10000;
+
+        /// <summary>Betty's slots (1 primary, 1 secondary, 3 equipment): Nirai Impulse EX 1 (0), Targe Shield (50), Telta
+        /// Quickscan (81), IMT Extract 1.3 (86); all saleable, the secondary slot empty.</summary>
+        static List<ItemStack> StartEquipment() => new List<ItemStack>
+        {
+            new ItemStack(0, 1), new ItemStack(50, 1), new ItemStack(81, 1), new ItemStack(86, 1),
+        };
 
         static NetworkManager EnsureManager()
         {

@@ -236,11 +236,11 @@ namespace GoF2Remake.World
             var luurPos = G(luur);
             // The look-at helper (+0xcc): at Luur facing -L (up (0, 1, 0)), moveForward(-100000) and translate(right * 200000):
             // 100 000 units sunward of Luur, 200 000 to its own right; it drifts back along its right, so the view swings onto
-            // the sun just as it explodes.
+            // the sun just as it explodes. The original's right is Unity's left (HelperRight89): the z flip mirrors the frame, and
+            // with transform.right the helper started on the wrong side, the camera looking into empty space past Luur (PR #56).
             helper = new GameObject("Cutscene helper");
             helper.transform.rotation = Quaternion.LookRotation(Dir(-LightGame), Vector3.up);
-            // Modified: the helper's right is multiplied by HelperSide89 (the previous remake behaviour = 1).
-            helper.transform.position = ToUnity(luurPos + LightGame * 100000f) + helper.transform.right * 200000f * M * HelperSide89;
+            helper.transform.position = ToUnity(luurPos + LightGame * 100000f) + HelperRight89 * 200000f * M;
             cam.LookAt(luurPos + new Vector3(10000, 1500, -20000), helper.transform);
             c.MusicOwned = true;
             c.PlayMusic(sn?.supernovaIntro, false);
@@ -857,12 +857,8 @@ namespace GoF2Remake.World
             level.Dock();
         }
 
-        // Modified: tuning for mission 89's opening shot. 1 = previous remake behaviour, -1 = mirrored.
-        // With 1 the helper started on the wrong side (Unity's transform.right is mirrored relative to the original
-        // engine's right after the z flip), so the camera looked into empty space instead of past Luur toward the sun.
-        const float HelperSide89 = -1f;   // which side the look-at helper starts on and the way it drifts
-        const float DollyX89 = 1f;        // camera dolly on X
-        const float DollyZ89 = 1f;        // camera dolly on Z
+        /// <summary>89's look-at helper's right in the original engine's (mirrored) sense: Unity's -transform.right.</summary>
+        Vector3 HelperRight89 => -helper.transform.right;
 
         // 89 (LevelScript.c 2473-2647).
         void Tick89(float dtMs)
@@ -872,9 +868,8 @@ namespace GoF2Remake.World
             {
                 // k isn't clamped: from 35 s the dolly runs back.
                 float k = 1f - T / 35000f;
-                // Modified: adjustable signs (previous remake behaviour = 1, 1, 1).
-                cam.SetDolly(new Vector3(k * DollyX89, 0, 2f * k * DollyZ89));
-                helper.transform.position -= helper.transform.right * 7f * dtMs * (1f - T / 50000f) * M * HelperSide89;
+                cam.SetDolly(new Vector3(k, 0, 2f * k));
+                helper.transform.position -= HelperRight89 * 7f * dtMs * (1f - T / 50000f) * M;
             }
             var freighter = S(11);
             if (freighter != null) freighter.transform.position += freighter.transform.forward * dtMs * M;

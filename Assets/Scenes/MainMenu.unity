@@ -802,6 +802,8 @@ MonoBehaviour:
   - pl
   - ru
   - pt
+  - zh
+  - hi
   languageNames:
   - English
   - Deutsch
@@ -812,6 +814,8 @@ MonoBehaviour:
   - Polski
   - "\u0420\u0443\u0441\u0441\u043A\u0438\u0439"
   - "Portugu\xEAs (Brasil)"
+  - "\u7B80\u4F53\u4E2D\u6587"
+  - "\u0939\u093F\u0928\u094D\u0926\u0940"
   languageTables:
   - {fileID: 4900000, guid: 0b42a7171202de34d9b2a36f5cce90a6, type: 3}
   - {fileID: 4900000, guid: c1b38788d2fc6b1429072f06c76b2904, type: 3}
@@ -822,6 +826,8 @@ MonoBehaviour:
   - {fileID: 4900000, guid: 653bf6aa4e99b224f8d1bbba5629a1c9, type: 3}
   - {fileID: 4900000, guid: 23fbd248578a31947850551131cd654d, type: 3}
   - {fileID: 4900000, guid: d1bf3a28caa9b3b409b7f5c59505a30c, type: 3}
+  - {fileID: 4900000, guid: 659ce45034e0c3045bde0aa8724e7888, type: 3}
+  - {fileID: 4900000, guid: 98caea0448397264284a662f322e0277, type: 3}
   postVolume: {fileID: 1294174978}
   simulatePhone: 0
 --- !u!82 &2078859601

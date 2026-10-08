@@ -145,6 +145,7 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 | `attributes` | The original game's attribute numbers directly: `{ "9": 14 }`. For anything `stats` has no name for. |
 | `defaultEconomy` | The same fields again, used when the player picked the Default Economy (the PC / Mac prices) for their game. |
 | `fx` | A weapon's own look and sound, see [Weapon effects](#weapon-effects). |
+| `icon` | Its own shop icon: a PNG in the mod, 180 x 88 like the originals (frame and background included; copy one from `Assets/Resources/GoF2Icons` to start from). Without it the item shows its base item's icon. An `override` with `icon` gives an original item a new one. |
 
 ### Stats
 
@@ -186,10 +187,39 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 | `collectorSpeed`, `collectorMagnitude`, `collectorRange` | 49 to 51 | Plasma collector |
 | `gammaShielding` | 52 | Gamma shield strength (%) |
 | `beamRange`, `beamStrength`, `beamTargets` | 53 to 55 | Repair and transfusion beams |
+| `miningBeam` | 100 | 1 = a drill that works as a mining beam (see [Mining beams](#mining-beams)) |
+| `miningBeamRange` | 101 | Mining beam reach from the asteroid's surface (game units, 20 per metre; default 24000) |
+| `miningBeamLayerMs` | 102 | Mining beam: time to cut one rock layer (ms; default 6000, the drill minigame's) |
+| `miningBeamLook` | 103 | Mining beam: the beam laser whose beam and impact it shows (9, 10, 11 or 228; default 228) |
 
 Which stats an item uses depends on its category, so copy the stats its base item has (see `items.json` and
 `item_attributes.json` in `Assets/Resources/GoF2Data`). items.json's own stat names (`loadingTimeMs`, `range`,
 `projectileSpeed`...) work too.
+
+### Mining beams
+
+A drill (an item based on one of the drills, 86 to 90) with `"miningBeam": 1` is a mining beam: the player locks on to an
+asteroid with the scanner as usual, but there is no autopilot approach, landing or minigame. Holding fire on the locked
+asteroid (the guns stay silent while the beam cuts, or could: the nose on the rock, in reach, room in the hold) cuts its ore while the ship keeps flying: beams from the ship's outer
+gun mounts, sparks on the rock, and every ton flying into the ship as a chunk of the asteroid before it lands in the hold.
+The lock plate shows how much of the rock is cut. Letting go keeps the progress; a depleted asteroid gives its core (class A)
+and explodes. Without the item mounted, mining works as in the original.
+
+The ore follows the drill minigame's rules: the rock's layers (class A 7 ... D 4) are cut one by one, and a whole asteroid
+gives what a perfect minigame run would with that yield: class A 62.7 t x `miningYield` / 100 (plus its core), class D
+23.7 t x `miningYield` / 100. `miningBeamLayerMs` only sets how fast. Gunant's Drill, the best original drill, has a yield
+of 100 and needs the landing and 6 s per layer.
+
+```json
+{
+    "id": "extract_beam",
+    "base": 90,
+    "name": "IMT Extract Beam 5.0",
+    "techLevel": 10,
+    "price": [480000, 520000],
+    "stats": { "miningBeam": 1, "miningYield": 160, "miningBeamLayerMs": 4000, "miningBeamRange": 24000, "miningBeamLook": 228 }
+}
+```
 
 ### Weapon effects
 

@@ -251,8 +251,11 @@ namespace GoF2Remake.UI
                 sv.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
                 new DragScroll(sv);
             }
-            // The option pages scroll by wheel, touch and focus only (a drag would fight the sliders).
-            foreach (var (_, pg) in OptionPages)
+            // The option pages and the host card's settings scroll by wheel, touch and focus only (a drag would fight the
+            // sliders, and the host card's address rows copy on a tap).
+            var noDragScrolls = new List<string> { "mpHostScroll" };
+            foreach (var (_, p) in OptionPages) noDragScrolls.Add(p);
+            foreach (var pg in noDragScrolls)
             {
                 if (!(root.Q(pg) is ScrollView sv)) continue;
                 sv.mode = ScrollViewMode.Vertical;
@@ -981,6 +984,7 @@ namespace GoF2Remake.UI
                 });
             }
             mpLocalBox = root.Q("mpLocalBox");
+            SetupHostMore();
             mpSessionName = root.Q<TextField>("mpSessionName");
             if (mpSessionName != null)
             {
@@ -1142,6 +1146,27 @@ namespace GoF2Remake.UI
                 label.text = (n == 0 ? Localization.Extra("mpMods", "Mods")
                     : string.Format(Localization.Extra("mpModsCount", "Mods ({0} on)"), n)).ToUpperInvariant();
             }
+        }
+
+        /// <summary>The host card's settings scroll when they don't fit (several network adapters, a short screen), and the
+        /// scroll bars are hidden everywhere: "More options" under them says so while settings are cut off below, and a
+        /// tap scrolls down to them.</summary>
+        void SetupHostMore()
+        {
+            var scroll = root.Q<ScrollView>("mpHostScroll");
+            var more = root.Q<Label>("mpHostMore");
+            if (scroll == null || more == null) return;
+            more.text = "▾ " + Localization.Extra("mpMoreOptions", "More options").ToUpperInvariant();
+            void Update()
+            {
+                float hidden = scroll.contentContainer.layout.height - scroll.contentViewport.layout.height;
+                more.EnableInClassList("mp-host-more--shown", hidden > 1f && scroll.scrollOffset.y < hidden - 1f);
+            }
+            scroll.contentContainer.RegisterCallback<GeometryChangedEvent>(_ => Update());
+            scroll.contentViewport.RegisterCallback<GeometryChangedEvent>(_ => Update());
+            scroll.verticalScroller.valueChanged += _ => Update();
+            more.RegisterCallback<ClickEvent>(_ =>
+                scroll.scrollOffset = new Vector2(0f, scroll.scrollOffset.y + scroll.contentViewport.layout.height * 0.8f));
         }
 
         void SetHostMode(HostMode mode)

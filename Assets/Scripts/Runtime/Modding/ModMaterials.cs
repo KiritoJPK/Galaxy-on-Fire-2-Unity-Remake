@@ -10,6 +10,11 @@
 // DXT with its mipmaps on a worker thread where the GPU reads DXT; elsewhere Texture2D.Compress, one texture per frame), so
 // the builder's Texture calls find them made. The result is kept on disk (ModTextureCache): a later start reads it back on
 // a worker thread instead of decoding and compressing again.
+// Normal maps (normal = true): Android builds read a normal map's X from its alpha channel and Y from green (Player settings,
+// Android normal map encoding "DXT5nm-style": URP's UnpackNormal with UNITY_ASTC_NORMALMAP_ENCODING). The game's normal maps
+// are imported as Normal Map textures, which Unity re-encodes that way; a mod's PNG arrives as plain RGB with alpha 1, so on
+// Android every normal came out bent sideways (X = 1) and the mods' hulls nearly black. On Android the loader copies X (red)
+// into alpha before compressing (NormalsInAlpha); desktop reads either layout (UnpackNormalmapRGorAG) and is left as it was.
 
 using System.Collections.Generic;
 using GoF2Remake.Data;
@@ -48,17 +53,68 @@ namespace GoF2Remake.Modding
             solids.Clear();
         }
 
-        /// <summary>A PNG / JPG of the mod (null = none or unreadable); linear for data (normal, metallic, masks).</summary>
-        public static Texture2D Texture(ModInfo mod, string path, bool linear, bool readable = false)
+        /// <summary>The build reads normal maps' X from alpha (Android's normal map encoding, see the header).</summary>
+        public static bool NormalsInAlpha =>
+#if UNITY_ANDROID
+            true;
+#else
+            false;
+#endif
+
+        static string Key(ModInfo mod, string path, bool linear, bool readable, bool normal) =>
+            mod.Id + "|" + ModSource.Normalise(path).ToLowerInvariant() + (linear ? "|l" : "") + (readable ? "|r" : "")
+            + (normal && NormalsInAlpha ? "|n" : "");
+
+        /// <summary>A normal map in the Android layout: X (red) copied into alpha, the mipmaps made again (RGBA32 if it had no
+        /// alpha). Returns the texture to use (a new one when the format changed; the old one is destroyed).</summary>
+        static Texture2D NormalToAlpha(Texture2D t)
+        {
+            var px = t.GetPixels32();
+            for (int i = 0; i < px.Length; i++) px[i].a = px[i].r;
+            bool mips = t.mipmapCount > 1;
+            var o = t;
+            if (t.format != TextureFormat.RGBA32 && t.format != TextureFormat.ARGB32)
+            {
+                o = new Texture2D(t.width, t.height, TextureFormat.RGBA32, mips, true)
+                    { name = t.name, wrapMode = t.wrapMode, anisoLevel = t.anisoLevel, filterMode = t.filterMode };
+                Object.Destroy(t);
+            }
+            o.SetPixels32(px);
+            o.Apply(mips, false);
+            return o;
+        }
+
+        static Material normalToAlpha;
+
+        /// <summary>A glTF normal map (glTFast's texture, not readable) in the Android layout, on the GPU.</summary>
+        static Texture NormalToAlpha(Texture src, string name)
+        {
+            if (normalToAlpha == null)
+            {
+                var shader = Resources.Load<Shader>("GoF2Mods/NormalToAlpha");
+                if (shader == null) return src;
+                normalToAlpha = new Material(shader);
+            }
+            var rt = new RenderTexture(src.width, src.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear)
+                { name = name + " normal", useMipMap = true, autoGenerateMips = true, wrapMode = src.wrapMode, anisoLevel = 8 };
+            Graphics.Blit(src, rt, normalToAlpha);
+            made.Add(rt);
+            return rt;
+        }
+
+        /// <summary>A PNG / JPG of the mod (null = none or unreadable); linear for data (normal, metallic, masks); normal for a
+        /// normal map (its Android layout).</summary>
+        public static Texture2D Texture(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
         {
             Check();
             if (mod == null || string.IsNullOrEmpty(path)) return null;
-            string key = mod.Id + "|" + ModSource.Normalise(path).ToLowerInvariant() + (linear ? "|l" : "") + (readable ? "|r" : "");
+            string key = Key(mod, path, linear, readable, normal);
             if (textures.TryGetValue(key, out var t)) return t;
             var bytes = mod.Source.ReadBytes(path);
             if (bytes == null) { Warn(mod, $"{path}: file not found"); textures[key] = null; return null; }
             t = new Texture2D(2, 2, TextureFormat.RGBA32, true, linear) { name = mod.Id + ":" + path, wrapMode = TextureWrapMode.Repeat };
             if (!t.LoadImage(bytes, false)) { Object.Destroy(t); Warn(mod, $"{path}: not a PNG or JPG image"); textures[key] = null; return null; }
+            if (normal && NormalsInAlpha) t = NormalToAlpha(t);
             t.anisoLevel = 8;
             t.filterMode = FilterMode.Trilinear;
             if (!readable)
@@ -76,11 +132,12 @@ namespace GoF2Remake.Modding
 
         /// <summary>Decodes a texture in the background into the cache Texture reads (nothing when it is there already, or
         /// when the background way fails: Texture then loads it the plain way).</summary>
-        public static async System.Threading.Tasks.Task PreloadTexture(ModInfo mod, string path, bool linear, bool readable = false)
+        public static async System.Threading.Tasks.Task PreloadTexture(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
         {
             Check();
             if (mod == null || string.IsNullOrEmpty(path)) return;
-            string key = mod.Id + "|" + ModSource.Normalise(path).ToLowerInvariant() + (linear ? "|l" : "") + (readable ? "|r" : "");
+            bool toAlpha = normal && NormalsInAlpha;
+            string key = Key(mod, path, linear, readable, normal);
             if (textures.ContainsKey(key)) return;
             // Desktop GPUs read DXT: the worker thread compresses it with its own mipmaps (ModTextureEncoder).
             bool encode = !readable && SystemInfo.SupportsTextureFormat(TextureFormat.DXT1) && SystemInfo.SupportsTextureFormat(TextureFormat.DXT5);
@@ -93,7 +150,7 @@ namespace GoF2Remake.Modding
                 if (f != null && !readable)
                 {
                     // Made before (ModTextureCache): read back here, off the main thread.
-                    cacheFile = ModTextureCache.FileFor(cacheRoot, mod.Id, path, f, linear, encode ? "dxt" : "gpu");
+                    cacheFile = ModTextureCache.FileFor(cacheRoot, mod.Id, path, f, linear, (encode ? "dxt" : "gpu") + (toAlpha ? "-nrm" : ""));
                     cached = ModTextureCache.Read(cacheFile);
                 }
                 return f;
@@ -122,6 +179,7 @@ namespace GoF2Remake.Modding
             t.wrapMode = TextureWrapMode.Repeat;
             t.anisoLevel = 8;
             t.filterMode = FilterMode.Trilinear;
+            if (toAlpha) t = NormalToAlpha(t);
             var work = encode ? ModTextureEncoder.Start(t, linear) : null;
             if (encode && work == null && loggedFormats.Add(t.format + (t.width % 4 == 0 && t.height % 4 == 0 ? "" : " (size)")))
                 Debug.Log($"Mods: {path}: {t.format} {t.width}x{t.height} is compressed on the main thread (the background encoder takes RGBA32 / ARGB32 / RGB24, sizes in multiples of 4)");
@@ -205,7 +263,7 @@ namespace GoF2Remake.Modding
             if (a == null) return null;
             bool clip = e.alphaClip > 0f, glass = e.opacity > 0f && e.opacity < 1f;
             var dAlb = Texture(mod, e.detailAlbedo, true);
-            var dNrm = Texture(mod, e.detailNormal, true);
+            var dNrm = Texture(mod, e.detailNormal, true, normal: true);
             var m = Copy(a.Lit(clip && !glass, glass, dAlb != null || dNrm != null), name);
             m.SetTexture("_DetailAlbedoMap", null);
             m.SetTexture("_DetailNormalMap", null);
@@ -215,7 +273,7 @@ namespace GoF2Remake.Modding
             var baseColor = Rgb(e.color, Color.white);
             if (glass) baseColor.a = e.opacity;
             m.SetColor("_BaseColor", baseColor);
-            var nrm = Texture(mod, e.normal, true);
+            var nrm = Texture(mod, e.normal, true, normal: true);
             m.SetTexture("_BumpMap", nrm);
             m.SetFloat("_BumpScale", e.normalScale > 0f ? e.normalScale : 1f);
             var ms = Texture(mod, e.metallicSmoothness, true);
@@ -289,7 +347,8 @@ namespace GoF2Remake.Modding
                 m.SetTexture("_MetallicGlossMap", Solid(new Color(metal, 0f, 0f, 1f)));
                 m.SetFloat("_Smoothness", 1f - rough);
             }
-            var nrm = Tex(g.NormalTexture, "_BumpMap");
+            Texture nrm = Tex(g.NormalTexture, "_BumpMap");
+            if (nrm != null && NormalsInAlpha) nrm = NormalToAlpha(nrm, m.name);
             m.SetTexture("_BumpMap", nrm);
             if (g.NormalTexture != null) m.SetFloat("_BumpScale", g.NormalTexture.scale);
             var emissive = g.Emissive;

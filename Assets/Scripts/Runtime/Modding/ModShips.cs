@@ -117,23 +117,23 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>The PNGs a ship's entry uses, with how they are read (ModMaterials.FromSpec, the throttle glow masks).</summary>
-        static IEnumerable<(string path, bool linear, bool readable)> TexturesOf(CustomShipData c)
+        static IEnumerable<(string path, bool linear, bool readable, bool normal)> TexturesOf(CustomShipData c)
         {
-            if (!string.IsNullOrEmpty(c.icon)) yield return (c.icon, false, false);
+            if (!string.IsNullOrEmpty(c.icon)) yield return (c.icon, false, false, false);
             if (c.materials != null)
                 foreach (var m in c.materials)
                 {
                     if (m == null) continue;
-                    if (!string.IsNullOrEmpty(m.diffuse)) yield return (m.diffuse, false, false);
-                    if (!string.IsNullOrEmpty(m.normal)) yield return (m.normal, true, false);
-                    if (!string.IsNullOrEmpty(m.metallicSmoothness)) yield return (m.metallicSmoothness, true, false);
-                    if (!string.IsNullOrEmpty(m.emission)) yield return (m.emission, false, false);
-                    if (!string.IsNullOrEmpty(m.detailAlbedo)) yield return (m.detailAlbedo, true, false);
-                    if (!string.IsNullOrEmpty(m.detailNormal)) yield return (m.detailNormal, true, false);
+                    if (!string.IsNullOrEmpty(m.diffuse)) yield return (m.diffuse, false, false, false);
+                    if (!string.IsNullOrEmpty(m.normal)) yield return (m.normal, true, false, true);
+                    if (!string.IsNullOrEmpty(m.metallicSmoothness)) yield return (m.metallicSmoothness, true, false, false);
+                    if (!string.IsNullOrEmpty(m.emission)) yield return (m.emission, false, false, false);
+                    if (!string.IsNullOrEmpty(m.detailAlbedo)) yield return (m.detailAlbedo, true, false, false);
+                    if (!string.IsNullOrEmpty(m.detailNormal)) yield return (m.detailNormal, true, false, true);
                 }
-            if (c.throttleGlow != null && !string.IsNullOrEmpty(c.throttleGlow.mask)) yield return (c.throttleGlow.mask, false, true);
+            if (c.throttleGlow != null && !string.IsNullOrEmpty(c.throttleGlow.mask)) yield return (c.throttleGlow.mask, false, true, false);
             if (c.extraGlows != null)
-                foreach (var g in c.extraGlows) if (g != null && !string.IsNullOrEmpty(g.mask)) yield return (g.mask, false, true);
+                foreach (var g in c.extraGlows) if (g != null && !string.IsNullOrEmpty(g.mask)) yield return (g.mask, false, true, false);
         }
 
         /// <summary>One ship: its textures and model file at once, then glTFast, then the template.</summary>
@@ -146,7 +146,7 @@ namespace GoF2Remake.Modding
             try
             {
                 var textures = new List<Task>();
-                foreach (var (path, linear, readable) in TexturesOf(c)) textures.Add(ModMaterials.PreloadTexture(mod, path, linear, readable));
+                foreach (var (path, linear, readable, normal) in TexturesOf(c)) textures.Add(ModMaterials.PreloadTexture(mod, path, linear, readable, normal));
                 var file = string.IsNullOrEmpty(c.model) ? Task.FromResult<byte[]>(null) : Task.Run(() => mod.Source.ReadBytes(c.model));
                 await Task.WhenAll(textures);
                 Step();

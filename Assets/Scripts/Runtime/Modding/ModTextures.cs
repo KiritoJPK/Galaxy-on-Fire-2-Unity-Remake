@@ -66,13 +66,13 @@ namespace GoF2Remake.Modding
         static async void Load(ModInfo mod, string file, string name, int started)
         {
             loading++;
-            bool linear = name.IndexOf("_normal", StringComparison.OrdinalIgnoreCase) >= 0
-                          || name.IndexOf("_metallic", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool normal = name.IndexOf("_normal", StringComparison.OrdinalIgnoreCase) >= 0;   // the game's normal maps (Android layout)
+            bool linear = normal || name.IndexOf("_metallic", StringComparison.OrdinalIgnoreCase) >= 0;
             try
             {
-                await ModMaterials.PreloadTexture(mod, file, linear);
+                await ModMaterials.PreloadTexture(mod, file, linear, normal: normal);
                 if (started != revision) return;
-                var tex = ModMaterials.Texture(mod, file, linear);
+                var tex = ModMaterials.Texture(mod, file, linear, normal: normal);
                 if (tex != null) { tex.name = name; textures[name] = tex; }
                 else Debug.LogWarning($"Mods: {mod.Id}: could not load {file}");
             }

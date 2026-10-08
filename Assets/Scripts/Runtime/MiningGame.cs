@@ -77,6 +77,10 @@ namespace GoF2Remake.Flight
 
         public bool IsInCurrentLayer() => Drill.magnitude < RadiusOf(Layer);
 
+        /// <summary>Ore in t/s while drilling layer 'layer' (0 = the outer one) with 'yield' (attr 33 / 100); the mining
+        /// beam's extraction uses it too (MiningBeamExtraction).</summary>
+        public static float OreRate(int layer, float yield) => yield * ((layer + 1) / 7f * 2.35f + 0.15f);
+
         /// <summary>MiningGame::update: returns false when the game is over (won or lost).</summary>
         public bool Update(float dtMs)
         {
@@ -103,7 +107,7 @@ namespace GoF2Remake.Flight
             }
 
             float old = Ore;
-            Ore += dtMs * Yield * ((Layer + 1) / 7f * 2.35f + 0.15f) / 1000f;
+            Ore += dtMs * OreRate(Layer, Yield) / 1000f;
             if ((int)Ore > (int)old) NewTon?.Invoke();
             LayerTime += dtMs;
             if (LayerTime > LayerMs)

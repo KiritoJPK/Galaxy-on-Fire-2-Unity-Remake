@@ -44,6 +44,7 @@ namespace GoF2Remake.EditorTools
         {
             ("en", "English"), ("de", "Deutsch"), ("fr", "Français"), ("es", "Español"),
             ("it", "Italiano"), ("nl", "Nederlands"), ("pl", "Polski"), ("ru", "Русский"), ("pt", "Português (Brasil)"),
+            ("zh", "简体中文"), ("hi", "हिन्दी"),
         };
 
         [MenuItem("GoF2/Scenes/Main Menu Scene", priority = 100)]

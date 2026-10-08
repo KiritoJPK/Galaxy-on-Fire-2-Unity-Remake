@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -18,6 +19,7 @@ MonoBehaviour:
   - de
   - es
   - fr
+  - hi
   - it
   - ja
   - ko
@@ -25,12 +27,14 @@ MonoBehaviour:
   - pl
   - pt
   - ru
+  - zh
   tables:
   - {fileID: 4900000, guid: 0b42a7171202de34d9b2a36f5cce90a6, type: 3}
   - {fileID: 4900000, guid: 3db4bdea1a902d545b1d0e6b3a95e76b, type: 3}
   - {fileID: 4900000, guid: c1b38788d2fc6b1429072f06c76b2904, type: 3}
   - {fileID: 4900000, guid: dbbf99743af12df4fb82be9555b66d0e, type: 3}
   - {fileID: 4900000, guid: c4a32cd9ae9c79044a7c101a801c45cf, type: 3}
+  - {fileID: 4900000, guid: 98caea0448397264284a662f322e0277, type: 3}
   - {fileID: 4900000, guid: 57dbd40bb861b1c449355f7e7bf06327, type: 3}
   - {fileID: 4900000, guid: b60990eaf82338d47940b006a84a6e26, type: 3}
   - {fileID: 4900000, guid: b8eea4469f3d1374d90016a4ca780bb9, type: 3}
@@ -38,3 +42,4 @@ MonoBehaviour:
   - {fileID: 4900000, guid: 653bf6aa4e99b224f8d1bbba5629a1c9, type: 3}
   - {fileID: 4900000, guid: d1bf3a28caa9b3b409b7f5c59505a30c, type: 3}
   - {fileID: 4900000, guid: 23fbd248578a31947850551131cd654d, type: 3}
+  - {fileID: 4900000, guid: 659ce45034e0c3045bde0aa8724e7888, type: 3}

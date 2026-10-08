@@ -126,7 +126,9 @@ namespace GoF2Remake.Flight
             float dtMs = Time.deltaTime * 1000f;
             // KIPlayer::isDying / isDead clear the ship lock (+4); a jumper flying off (KIPlayer::setDead) counts too: the
             // remake only switches it off, hull intact, and its "<race> 100%" plate stayed with no ship (#28).
-            if (Locked != null && (!Locked.Alive || !Locked.gameObject.activeInHierarchy)) Locked = null;
+            // Remake: a ship gone off the lock (another player cloaking, a hidden proxy) loses a lock already held too; the
+            // missiles homing on it lose theirs for good (Gun).
+            if (Locked != null && (!Locked.Alive || !Locked.gameObject.activeInHierarchy || Locked.untargetable || Locked.cloaked)) Locked = null;
             if (weapons != null) weapons.LockTarget = Locked;
             // PlayerEgo::isInTurretMode: the turret view neither locks ships nor keeps the tractor beam pulling.
             bool turretView = weapons != null && weapons.TurretView;
