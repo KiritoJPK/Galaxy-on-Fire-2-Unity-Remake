@@ -61,7 +61,6 @@ namespace GoF2Remake.Multiplayer
                  v => { NetGame.HostAllowsDebug = v; NetState.Instance?.SetDebugAllowed(v); }),
             Flag("freepvp", "-freepvp", "Players may fight anywhere", () => NetGame.FreePvp,
                  v => { NetGame.FreePvp = v; NetState.Instance?.SetFreePvp(v); }),
-            Num("maxprofiles", "-maxprofiles", "Profile limit", 1, 100000, () => NetProfiles.MaxProfiles, v => NetProfiles.MaxProfiles = v),
             Num("maxearn", "-maxearn", "Worth a profile may gain per minute", 0, int.MaxValue, () => NetProfiles.EarnPerMinute, v => NetProfiles.EarnPerMinute = v),
             Num("claimcost", "-claimcost", "Faction claim cost", 0, int.MaxValue, () => NetFactions.ClaimCost, v => NetFactions.ClaimCost = v),
             Num("maxclaims", "-maxclaims", "Stations per faction", 0, 100, () => NetFactions.MaxClaims, v => NetFactions.MaxClaims = v),

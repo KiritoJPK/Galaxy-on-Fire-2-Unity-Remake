@@ -3,8 +3,9 @@
 // credits, ship, equipment, cargo, Kaamo Club and squad survive between sessions on that server.
 //   Identity: a profile (account) is proven by a random secret token the server gives each device on its first visit
 //     (only its SHA-256 hash is stored); the device's own id is a label (NetProfileClient sends a hash of it). A device
-//     without a known token gets a new profile while fewer than MaxProfiles (-maxprofiles) exist, else plays as a guest
-//     (nothing saved).
+//     without a known token gets a new profile. No limit on their number: a profile nobody signed in to for PruneDays (30)
+//     is pruned (Prune: at the start and every hour; never one that is online or staff), moved to Pruned/ (the newest
+//     KeepPruned kept) so a mistake can be undone by hand.
 //   Linking: "/link" in the chat gives a 6-letter code for 5 minutes; another device types "/link CODE" and from then on
 //     signs in to the same profile with its own token. A device whose own profile has progress needs "/link CODE force".
 //   Several devices of one profile online: the first is the controller, the others observers (docked only: no launch,
@@ -40,7 +41,10 @@ namespace GoF2Remake.Multiplayer
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class NetProfiles
     {
-        public const int DefaultMaxProfiles = 50;
+        /// <summary>A profile unused this long is pruned (Prune).</summary>
+        public const int PruneDays = 30;
+        const int KeepPruned = 50;                  // the newest pruned profile files kept in Pruned/
+        const float PruneEverySeconds = 3600f;
         public const int DefaultEarnPerMinute = 1_000_000;
         const long EarnBurst = 2_000_000;
         public const int ChunkBytes = 4000;
@@ -92,7 +96,7 @@ namespace GoF2Remake.Multiplayer
             configured = false;
             folder = null;
             index = null;
-            MaxProfiles = DefaultMaxProfiles;
+            nextPrune = 0f;
             EarnPerMinute = DefaultEarnPerMinute;
             logins.Clear();
             incoming.Clear();
@@ -100,8 +104,7 @@ namespace GoF2Remake.Multiplayer
             handovers.Clear();
         }
 
-        /// <summary>The profile limit (-maxprofiles): a new device past it plays as a guest.</summary>
-        public static int MaxProfiles { get; internal set; } = DefaultMaxProfiles;
+        static float nextPrune;
 
         /// <summary>Without the Debug menu: how much worth a profile may gain per minute online (-maxearn), on top of EarnBurst.</summary>
         public static int EarnPerMinute { get; internal set; } = DefaultEarnPerMinute;
@@ -118,10 +121,9 @@ namespace GoF2Remake.Multiplayer
         public static string ServerId => index != null ? index.serverId : "";
 
         /// <summary>DedicatedServer.Boot: the command line's choices.</summary>
-        public static void Configure(bool on, int maxProfiles, int earnPerMinute, string profileDir)
+        public static void Configure(bool on, int earnPerMinute, string profileDir)
         {
             configured = on;
-            MaxProfiles = Mathf.Clamp(maxProfiles, 1, 100_000);
             EarnPerMinute = Mathf.Max(0, earnPerMinute);
             folder = string.IsNullOrEmpty(profileDir) ? Path.Combine(Application.persistentDataPath, "ServerProfiles") : profileDir;
         }
@@ -144,7 +146,8 @@ namespace GoF2Remake.Multiplayer
             SaveIndex();
             NetFactions.Load();
             NetModeration.Load();
-            Debug.Log($"Server: player profiles on: {index.accounts.Count} / {MaxProfiles} in {folder}.");
+            Debug.Log($"Server: player profiles on: {index.accounts.Count} in {folder}.");
+            Prune();
         }
 
         static string IndexPath => Path.Combine(folder, "accounts.json");
@@ -272,16 +275,12 @@ namespace GoF2Remake.Multiplayer
             }
             if (account == null)
             {
-                if (index.accounts.Count < MaxProfiles || IsHostClient(client))
-                {
-                    account = new Account { id = NewAccountId(), created = Now() };
-                    newToken = AddDevice(account, device);
-                    index.accounts.Add(account);
-                    Debug.Log($"Server: new profile {account.id} for {(name.Length > 0 ? name : "client " + client)} ({index.accounts.Count} / {MaxProfiles}).");
-                    if (name.Length > 0)
-                        NetNews.Post(NetNews.Kind.Pilot, $"New pilot in the sector: {NetNews.Safe(NetGame.Clean(name))} registers at Dis", -1, "newpilot", 120f);
-                }
-                else Debug.Log($"Server: client {client} plays as a guest: the profile limit ({MaxProfiles}) is reached.");
+                account = new Account { id = NewAccountId(), created = Now() };
+                newToken = AddDevice(account, device);
+                index.accounts.Add(account);
+                Debug.Log($"Server: new profile {account.id} for {(name.Length > 0 ? name : "client " + client)} ({index.accounts.Count} in all).");
+                if (name.Length > 0)
+                    NetNews.Post(NetNews.Kind.Pilot, $"New pilot in the sector: {NetNews.Safe(NetGame.Clean(name))} registers at Dis", -1, "newpilot", 120f);
             }
             // One connection per device: the older one goes (a reconnect while the dropped one still times out).
             if (account != null)
@@ -308,10 +307,7 @@ namespace GoF2Remake.Multiplayer
             }
             SetObserverFlag(client, !login.controller);
             SendProfile(login, newToken);
-            if (account == null)
-                NetState.Instance.Notify(client, string.Format(Localization.Extra("mpGuest",
-                    "This server has no room for more profiles ({0}): you play as a guest and nothing is saved. Type /link CODE to use a profile you have."), MaxProfiles));
-            else if (!login.controller)
+            if (account != null && !login.controller)
                 NetState.Instance.Notify(client, Localization.Extra("mpObserverJoined",
                     "Your profile is in use on another device: this one watches from the station. Type /control once the other one is docked."));
             if (login.controller && account != null) RestoreSquad(login);
@@ -343,6 +339,7 @@ namespace GoF2Remake.Multiplayer
         {
             if (!Enabled) return;
             float now = Time.realtimeSinceStartup;
+            if (now >= nextPrune) Prune();   // hourly: profiles unused for PruneDays
             if (links.Count > 0)
                 foreach (var code in new List<string>(links.Keys))
                     if (links[code].until < now) links.Remove(code);
@@ -662,7 +659,7 @@ namespace GoF2Remake.Multiplayer
         public static string ConsoleList()
         {
             if (!Enabled) return "Player profiles are off (-noprofiles).";
-            var sb = new StringBuilder($"{index.accounts.Count} / {MaxProfiles} profile(s) in {folder}:");
+            var sb = new StringBuilder($"{index.accounts.Count} profile(s) in {folder} (unused for {PruneDays} days: pruned):");
             foreach (var a in index.accounts)
             {
                 string online = "";
@@ -682,6 +679,91 @@ namespace GoF2Remake.Multiplayer
             DeleteAccount(a);
             SaveIndex();
             return $"Deleted profile {id} (its file is kept as {id}.json.bak).";
+        }
+
+        /// <summary>Profiles nobody signed in to for PruneDays (by lastSeen, else created) go: not one that is online, nor
+        /// staff (NetModeration roles: an op, admin or the master, e.g. the world's owner). Each leaves its faction like a
+        /// deleted profile; its file moves to Pruned/ (the newest KeepPruned kept). Returns how many went.</summary>
+        public static int Prune()
+        {
+            nextPrune = Time.realtimeSinceStartup + PruneEverySeconds;
+            if (!Enabled || index == null) return 0;
+            var cutoff = DateTime.UtcNow.AddDays(-PruneDays);
+            var gone = new List<Account>();
+            foreach (var a in index.accounts)
+            {
+                if (a.role > 0 || IsOnline(a.id)) continue;
+                string when = string.IsNullOrEmpty(a.lastSeen) ? a.created : a.lastSeen;
+                if (!DateTime.TryParse(when, null, System.Globalization.DateTimeStyles.RoundtripKind, out var seen)) continue;   // unknown: kept
+                if (seen.ToUniversalTime() < cutoff) gone.Add(a);
+            }
+            if (gone.Count == 0) return 0;
+            string pruned = Path.Combine(folder, "Pruned");
+            try { Directory.CreateDirectory(pruned); } catch (Exception e) { Debug.LogError($"NetProfiles: can't make {pruned}: {e.Message}"); }
+            foreach (var a in gone)
+            {
+                index.accounts.Remove(a);
+                NetFactions.OnAccountDeleted(a.id);
+                try
+                {
+                    string file = ProfilePath(a.id);
+                    string target = Path.Combine(pruned, a.id + ".json");
+                    if (File.Exists(file))
+                    {
+                        File.Copy(file, target, true);
+                        File.SetLastWriteTimeUtc(target, DateTime.UtcNow);   // the prune's time: the newest prunes are kept
+                    }
+                    // Its accounts.json entry (devices, role, statistics) beside it: "profile restore <id>" puts both back.
+                    File.WriteAllText(Path.Combine(pruned, a.id + ".account.json"), JsonUtility.ToJson(a, true));
+                    if (File.Exists(file)) File.Delete(file);
+                    if (File.Exists(file + ".bak")) File.Delete(file + ".bak");
+                }
+                catch (Exception e) { Debug.LogError($"NetProfiles: pruning {a.id}'s file failed: {e.Message}"); }
+                Debug.Log($"Server: profile {a.id} ({(string.IsNullOrEmpty(a.name) ? "?" : a.name)}) pruned: last seen {a.lastSeen ?? a.created}.");
+            }
+            SaveIndex();
+            // Only the newest pruned files stay.
+            try
+            {
+                var files = new List<FileInfo>(new DirectoryInfo(pruned).GetFiles("*.json"));
+                files.RemoveAll(f => f.Name.EndsWith(".account.json", StringComparison.OrdinalIgnoreCase));
+                files.Sort((x, y) => y.LastWriteTimeUtc.CompareTo(x.LastWriteTimeUtc));
+                for (int i = KeepPruned; i < files.Count; i++)
+                {
+                    string entry = Path.Combine(pruned, Path.GetFileNameWithoutExtension(files[i].Name) + ".account.json");
+                    files[i].Delete();
+                    if (File.Exists(entry)) File.Delete(entry);
+                }
+            }
+            catch (Exception e) { Debug.LogError($"NetProfiles: tidying {pruned} failed: {e.Message}"); }
+            Debug.Log($"Server: {gone.Count} profile(s) unused for {PruneDays} days pruned; {index.accounts.Count} left.");
+            return gone.Count;
+        }
+
+        /// <summary>DedicatedServer's "profile restore &lt;id&gt;": a pruned profile back (its file and its accounts.json entry, so
+        /// its devices sign in to it again), its last-seen date reset so the next prune doesn't take it at once.</summary>
+        public static string ConsoleRestore(string id)
+        {
+            if (!Enabled) return "Player profiles are off (-noprofiles).";
+            if (index.accounts.Exists(x => x.id == id)) return $"Profile {id} exists already.";
+            string pruned = Path.Combine(folder, "Pruned");
+            string file = Path.Combine(pruned, id + ".json"), entry = Path.Combine(pruned, id + ".account.json");
+            if (!File.Exists(entry)) return $"No pruned profile \"{id}\" in {pruned}.";
+            Account a;
+            try { a = JsonUtility.FromJson<Account>(File.ReadAllText(entry)); }
+            catch (Exception e) { return $"{entry} can't be read: {e.Message}"; }
+            if (a == null || a.id != id) return $"{entry} isn't profile {id}.";
+            try
+            {
+                if (File.Exists(file)) { File.Copy(file, ProfilePath(id), true); File.Delete(file); }
+                File.Delete(entry);
+            }
+            catch (Exception e) { return $"Restoring {id} failed: {e.Message}"; }
+            a.lastSeen = Now();
+            index.accounts.Add(a);
+            SaveIndex();
+            Debug.Log($"Server: pruned profile {id} restored.");
+            return $"Restored profile {id} ({(string.IsNullOrEmpty(a.name) ? "?" : a.name)}). It left its faction when it was pruned.";
         }
 
         static void DeleteAccount(Account a)

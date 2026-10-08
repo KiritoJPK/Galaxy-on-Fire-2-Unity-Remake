@@ -394,7 +394,7 @@ namespace GoF2Remake.Multiplayer
         static void SetUpHostedWorld()
         {
             PersistentHost = HostWantsPersistent;
-            NetProfiles.Configure(PersistentHost, NetProfiles.DefaultMaxProfiles, NetProfiles.DefaultEarnPerMinute, PersistentHost ? HostedWorldFolder : null);
+            NetProfiles.Configure(PersistentHost, NetProfiles.DefaultEarnPerMinute, PersistentHost ? HostedWorldFolder : null);
             if (!PersistentHost) return;
             // The Host card's choices win over the saved settings (they are its "command line").
             NetServerSettings.Load(option => option == "-password" || option == "-maxplayers" || option == "-allowdebug" || option == "-name");

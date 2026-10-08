@@ -12,7 +12,7 @@
 //   -port N          the local port (default 7777); -fps N the server's frame rate (default 60)
 //   -freepvp         players may fight anywhere (else only in arena matches, NetArena)
 //   -noprofiles      no player profiles (NetProfiles; on by default: credits, ships, cargo, Kaamo Club, squad kept
-//                    per player between sessions); -maxprofiles N (default 50), -maxearn N (worth a profile may gain
+//                    per player between sessions; no limit, one unused for 30 days is pruned); -maxearn N (worth a profile may gain
 //                    per minute online without -allowdebug, default 1 000 000), -profiledir PATH (default
 //                    <persistentDataPath>/ServerProfiles)
 //   -claimcost N     a faction's station claim from its bank (default 500 000); -maxclaims N per faction (default 3);
@@ -108,7 +108,6 @@ namespace GoF2Remake.Multiplayer
             NetMods.HostAllowsMods = HasFlag("-allowmods");
             NetGame.FreePvp = HasFlag("-freepvp");
             NetProfiles.Configure(!HasFlag("-noprofiles"),
-                int.TryParse(Value("-maxprofiles"), out int profiles) ? profiles : NetProfiles.DefaultMaxProfiles,
                 int.TryParse(Value("-maxearn"), out int earn) ? earn : NetProfiles.DefaultEarnPerMinute,
                 Value("-profiledir"));
             NetFactions.Configure(int.TryParse(Value("-claimcost"), out int cost) ? cost : NetFactions.DefaultClaimCost,
@@ -445,6 +444,7 @@ namespace GoF2Remake.Multiplayer
                            "  sieges              the factions' sieges\n" +
                            "  profiles            the player profiles (id, name, devices, worth, who is online)\n" +
                            "  profile delete <id> deletes a profile (not while it is online; its file is kept as .bak)\n" +
+                           "  profile restore <id> brings back a profile pruned after 30 days unused (Pruned/)\n" +
                            "  stop                tells the players and shuts the server down (also quit, exit, Ctrl+C)\n" +
                            "The chat's commands, run by the same code (players by name or client id; with profiles kick, tempban, ban, unban,\n" +
                            "bans, op, deop, admin, unadmin take a profile's id or name too):" + NetCommands.ServerCommandHelp();
@@ -480,7 +480,8 @@ namespace GoF2Remake.Multiplayer
                     return NetProfiles.ConsoleList();
                 case "profile":
                     if (rest.StartsWith("delete ", StringComparison.OrdinalIgnoreCase)) return NetProfiles.ConsoleDelete(rest.Substring(7).Trim());
-                    return "profile delete <id>";
+                    if (rest.StartsWith("restore ", StringComparison.OrdinalIgnoreCase)) return NetProfiles.ConsoleRestore(rest.Substring(8).Trim());
+                    return "profile delete <id> | profile restore <id>";
                 case "stop": case "quit": case "exit": case "shutdown":
                     Log("Stopping the server...");
                     NetGame.StopServer();

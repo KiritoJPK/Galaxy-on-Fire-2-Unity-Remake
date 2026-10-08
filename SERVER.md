@@ -108,7 +108,6 @@ Players on a different game version are turned away with a message saying which 
 | `-webbind ADDRESS` | What the web admin listens on (default `127.0.0.1`, this machine only; `0.0.0.0` for every network adapter). |
 | **Player profiles** | |
 | `-noprofiles` | Don't keep player profiles. Every session starts fresh, and factions, moderation and the leaderboard are off. |
-| `-maxprofiles N` | How many profiles the server keeps (default 50). Devices past the limit play as guests (nothing saved). |
 | `-maxearn N` | Without `-allowdebug`: how much a profile's worth may grow per minute online (default 1 000 000). |
 | `-profiledir PATH` | Where the profiles and the server's other files are stored (default: see [Files](#files-the-server-keeps)). |
 | `-admintoken X` | The token for `/claimadmin` (default: a random one, see [Becoming the server's admin](#becoming-the-servers-admin)). |
@@ -134,7 +133,6 @@ window, **Admin** tab, **Server settings**. You can also type `/set <key> <value
 | `maxplayers` | The player limit | Lowering it works at once. Online, raising it above the start's limit needs a restart. |
 | `allowdebug` | Players may use the Debug menu (`on` / `off`) | At once. |
 | `freepvp` | Players may fight anywhere (`on` / `off`) | At once. |
-| `maxprofiles` | The profile limit | At once. |
 | `maxearn` | Worth a profile may gain per minute | At once. |
 | `claimcost`, `maxclaims`, `claimdays`, `siegecost`, `toll` | The faction settings above | At once. |
 
@@ -192,6 +190,7 @@ server can use the console; players use the chat commands above.
 | `settings`, `set <key> <value>` | The settings that change while the server runs. |
 | `profiles` | The player profiles: id, name, devices, worth, who is online. |
 | `profile delete <id>` | Deletes a profile (not while it is online; its file is kept as `.bak`). |
+| `profile restore <id>` | Brings back a profile pruned after 30 days unused (from `Pruned/`). |
 | `factions`, `faction disband <TAG>`, `sieges` | The factions; end one; the sieges. |
 | `arenas` | The arena matches and queues. |
 | `stop` | Tells the players and shuts the server down. Ctrl+C or closing the window does the same. |
@@ -235,6 +234,7 @@ The server's data folder is `ServerProfiles` in the game's data folder, or the f
 |---|---|
 | `accounts.json` | Every profile: id, name, devices (token hashes only), role, arena statistics, squad. |
 | `<id>.json` | One player's progress: credits, ship, equipment, cargo, Kaamo Club. |
+| `Pruned/<id>.json`, `<id>.account.json` | Profiles nobody signed in to for 30 days, with their `accounts.json` entry (the newest 50 are kept; `profile restore <id>`). |
 | `factions.json` | The factions, their banks, claims and sieges. |
 | `bans.json` | The bans. |
 | `server_settings.json` | The settings changed while the server ran. |
@@ -243,6 +243,11 @@ The server's data folder is `ServerProfiles` in the game's data folder, or the f
 
 Every file is written through a temporary file, and the previous version is kept as `.bak`. To back the server up,
 copy the whole folder while the server is stopped.
+
+There is no limit on the number of profiles. A profile nobody has signed in to for 30 days is pruned at the server's
+start and once an hour, except one that is online or belongs to staff (ops, admins, the master admin). Its file moves to
+`Pruned/`, where the newest 50 are kept, with its entry from `accounts.json`. The console's `profile restore <id>`
+brings one back: the player's devices sign in to it again (it has left its faction).
 
 ## Running it as a Linux service
 
@@ -315,5 +320,6 @@ Players can only join a server running the same game version. To update:
 | "This game runs version X" | The player's game and the server are different versions. Update both. |
 | Local network: nobody can connect | Open the UDP port (default 7777) in the server's firewall. From outside the network, forward it on the router. |
 | The process ends right after starting | Read the log: `journalctl -u gof2 -n 100`, or `Player.log` in the game's data folder. A local server stops when its port is in use; try another `-port`. |
-| A player's progress isn't saved | They play as a guest when the profile limit is reached (raise `maxprofiles`). Without `-allowdebug` the server turns away progress that grows faster than `maxearn`; the log says "upload not saved". |
+| A player's progress isn't saved | Without `-allowdebug` the server turns away progress that grows faster than `maxearn`; the log says "upload not saved". |
+| A player's progress is gone | Profiles nobody has signed in to for 30 days are pruned. The last 50 pruned profiles are in `Pruned/` (see [Files](#files-the-server-keeps)). |
 | Lost admin access | Read the token from the log, or delete `admin_token.txt` and restart, then use `/claimadmin` again. |

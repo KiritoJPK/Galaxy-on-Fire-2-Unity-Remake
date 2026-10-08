@@ -909,7 +909,7 @@ Single player is untouched: every multiplayer path runs only while `NetGame.Acti
   `playerProof` (shots pass) and the owner's `HitRpc` / `EmpRpc` drop a player's hit unless the sender is in the same
   orbit and may fight (`NetPlayer.PvpWith`).
 - **Server settings while running** (`NetServerSettings`; the operator guide is `SERVER.md`, keep it in step with the
-  server's options and commands): name, password, maxplayers, allowdebug, freepvp, maxprofiles, maxearn, claimcost,
+  server's options and commands): name, password, maxplayers, allowdebug, freepvp, maxearn, claimcost,
   maxclaims, claimdays, siegecost, toll. Changed by admins (`/set <key> <value>`, `/settings`, the Admin tab's Server
   settings: a field or switch with Save each) or the console (`set`, `settings`); applied at once where possible
   (allowdebug / freepvp through `NetState.SetDebugAllowed` / `SetFreePvp`, the toll through `SetToll`; the name at the
@@ -1548,7 +1548,7 @@ now takes an option right after another (a dash and a letter) as no value). `Boo
   address then 5 minutes' wait, every command logged. The state reuses `NetPanel.State` (`NetModeration.FillFor`,
   `NetFactions.FillPanel`); the log tab is a 1000-line ring of `logMessageReceivedThreaded`. Not tested in a build yet.
 - **Player profiles** (`NetProfiles` server, `NetProfileClient` player; a dedicated server only, on unless `-noprofiles`;
-  `-maxprofiles N` default 50, `-maxearn N` default 1 000 000, `-profiledir`): `<persistentDataPath>/ServerProfiles`
+  `-maxearn N` default 1 000 000, `-profiledir`): `<persistentDataPath>/ServerProfiles`
   holds `accounts.json` (the server's id, each account's devices with their token hashes, name, squad key, worth) and
   one `<account>.json` per profile, a `SaveData` without the shop memory (`SaveGame.ProfileJson`; loaded with
   `SaveGame.ApplyProfile`: the session's rules, no squad mission or Courier containers, docked where it was, an orbit
@@ -1557,7 +1557,10 @@ now takes an option right after another (a dash and a letter) as no value). `Boo
   for that server from PlayerPrefs `mp_token_<server>` (+ a -mpname hash), and a SHA-256 label of
   `SystemInfo.deviceUniqueIdentifier`), the server answers with a header (new token, role) and the gzipped profile in
   4000-byte chunks (Unity Transport's 6144-byte payload limit), then the game enters the world. No known token = a new
-  profile while under the limit, else a guest (nothing saved). Uploads (gzipped chunks, `UploadChunkRpc`): on every
+  profile; no limit on their number (the old `-maxprofiles`, default 50, turned new players into guests): a profile
+  nobody signed in to for 30 days (`NetProfiles.PruneDays`, by lastSeen) is pruned at the start and hourly
+  (`NetProfiles.Prune` from `Tick`; never online or staff), its file and its accounts.json entry moved to `Pruned/` (the
+  newest 50 kept), leaving its faction; the console's `profile restore <id>` brings it back (`ConsoleRestore`). Uploads (gzipped chunks, `UploadChunkRpc`): on every
   docking (`SaveGame.AutoSave`), every 60 s, when leaving (`NetGame.Shutdown`); each is checked like an imported save
   (`SaveGame.TryParse`), and without `-allowdebug` also turned away when the profile's worth (credits + ship prices +
   items at `minPrice`, `NetProfiles.Worth`) grew more than 2 000 000 + `-maxearn` per minute online since the last
