@@ -461,6 +461,8 @@ namespace GoF2Remake.World
             {
                 foreach (var a in level.Station.GetComponentsInChildren<PartAnimation>(true)) a.applyMaterialChannels = true;
                 PartAnimation.HoldAll(level.Station);
+                LoopEmitters80(level.Station);   // Modified: its thrusters' flames keep scrolling
+                MakeFlamePieces80();             // Modified: the flames split onto the engine glows they belong to
             }
             c.WinObjective = () => c.Radio != null && c.Radio.LastOver;   // 0x16
         }
@@ -614,6 +616,7 @@ namespace GoF2Remake.World
         public void LateTick(float dtMs)
         {
             cam.LateTick(dtMs);
+            if (built == 80) UpdateFlamePieces80();   // Modified
             if (!fxFixed) FaceCamera(fx);   // Modified: 78's jump is aligned with the station, not the camera
             // The fx plays once (anim state 3, then 1) and is gone at its end.
             if (fx != null && (fxMs += dtMs) >= fxLength) { Object.Destroy(fx); fx = null; }
@@ -1153,7 +1156,11 @@ namespace GoF2Remake.World
                             foreach (var a in stationLaser.GetComponentsInChildren<PartAnimation>(true)) a.applyMaterialChannels = true;   // Modified: its fades
                             PartAnimation.PlayOnce(stationLaser);
                         }
-                        if (level.Station != null) PartAnimation.PlayOnce(level.Station);   // the station's explosion animation
+                        if (level.Station != null)
+                        {
+                            PartAnimation.PlayOnce(level.Station);   // the station's explosion animation
+                            LoopEmitters80(level.Station);   // Modified: not the flames, they go on looping
+                        }
                         Step = 8;
                     }
                     break;
@@ -1258,6 +1265,237 @@ namespace GoF2Remake.World
 
         const string BurnBFollows80 = "v_station_deep_science_explosion_anim_part4";   // Modified: the part fire B rides
 
+        // Modified: the damaged thrusters' flames (FlameSource80, one mesh for all of them, one triangle list per material)
+        // split into one piece per engine glow of the explosion (explosion_anim_add parts FlameTargets80; part 1 is the
+        // lights around the station): each flame (its layers together) goes to the nearest engine glow (part 0, the whole station, only gets
+        // what no engine glow is within FlameReach80 of). Each piece is a child of its glow at 0, 0, 0 (the meshes are all in
+        // the station's frame), shows only while its glow does (part 2's goes out 1 s into the explosion) and scrolls with
+        // the original. Part 2's engine has no flame in the mesh: it gets a copy of part 4's, at part 7's place mirrored
+        // (its twin across the station), then FlameCopyPos80 / Rot80 / Scale80 in part 2's frame. The mesh must be Read/Write enabled
+        // (v_station_deep_science_damaged_emitters_anim_add.fbx, Model tab); without it the flames stay as they were.
+        const string FlameSource80 = "v_station_deep_science_damaged_emitters_anim_add_part0";
+        const string FlameTargetPrefix80 = "v_station_deep_science_explosion_anim_add_part";
+        static readonly int[] FlameTargets80 = { 0, 2, 3, 4, 5, 6, 7 };
+        const int FlameCopyFrom80 = 4, FlameCopyTo80 = 2, FlameCopyTwin80 = 7;   // part 2 gets part 4's flame (part 3's is smaller), placed by part 7's
+        const float FlameReach80 = 300f;   // metres: how far from an engine glow its flame may reach
+        // part 2's flame: local position / rotation (degrees) / scale under v_station_deep_science_explosion_anim_add_part2
+        static readonly Vector3 FlameCopyPos80 = new Vector3(2099.4f, 1.6f, 28f), FlameCopyRot80 = new Vector3(0f, 119f, 0f), FlameCopyScale80 = Vector3.one;   // Inspector values
+        readonly List<(Renderer piece, Renderer glow)> flamePieces80 = new List<(Renderer, Renderer)>();
+        Renderer flameSource80;
+        MaterialPropertyBlock flameBlock80, glowBlock80;
+
+        void MakeFlamePieces80()
+        {
+            flamePieces80.Clear();
+            flameSource80 = null;
+            var source = FindStationPart80(FlameSource80);
+            var mf = source != null ? source.GetComponent<MeshFilter>() : null;
+            var sr = source != null ? source.GetComponent<Renderer>() : null;
+            if (mf == null || sr == null || mf.sharedMesh == null) { Debug.LogWarning($"[80] flames: {FlameSource80} not found"); return; }
+            var mesh = mf.sharedMesh;
+            if (!mesh.isReadable) { Debug.LogWarning($"[80] flames: turn on Read/Write for {mesh.name}'s model to split them"); return; }
+
+            var glows = new List<(int part, Renderer r, Bounds bounds)>();
+            foreach (int k in FlameTargets80)
+            {
+                var t = FindStationPart80(FlameTargetPrefix80 + k);
+                var r = t != null ? t.GetComponent<Renderer>() : null;
+                if (r != null) glows.Add((k, r, r.bounds));
+                else Debug.LogWarning($"[80] flames: {FlameTargetPrefix80}{k} not found");
+            }
+            if (glows.Count == 0) return;
+            int largest = 0;   // part 0's glow (the whole station)
+            for (int g = 1; g < glows.Count; g++)
+                if (glows[g].bounds.size.sqrMagnitude > glows[largest].bounds.size.sqrMagnitude) largest = g;
+
+            var verts = mesh.vertices;
+            int subs = mesh.subMeshCount;
+            var subTris = new int[subs][];
+            for (int m = 0; m < subs; m++) subTris[m] = mesh.GetTriangles(m);
+
+            // The flames, each one whole: triangles joined by shared vertex positions, then the pieces that overlap (a flame's
+            // layers, one per material) merged. By single triangles, a flame's outer layer had gone to another glow.
+            var key = new Dictionary<Vector3Int, int>();
+            var parent = new List<int>();
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            void Union(int x, int y) { x = Find(x); y = Find(y); if (x != y) parent[x] = y; }
+            var vertexNode = new int[verts.Length];
+            for (int v = 0; v < verts.Length; v++)
+            {
+                var k = Vector3Int.RoundToInt(verts[v] * 100f);
+                if (!key.TryGetValue(k, out int node)) { node = parent.Count; parent.Add(node); key[k] = node; }
+                vertexNode[v] = node;
+            }
+            for (int m = 0; m < subs; m++)
+                for (int i = 0; i + 2 < subTris[m].Length; i += 3)
+                {
+                    Union(vertexNode[subTris[m][i]], vertexNode[subTris[m][i + 1]]);
+                    Union(vertexNode[subTris[m][i]], vertexNode[subTris[m][i + 2]]);
+                }
+            var comp = new Dictionary<int, int>();   // root -> cluster
+            var clusterBounds = new List<Bounds>();
+            var clusterTris = new List<List<(int m, int i)>>();
+            for (int m = 0; m < subs; m++)
+                for (int i = 0; i + 2 < subTris[m].Length; i += 3)
+                {
+                    int root = Find(vertexNode[subTris[m][i]]);
+                    if (!comp.TryGetValue(root, out int c))
+                    {
+                        c = clusterBounds.Count; comp[root] = c;
+                        clusterBounds.Add(new Bounds(verts[subTris[m][i]], Vector3.zero));
+                        clusterTris.Add(new List<(int, int)>());
+                    }
+                    var cb = clusterBounds[c];
+                    cb.Encapsulate(verts[subTris[m][i]]); cb.Encapsulate(verts[subTris[m][i + 1]]); cb.Encapsulate(verts[subTris[m][i + 2]]);
+                    clusterBounds[c] = cb;
+                    clusterTris[c].Add((m, i));
+                }
+            for (bool merged = true; merged;)   // overlapping pieces are one flame
+            {
+                merged = false;
+                for (int x = 0; x < clusterBounds.Count && !merged; x++)
+                    for (int y = x + 1; y < clusterBounds.Count && !merged; y++)
+                        if (clusterBounds[x].Intersects(clusterBounds[y]))
+                        {
+                            var bx = clusterBounds[x]; bx.Encapsulate(clusterBounds[y]); clusterBounds[x] = bx;
+                            clusterTris[x].AddRange(clusterTris[y]);
+                            clusterBounds.RemoveAt(y); clusterTris.RemoveAt(y);
+                            merged = true;
+                        }
+            }
+
+            // each flame to the nearest engine glow (part 2 gets part 4's, below; part 0 only what no engine glow is near)
+            var perGlow = new List<int>[glows.Count][];
+            var glowFlameBounds = new Bounds?[glows.Count];
+            for (int g = 0; g < glows.Count; g++) { perGlow[g] = new List<int>[subs]; for (int m = 0; m < subs; m++) perGlow[g][m] = new List<int>(); }
+            for (int c = 0; c < clusterBounds.Count; c++)
+            {
+                var centre = source.TransformPoint(clusterBounds[c].center);
+                int best = -1; float bestD = float.MaxValue, bestSize = float.MaxValue;
+                for (int g = 0; g < glows.Count; g++)
+                {
+                    if (g == largest || glows[g].part == FlameCopyTo80) continue;
+                    float d = glows[g].bounds.SqrDistance(centre);
+                    float size = glows[g].bounds.size.sqrMagnitude;
+                    if (d < bestD - 1e-4f || (Mathf.Abs(d - bestD) <= 1e-4f && size < bestSize)) { bestD = d; bestSize = size; best = g; }
+                }
+                if (best < 0 || bestD > FlameReach80 * FlameReach80) best = largest;
+                foreach (var (m, i) in clusterTris[c]) { perGlow[best][m].Add(subTris[m][i]); perGlow[best][m].Add(subTris[m][i + 1]); perGlow[best][m].Add(subTris[m][i + 2]); }
+                if (glowFlameBounds[best] is Bounds fb) { fb.Encapsulate(clusterBounds[c]); glowFlameBounds[best] = fb; } else glowFlameBounds[best] = clusterBounds[c];
+            }
+
+            // Part 2's engine has no flame in the mesh: part 4's flame, moved to where part 7's (part 2's twin across the
+            // station) would be mirrored, then FlameCopyPos80 / Rot80 / Scale80 in part 2's frame.
+            int from = glows.FindIndex(x => x.part == FlameCopyFrom80), twin = glows.FindIndex(x => x.part == FlameCopyTwin80);
+            Vector3 copyShift = Vector3.zero;
+            if (from >= 0 && glowFlameBounds[from] is Bounds fromB)
+            {
+                if (twin >= 0 && glowFlameBounds[twin] is Bounds twinB) { var t = twinB.center; t.x = -t.x; copyShift = t - fromB.center; }
+                else Debug.LogWarning("[80] flames: part " + FlameCopyTwin80 + " has no flame to place part 2's by");
+            }
+
+            for (int g = 0; g < glows.Count; g++)
+            {
+                bool copied = glows[g].part == FlameCopyTo80;
+                var lists = copied ? (from >= 0 ? perGlow[from] : null) : perGlow[g];
+                if (lists == null) continue;
+                int count = 0; foreach (var l in lists) count += l.Count / 3;
+                if (count == 0) continue;
+                var pieceMesh = BuildFlamePiece80(mesh, lists, copied ? copyShift : Vector3.zero);
+                var go = new GameObject("Flame (" + glows[g].r.name + ")");
+                // where the flames are (the source's pose), then onto its glow: 0, 0, 0 there when both sit in the station's frame
+                go.transform.SetParent(source.parent, false);
+                go.transform.localPosition = source.localPosition;
+                go.transform.localRotation = source.localRotation;
+                go.transform.localScale = source.localScale;
+                go.transform.SetParent(glows[g].r.transform, true);
+                if (copied && (FlameCopyPos80 != Vector3.zero || FlameCopyRot80 != Vector3.zero || FlameCopyScale80 != Vector3.one))
+                {
+                    go.transform.localPosition = FlameCopyPos80;
+                    go.transform.localEulerAngles = FlameCopyRot80;
+                    go.transform.localScale = FlameCopyScale80;
+                }
+                go.AddComponent<MeshFilter>().sharedMesh = pieceMesh;
+                var pr = go.AddComponent<MeshRenderer>();
+                pr.sharedMaterials = sr.sharedMaterials;   // every material of the flames (one per triangle list)
+                pr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                pr.receiveShadows = false;
+                flamePieces80.Add((pr, glows[g].r));
+            }
+            sr.enabled = false;   // the pieces stand in for it (its PartAnimation still scrolls the texture, copied below)
+            flameSource80 = sr;
+            flameBlock80 = new MaterialPropertyBlock();
+            glowBlock80 = new MaterialPropertyBlock();
+        }
+
+        /// <summary>A mesh of the given triangles (per material) of 'mesh', every vertex channel kept, moved by 'shift'.</summary>
+        static Mesh BuildFlamePiece80(Mesh mesh, List<int>[] lists, Vector3 shift)
+        {
+            var verts = mesh.vertices; var normals = mesh.normals; var tangents = mesh.tangents; var colors = mesh.colors;
+            var uv = new List<Vector2>[4];
+            for (int c = 0; c < 4; c++) { uv[c] = new List<Vector2>(); mesh.GetUVs(c, uv[c]); }
+            var map = new Dictionary<int, int>();
+            var pv = new List<Vector3>(); var pn = new List<Vector3>(); var pt = new List<Vector4>(); var pc = new List<Color>();
+            var pu = new List<Vector2>[4]; for (int c = 0; c < 4; c++) pu[c] = new List<Vector2>();
+            var subTris = new List<int[]>();
+            foreach (var list in lists)
+            {
+                var t = new int[list.Count];
+                for (int i = 0; i < list.Count; i++)
+                {
+                    int v = list[i];
+                    if (!map.TryGetValue(v, out int nv))
+                    {
+                        nv = pv.Count; map[v] = nv;
+                        pv.Add(verts[v] + shift);
+                        if (normals.Length == verts.Length) pn.Add(normals[v]);
+                        if (tangents.Length == verts.Length) pt.Add(tangents[v]);
+                        if (colors.Length == verts.Length) pc.Add(colors[v]);
+                        for (int c = 0; c < 4; c++) if (uv[c].Count == verts.Length) pu[c].Add(uv[c][v]);
+                    }
+                    t[i] = nv;
+                }
+                subTris.Add(t);
+            }
+            var piece = new Mesh { name = mesh.name + " (flame)" };
+            if (pv.Count > 65535) piece.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            piece.SetVertices(pv);
+            if (pn.Count == pv.Count) piece.SetNormals(pn);
+            if (pt.Count == pv.Count) piece.SetTangents(pt);
+            if (pc.Count == pv.Count) piece.SetColors(pc);
+            for (int c = 0; c < 4; c++) if (pu[c].Count == pv.Count && pv.Count > 0) piece.SetUVs(c, pu[c]);
+            piece.subMeshCount = subTris.Count;
+            for (int m = 0; m < subTris.Count; m++) piece.SetTriangles(subTris[m], m);
+            piece.RecalculateBounds();
+            return piece;
+        }
+
+        void UpdateFlamePieces80()
+        {
+            if (flameSource80 == null || flamePieces80.Count == 0) return;
+            flameSource80.GetPropertyBlock(flameBlock80);
+            foreach (var (piece, glow) in flamePieces80)
+            {
+                if (piece == null) continue;
+                piece.SetPropertyBlock(flameBlock80);
+                piece.enabled = GlowShown80(glow);
+            }
+        }
+
+        /// <summary>The glow is drawn: active, enabled, and its `extra` fade (PartAnimation's _Fade / _Color) not at 0.</summary>
+        bool GlowShown80(Renderer glow)
+        {
+            if (glow == null || !glow.enabled || !glow.gameObject.activeInHierarchy) return false;
+            glow.GetPropertyBlock(glowBlock80);
+            if (glowBlock80.HasFloat("_Fade") && glowBlock80.GetFloat("_Fade") < 0.01f) return false;
+            if (glowBlock80.HasColor("_Color"))
+            {
+                var c = glowBlock80.GetColor("_Color");
+                if (c.a < 0.01f || c.maxColorComponent < 0.01f) return false;
+            }
+            return true;
+        }
+
         Transform FindStationPart80(string name)
         {
             if (level.Station == null) return null;
@@ -1296,6 +1534,19 @@ namespace GoF2Remake.World
         // and rotation, degrees), measured in 80 from the Inspector with the battlestation at (0, 0, -8000), unrotated
         // (OrbitLayout.RotationToUnity(0)). The shield generators keep the table's pose. Read through StationTurretPose
         // (80 and PlayerHull's Valkyrie hull).
+        /// <summary>Modified: the deep science station's thruster flames (its *_emitters_anim_add meshes: a texture scroll over
+        /// 11 s) keep looping. Holding the whole station until the hit froze them, and its PlayOnce would stop them after
+        /// one scroll.</summary>
+        static void LoopEmitters80(GameObject station)
+        {
+            foreach (var a in station.GetComponentsInChildren<PartAnimation>(true))
+            {
+                if (a.gameObject.name.IndexOf("_emitters", System.StringComparison.OrdinalIgnoreCase) < 0) continue;
+                a.loop = true;
+                a.play = true;
+            }
+        }
+
         static readonly Dictionary<int, (Vector3 pos, Vector3 rot)> TurretPoses80 = new Dictionary<int, (Vector3 pos, Vector3 rot)>
         {
             { 0, (new Vector3(215f, 1165f, -370f), new Vector3(0f, 180f, 87f)) },
