@@ -12,6 +12,10 @@
 //   Planets: fixed orientation (not billboards), alpha blended, mirrored so the lit rim faces the sun; the orbit
 //        planet (straight ahead, Unity +Z) grows up to +0.2 scale as the camera flies toward it.
 //   Rings: the planet's quad x4 with sn_planet_ring.
+//   Remake mods: a planet whose texture a mod replaces is drawn as a star when a mod's backdrop.json asks for it
+//        (ModBackdrop.StarPlanets): it faces the camera with the camera's up like the sun, isn't mirrored, has no ring, and
+//        its near-white core is lifted to planetGlow under the remake's bloom (a small glow); looked at, it gets the sun's
+//        flare at planetFlare of its strength: a slight swell and a horizontal streak (its own texture, additive).
 // Materials come from Resources/GoF2Backdrop/<texture> (made by GoF2 > Scenes > Space Scene), so only the current
 // orbit's textures are loaded.
 
@@ -39,7 +43,14 @@ namespace GoF2Remake.World
             public Quaternion rot;       // fixed orientation (planets)
             public float scale;
             public bool orbitPlanet;
+            public bool star;            // remake mods: drawn as a star (faces the camera, its core glows)
+            public Body starStreak;      // remake mods: the star's horizontal streak (additive)
         }
+
+        // Remake mods: the star planets' streak: its length and height at full flare, in the star's own size.
+        const float StarStreakLength = 8f, StarStreakHeight = 0.15f;
+        readonly List<Material> ownMaterials = new List<Material>();
+        void OnDestroy() { foreach (var m in ownMaterials) if (m != null) Destroy(m); }
 
         Camera cam;
         OrbitLayout layout;
@@ -76,7 +87,7 @@ namespace GoF2Remake.World
             // so the shared queue doesn't matter.
             if (orbit.supernovaSun) glow = Make("SunGlow", streakMat, 2900, sunDir, Quaternion.identity, 0f);
             sunGlowStyle = -1;
-            ApplySunGlow();
+            ApplySunGlow();   // after the planets (below): sets their glow too
 
             Color tint = orbit.fog ? (orbit.systemTexture == 15 ? orbit.fogColor : orbit.fogColor * 0.7f) : Color.clear;
             var ringMat = orbit.planets.Exists(p => p.ring) ? Load("sn_planet_ring") : null;
@@ -89,18 +100,34 @@ namespace GoF2Remake.World
                 var rot = Quaternion.LookRotation(dir, up);
                 // The planet PNGs have their lit rim on the right: mirror when the sun is on the left as seen.
                 bool mirror = Vector3.Dot(sunDir, rot * Vector3.right) < 0f;
-                var body = Make(p.texture, Load(p.texture), 2901, dir, rot, p.scale);
+                var body = Make(p.texture, Load(p.texture, false, out bool modTexture), 2901, dir, rot, p.scale);
                 body.orbitPlanet = p.isOrbitPlanet;
-                SetProps(body.t, mirror, tint);
+                bool starStyle = Modding.ModBackdrop.StarPlanets(out _, out float flare);
+                body.star = modTexture && starStyle;
+                SetProps(body.t, mirror && !body.star, tint);
+                // Remake mods: the star's streak, its own texture added (weighted by its alpha) like the sun's streak.
+                var starMat = body.t.GetComponent<MeshRenderer>().sharedMaterial;
+                if (body.star && flare > 0f && starMat != null)
+                {
+                    var starStreakMat = new Material(starMat) { name = starMat.name + " (streak)", renderQueue = 2903 };
+                    starStreakMat.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);   // the PNG's transparent texels are white: weighted by alpha
+                    starStreakMat.SetFloat("_DstBlend", (float)BlendMode.One);
+                    ownMaterials.Add(starStreakMat);
+                    body.starStreak = Make(p.texture + "_streak", starStreakMat, 2903, dir, rot, p.scale);
+                    SetProps(body.starStreak.t, false, Color.clear);
+                    body.starStreak.t.gameObject.SetActive(false);
+                }
                 planets.Add(body);
                 PlanetTargets.Add((p.station, body.t, p.isOrbitPlanet));
-                if (p.ring && ringMat != null)
+                if (p.ring && ringMat != null && !body.star)
                 {
                     var ring = Make(p.texture + "_ring", ringMat, 2902, dir, rot, p.scale * 4f);
                     SetProps(ring.t, mirror, Color.clear);
                     rings.Add(ring);
                 }
             }
+            sunGlowStyle = -1;
+            ApplySunGlow();   // the star planets' glow (remake mods)
         }
 
         /// <summary>A level script's scale on the sun billboard (the supernova cutscenes: planets[0] x0.95 / x4 per frame).</summary>
@@ -177,13 +204,22 @@ namespace GoF2Remake.World
             t.GetComponent<MeshRenderer>().SetPropertyBlock(block);
         }
 
-        static Material Load(string texture, bool sun = false)
+        static Material Load(string texture, bool sun = false) => Load(texture, sun, out _);
+
+        /// <summary>'modTexture': a mod's texture replaces the game's (ModTextures).</summary>
+        static Material Load(string texture, bool sun, out bool modTexture)
         {
+            modTexture = false;
             // Remake mods: a mod's planet / sun PNG ("mod:<id>|<path>", ModBackdrop).
             if (Modding.ModBackdrop.IsMod(texture)) return Modding.ModBackdrop.Material(texture, sun);
             var m = Resources.Load<Material>($"{MaterialFolder}/{texture}");
             if (m == null) Debug.LogWarning($"Backdrop: missing material Resources/{MaterialFolder}/{texture}");
-            return m;
+            // Remake mods: a texture replacement named like the game's (textures/planet_000_small.png...), as on the ships.
+            var replaced = Modding.ModTextures.Replace(m);
+            modTexture = replaced != m;
+            if (replaced != m && replaced.HasProperty("_MainTex") && replaced.GetTexture("_MainTex") is Texture t)
+                t.wrapMode = TextureWrapMode.Clamp;   // a single planet / sun image: no bleeding from the opposite edge
+            return replaced;
         }
 
         Body Make(string name, Material mat, int queue, Vector3 dir, Quaternion rot, float scale)
@@ -240,6 +276,17 @@ namespace GoF2Remake.World
                 block.SetColor("_Color", Color.white);
                 block.SetFloat("_CoreGlow", core);
                 b.t.GetComponent<MeshRenderer>().SetPropertyBlock(block);
+            }
+            // Remake mods: the star planets' small glow (only under the remake's bloom, like the sun's core).
+            Modding.ModBackdrop.StarPlanets(out float planetGlow);
+            foreach (var p in planets)
+            {
+                if (!p.star) continue;
+                var r = p.t.GetComponent<MeshRenderer>();
+                var block = new MaterialPropertyBlock();
+                r.GetPropertyBlock(block);   // keeps _Mirror / _Tint
+                block.SetFloat("_CoreGlow", style == Data.Settings.BloomRemake ? planetGlow : 1f);
+                r.SetPropertyBlock(block);
             }
         }
 
@@ -306,7 +353,25 @@ namespace GoF2Remake.World
             {
                 // StarSystem::render: not in the alien orbit or a planet ring orbit (the orbit planet stays at its size).
                 float k = p.orbitPlanet && !layout.ringOrbit && !layout.alienOrbit ? p.scale + zoom : p.scale;
-                Place(p, c, p.rot, Vector3.one * k);
+                if (!p.star) { Place(p, c, p.rot, Vector3.one * k); continue; }
+                // Remake mods: a star faces the camera with its roll, like the sun, and gets the sun's flare (render2D's
+                // intensity from its own screen position) at planetFlare: it swells a little and streaks sideways.
+                Modding.ModBackdrop.StarPlanets(out _, out float flare);
+                float ef = 0f;
+                var ps = cam.WorldToScreenPoint(c + p.dir * Distance);
+                if (ps.z > 0f)
+                {
+                    float pd = Vector2.Distance(new Vector2(ps.x, ps.y), new Vector2(W * 0.5f, H * 0.5f));
+                    ef = Mathf.Max((64f * (1f - pd / (H * 0.5f)) - 10f) / 64f, 0f) * flare;
+                }
+                var starRot = Quaternion.LookRotation(p.dir, cam.transform.up);
+                float size = k * (1f + ef);
+                Place(p, c, starRot, Vector3.one * size);
+                if (p.starStreak != null)
+                {
+                    Place(p.starStreak, c, starRot, new Vector3(size * (1f + ef * StarStreakLength), size * StarStreakHeight, 1f));
+                    p.starStreak.t.gameObject.SetActive(ef > 0f);
+                }
             }
             foreach (var r in rings) Place(r, c, r.rot, Vector3.one * r.scale);
         }

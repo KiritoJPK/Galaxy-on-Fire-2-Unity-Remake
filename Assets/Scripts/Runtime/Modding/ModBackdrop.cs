@@ -3,6 +3,12 @@
 // "sunTexture"): Backdrop's texture name "mod:<mod id>|<path>" makes a material like the game's own (a copy of
 // planet_000_big / sun_000 in Resources/GoF2Backdrop, the GoF2/Backdrop shader) with the mod's PNG. The PNG is decoded in
 // the background with the station models (Preload, ModStations), so building an orbit finds it made.
+// backdrop.json (optional, the last mod in the load order that has one wins):
+//   { "planets": "star", "planetGlow": 2, "planetFlare": 0.35 }
+// draws the planets whose texture a mod replaces (textures/planet_000_small.png...) like stars: always facing the camera
+// with its roll, never mirrored, no ring, their near-white core lifted to planetGlow under the remake's bloom, and the
+// sun's flare at planetFlare of its strength (0 = none, 1 = the sun's) when looked at: a slight swell and a horizontal
+// streak.
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -19,7 +25,43 @@ namespace GoF2Remake.Modding
         static int revision = -1;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { materials.Clear(); revision = -1; }
+        static void ResetStatics() { materials.Clear(); revision = -1; lookRevision = -1; starPlanets = false; planetGlow = 1f; planetFlare = 0f; }
+
+        static int lookRevision = -1;
+        static bool starPlanets;
+        static float planetGlow = 1f, planetFlare;
+
+        /// <summary>backdrop.json: the mods' planets drawn as stars, and their core glow under the remake's bloom.</summary>
+        public static bool StarPlanets(out float glow) => StarPlanets(out glow, out _);
+
+        /// <summary>backdrop.json, with the strength of the sun-like flare (0..1).</summary>
+        public static bool StarPlanets(out float glow, out float flare)
+        {
+            if (lookRevision != ModManager.Revision)
+            {
+                lookRevision = ModManager.Revision;
+                starPlanets = false;
+                planetGlow = 1f;
+                planetFlare = 0f;
+                foreach (var mod in ModManager.Active)
+                {
+                    if (mod.Source == null || !mod.Source.Exists(LookFile)) continue;
+                    try
+                    {
+                        if (!(ModJson.Read(mod.Source, LookFile) is Newtonsoft.Json.Linq.JObject o)) continue;
+                        starPlanets = string.Equals(ModJson.Str(o, "planets"), "star", System.StringComparison.OrdinalIgnoreCase);
+                        planetGlow = Mathf.Max(0f, ModJson.Float(o, "planetGlow", 2f, LookFile));
+                        planetFlare = Mathf.Clamp01(ModJson.Float(o, "planetFlare", 0.35f, LookFile));
+                    }
+                    catch (System.Exception e) { Debug.LogWarning($"Mods: {mod.Id}: {LookFile}: {e.Message}"); }
+                }
+            }
+            glow = planetGlow;
+            flare = planetFlare;
+            return starPlanets;
+        }
+
+        public const string LookFile = "backdrop.json";
 
         public static bool IsMod(string texture) => texture != null && texture.StartsWith(Prefix);
 

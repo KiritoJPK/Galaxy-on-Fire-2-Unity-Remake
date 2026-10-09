@@ -2,7 +2,8 @@
 // Remake mods: texture replacements (skins). A mod that is on ships files in its textures folder (textures/<name>.png | .jpg)
 // named like one of the game's textures (the file names in Assets/Textures/<pack>/..., e.g. ship_028_terran_diffuse for the
 // Veteran's hull, ship_028_terran_normal_specular for its normal map): each replaces that texture on every assembled object
-// that uses it (ships in flight, the NPCs, the hangar, the item window; AssembledObject.Awake -> Apply), the object getting a
+// that uses it (ships in flight, the NPCs, the hangar, the item window; AssembledObject.Awake -> Apply) and on the backdrop's
+// planets, suns and rings (planet_000_small...; Backdrop.Load -> Replace), the object getting a
 // copy of the material with the mod's texture (the game's material assets are never changed). The image must have the
 // original's layout (the same UV mapping); its size may differ. A later mod in the load order wins. Names with "_normal" or
 // "_metallic" load as linear data, the rest as colour. Loaded in the background when the mods change (Preload; the main
@@ -97,6 +98,16 @@ namespace GoF2Remake.Modding
                 }
                 if (changed) r.sharedMaterials = mats;
             }
+        }
+
+        /// <summary>Remake mods: a material that isn't on an assembled object (the backdrop's planets, suns and rings,
+        /// Backdrop.Load): its copy with the mods' textures, or the material itself when none of them is replaced.</summary>
+        public static Material Replace(Material m)
+        {
+            if (m == null || !Application.isPlaying) return m;
+            if (revision != ModManager.Revision) Preload();
+            if (textures.Count == 0) return m;
+            return CopyFor(m) ?? m;
         }
 
         static Material CopyFor(Material m)
