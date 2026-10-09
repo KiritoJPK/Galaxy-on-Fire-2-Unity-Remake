@@ -477,7 +477,7 @@ Research: `Reference/research/mining.md` (+ `Reference/tools/mining/mining_table
   - 0..N parked ships: 70 % of the hangar's race, 30 % a random race or pirates.
   - Camera: the phone table, relative to the ship; FOV 0.8 rad vertical; slow random position drift.
   - Lighting: one fixed light from the camera side, a flat per-race ambient, and fog in Vossk hangars.
-  - Depth of field (remake option, Graphics "Hangar depth of field", `Settings.HangarDepthOfField`, on by default except on phones; `StationLevel.SetupDepthOfField` / `UpdateDepthOfField`): URP's DoF on a volume of its own (layer 26, only in the station camera's volume mask, so the star map and the item window stay sharp; an instance profile, which `Bootstrap.ApplyPostProcessing` leaves alone), focused each frame on the player's ship: Bokeh, a 300 mm lens at f/2 (the hangar cameras keep ~130 m from the turntable: the ~60 m ship sharp, the room behind soft), Gaussian on phones (focus + 25 .. + 140 m); off in the bar, under the star map and in VR.
+  - Depth of field (remake option, Graphics "Hangar depth of field", `Settings.HangarDepthOfField`, on by default except on phones; `StationLevel.SetupDepthOfField` / `UpdateDepthOfField`): URP's DoF on a volume of its own (layer 26, only in the station camera's volume mask, so the star map and the item window stay sharp; an instance profile, which `Bootstrap.ApplyPostProcessing` leaves alone), focused each frame on the player's ship: Bokeh, a 300 mm lens at f/2 (the hangar cameras keep ~130 m from the turntable: the ~60 m ship sharp, the room behind soft), Gaussian on phones (focus + 25 .. + 140 m); off in the bar, under the star map and in VR. URP strips the depth of field shaders from a build unless a volume profile asset has it on (the code-made profile isn't seen): `Assets/Settings/HangarDepthOfFieldShaders.asset` (Bokeh on, used by nothing) keeps them; without it the builds logged "BokehDepthOfField ... has been stripped" and showed no blur.
 - **Space Lounge:**
   - 3-4 generic visitors (the race and gender rules of `Generator::createAgent`) on random slots, as camera-facing billboards with a glow and a floor shadow.
   - Camera: a 3 s intro on the first visit (a tap skips it), then a slow sway.
@@ -780,10 +780,8 @@ The FMOD data comes from the FEV's LGCY chunk (`Reference/tools/audio/fev_lgcy.p
   multiplayer panel's name field), panels open on their first non-text item, and on UWP the text typed while the system keyboard
   was open is kept when it closes with B (`KeepKeyboardText`; closing counts as Cancel and put the old text back).
 - **Version** (`BuildVersion`): the menu's credit line and the About page show "Galaxy on Fire 2 Unity Remake created with
-  <heart sprite> by JoppieToppie · <version>-b<branch>@<commit>" (`BuildVersion.Full`; the commit, "+dirty" with uncommitted
-  changes under Assets/Scripts / Resources / UI, from git at build time into `Resources/GoF2Build/BuildCommit.txt` by
-  `BuildVersionStamp`; also `/version` in the chat, the multiplayer window's foot and the dedicated server's first log
-  line); the version is the date and time of the git commit the build comes from (`yyyy.MM.dd.HHmm`, UTC; fork change, upstream
+  <heart sprite> by JoppieToppie · <version>" (`BuildVersion.Text`; also `/version` in the chat, the multiplayer window's
+  foot and the dedicated server's first log line; no git branch / commit any more: joining compares the fingerprint); the version is the date and time of the git commit the build comes from (`yyyy.MM.dd.HHmm`, UTC; fork change, upstream
   uses the build's own time, still the fallback without git), so Windows, Linux and Android builds of one commit match; stamped into
   `PlayerSettings.bundleVersion` for each build by `BuildVersionStamp` (Editor) and put back afterwards, so
   `Application.version` and Android's versionName carry it; "editor" in the Editor.

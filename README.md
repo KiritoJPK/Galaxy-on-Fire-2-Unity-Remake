@@ -2,7 +2,7 @@
 
 # Galaxy on Fire 2 Remake (Unity)
 
-A remake of the 2010 space game *Galaxy on Fire 2* by FISHLABS in Unity 6, for Windows (also as a UWP app), Linux and
+A remake of the 2010 space game *Galaxy on Fire 2* by FISHLABS in Unity, for Windows (also as a UWP app), Linux and
 Android. It aims to be a faithful port of the original gameplay, including flight, combat, trading, mining, stations,
 the bar and the whole story. It is built on the original assets and on game logic ported from the decompiled game code.
 Downloads are on the [releases page](https://github.com/JoppieToppie/Galaxy-on-Fire-2-Unity-Remake/releases); each
@@ -26,25 +26,33 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
 - **Economy and stations:** hangars, shops and ship dealers, and the space lounge with bar agents and every
   freelance mission type. Also blueprints, wingmen, medals, the Kaamo Club and save games.
 - **Mining:** asteroid mining with the drilling minigame, plus gas clouds, hacking and docking at objects.
-- **Multiplayer (experimental):** a shared universe, online through a server browser or a join code, or over a local
-  network. Players can host from the game or run a dedicated server. Players see each other in space and in the
-  hangars, and can fight each other. Squads share bar missions and their rewards. Everyone shares the NPC traffic, the
-  crates, the asteroids and the shop stock. Local and global chat, chat commands, admin tools and scripted event game
-  modes (waves of pirates, survival) with on-screen titles, timers, dialogs and rewards.
+- **Multiplayer (experimental):** a shared universe in the finished game's world, online through a server browser or a
+  join code, or over a local network. Players can host from the game or run a dedicated server, which keeps every
+  player's progress. Players see each other in space and in the hangars; the host picks PvE (players fight only in
+  arena matches and faction sieges) or PvP. Squads share bar missions and their rewards; factions claim stations, lay
+  sieges and keep a bank. Everyone shares the NPC traffic, the crates, the asteroids and the shop stock. Local and
+  global chat, chat commands, admin tools, a web admin page and event game modes (node graphs: waves of pirates,
+  survival, races, quizzes...) with on-screen titles, timers, dialogs and rewards.
 - **Mods:** new and changed items (with their own weapon effects and sounds), ships from 3D models, star systems and
   stations with their own models, planets, suns, skies, hangars and bars, characters with portraits, voice-over, music
   and sound effects, quests and bar missions, and whole campaigns that show up under New Game. See [Mods](#mods).
 - **VR (experimental):** PC VR through OpenXR with the `-vr` launch option: a cockpit in flight with the instruments on
   its displays, standing in the hangars and the bars, the menus on a floating screen with a laser pointer.
 - **Remake extras:**
-  - Arrival and take-off flights in the hangar, soft shadows under the ships there, animated dialogue text, and the
-    original-style bloom as an option.
-  - Story cutscenes can be skipped by holding the action key (F, or X on a controller).
-  - Pirate events: now and then an orbit holds a pirate outpost or a pirate boss with a bounty (an option).
+  - Arrival and take-off flights in the hangar, soft shadows under the ships there, depth of field on your ship,
+    **Inspect ship** (an orbit camera around it), animated dialogue text, and the original-style bloom as an option.
+  - **Capital ship enhancements** (an option): escorts, stronger turrets and missile salvos; the carrier and the Vossk
+    battleship can be destroyed, rare fleet battles between them, and the carrier sells supplies to pilots it trusts.
+  - **Pirate events** (an option): in Risky and Dangerous systems an orbit may hold a pirate outpost or a pirate boss
+    with a bounty.
+  - A **missile warning**, and boosting or cloaking shakes off homing missiles.
   - **New Game+:** with a finished game in your saves, start again with its credits, blueprints, medals and ships.
-  - The Kaamo Club expansion can be owned from the start of a new game.
-  - A full-map overview on the star map, new medals as a short toast instead of a window, tutorial popups as an option
-    (off by default; a new game asks).
+  - A new game's **Game options**: the Kaamo Club from the start, **Hardcore** (permadeath: dying deletes the run's
+    saves) and the tutorial popups (off by default).
+  - Kaamo Club: stored ships keep their equipment and the mechanics' upgrades stack (both options, on by default).
+  - Sell all / Buy all in the shop, a smart target lock (hostile ships first; the original rule is an option), hold a
+    save slot to delete it, and the Missions window's map can travel to the mission's target.
+  - A full-map overview on the star map, and new medals as a short toast instead of a window.
   - Four difficulties (Easy, Normal, Hard, Extreme) that can be changed during a game, and a choice between the PC
     and Android economies for a new game.
   - Other ships' engines like the player's (an option), photo mode, screenshots, an FPS counter, and every weapon's
@@ -52,9 +60,12 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
   - Upscaling: FSR 1 and STP everywhere they are supported, NVIDIA DLSS and AMD FSR 2 / 3 / 4 on Windows, MetalFX on
     macOS and iOS.
   - Discord Rich Presence on Windows: your Discord status shows what you are doing in the game.
-  - A Dutch translation, and a choice between German and English voices.
-  - Debug tools (Options > Gameplay): jump to any story step, cheats, give items, spawn ships and objects.
-  - The current story step and station show small at the bottom right, so a screenshot of a bug shows where it happened.
+  - Dutch, Simplified Chinese and Hindi translations (the remake's own texts in all 11 languages), and a choice between
+    German and English voices.
+  - Debug tools (Options > Gameplay): jump to any story step, cheats, give items, spawn ships and objects, fly any hull
+    (capital ships included), save and load ship loadouts.
+  - The current story step and station can show small at the bottom right (Options > Gameplay), so a screenshot of a
+    bug shows where it happened.
   - Export and import of all save games as one file (Options > Gameplay in the main menu), to move your games to
     another PC or phone. Importing checks the file first and replaces every existing save.
 - **Controls and screens:** touch, tilt, keyboard and mouse (with the PC version's clickable on-screen buttons when
@@ -65,7 +76,7 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
 
 ## Getting started
 
-1. Install **Unity 6000.7.0b2** (Unity 6.7) with Unity Hub. Add Android Build Support if you want phone builds.
+1. Install **Unity 7000.0.0a7** with Unity Hub. Add Android Build Support if you want phone builds.
 2. Clone the repository with Git LFS installed. The assets are about 2.1 GB in LFS.
 3. Open the project in Unity and open `Assets/Scenes/MainMenu.unity`, then press Play.
 
@@ -86,16 +97,16 @@ and a Windows 10 / 11 SDK. Android and Linux builds don't need it.
 #### Scene lighting (environment reflections)
 
 The scenes have no baked lighting data, on purpose: the game builds its levels at runtime and each system has its own
-sky. `SkyReflection` renders a realtime reflection probe of the current sky wherever the sky is set, so metallic hulls
-reflect the level's sky in the Editor and in builds alike. Don't generate lighting for the scenes: a baked probe is one
-fixed sky for every system.
+sky. `SkyReflection` updates the ambient light from the current sky wherever the sky is set. Don't generate lighting
+for the scenes: a baked probe is one fixed sky for every system.
 
 ### Multiplayer
 
 Multiplayer is experimental. Everyone in a session shares one universe: you see each other in space and in the hangars,
-form squads, and fly bar missions together. Every player starts a fresh free-play game docked at Var Hastra, and
-sessions don't touch your single-player saves. Only the **exact same game version** can play together, so everyone
-needs the same release.
+form squads, and fly bar missions together. Sessions take place in the finished game's world: a new pilot starts
+docked at Dis in a Betty with 10 000 credits and a basic loadout. A dedicated server (or a host's persistent world)
+keeps each player's progress; elsewhere nothing is kept. Sessions never touch your single-player saves. Only the
+**exact same game version** can play together, so everyone needs the same release.
 
 #### Joining a game
 
@@ -118,7 +129,9 @@ On the **Host a game** card, pick a mode:
   addresses (tap one to copy it) and the port, 7777 by default.
 
 Every mode can have a **password** and a **Max players** limit (2 to 100, you included). **Debug menu** (Off by
-default) decides whether the players may use the Debug menu (cheats, items, spawns) in your session. **World**:
+default) decides whether the players may use the Debug menu (cheats, items, spawns) in your session. **Combat**:
+**PvE** (default: players fight each other only in arena matches and faction sieges) or **PvP** (anywhere); the server
+browser shows which. **World**:
 **Fresh** (default) is a one-off session where nothing is kept; **Persistent** keeps every player's progress, the
 factions, bans, staff, news and server settings on your device (the `HostedWorld` folder in the game's data folder),
 like a dedicated server, and makes you the world's master admin (the Multiplayer window's Admin tab). Your own
@@ -138,7 +151,9 @@ Linux service are in **[SERVER.md](SERVER.md)**.
 
 A dedicated server keeps each player's progress: credits, ship and its mods, equipment, cargo, the Kaamo Club and its
 storage, and their squad. A player's game gets a secret key from the server on its first visit and signs in with it
-every time after; the progress is saved when docking, every minute and when leaving. Players type these in the chat:
+every time after; the progress is saved when docking, every minute and when leaving. There is no limit on the number of
+profiles: a profile nobody has used for 30 days is moved aside (an admin can bring it back with the console's `profile
+restore <id>`). Players type these in the chat:
 
 | Command | Meaning |
 |---|---|
@@ -207,7 +222,8 @@ see [SERVER.md](SERVER.md)).
 
 **Arena matches**
 
-Players can only fight each other in arena matches (unless the server runs with `-freepvp`). A match takes its players
+On a PvE server (the default) players can only fight each other in arena matches and faction sieges (a PvP server, or
+`-freepvp`, allows it anywhere). A match takes its players
 from their station into a private copy of the Void's home system (empty, or with its Void fighters attacking everyone),
 and back when it ends. Nothing is at stake: ships, equipment and ammo come back
 as they were, and only the match's statistics are kept.
@@ -258,7 +274,7 @@ means yourself.
 | `/credits [players] <amount>` | Gives (or with a minus, takes) credits. |
 | `/spawn [players] <ship \| object> [race] [count] [enemy \| friendly \| neutral] [named <name>] [at x y z]` | Ships (by number or name) or scenery near the players; `named` puts a name on them in the HUD. |
 | `/ship [players] <ship \| own>` | Swaps the players' ship (any hull of the debug tools), or back to their own. |
-| `/cheat [players] <god \| ammo \| cooldown \| boost \| onehit \| locks \| shopping \| jumps> [on \| off]` | A cheat for those players, this session only. |
+| `/cheat [players] <god \| ammo \| cooldown \| primary \| boost \| onehit \| locks \| shopping \| jumps> [on \| off]` | A cheat for those players, this session only. |
 | `/title [players] <text> [\| subtitle] [for <seconds>]` | A big title on their screen (`clear` removes it). |
 | `/timer [players] <seconds \| m:ss> [label]` | A countdown at the top of their screen (`stop` removes it). |
 | `/dialog [players] <speaker> : <text> [\| [speaker :] next page ...]` | A conversation window. The speaker is a story character ("Keith", "Keith as Bob"), a race and a name ("vossk K'ekki") or `player`; `%player%` is the reader's name. A page `reward: <rewards>` pays when it closes. |
@@ -279,11 +295,14 @@ mission in the Space Lounge instead, for the squad that takes it.
 ## Mods
 
 Mods add or change the game's content as data, no code needed: items (with their own weapon effects and sounds), ships
-from GLB models, star systems and stations (with their own models, planets, suns, skies, hangars and bars), characters
-with portraits, voice-over, music and sound effects, quests and bar missions (event graphs), and whole campaigns that
+from GLB models (new ones, or new models for the original ships), texture replacements (skins), star systems and
+stations (with their own models, planets, suns, skies, hangars and bars), characters with portraits, voice-over, music
+and sound effects, blueprints, quests and bar missions (event graphs), options for a new game, and whole campaigns that
 appear under New Game.
 
-Put a mod (a folder or its `.zip`) in the Mods folder and turn it on in the main menu's **Mods** screen:
+The easiest way to install one: in the main menu's **Mods** screen, press **Import mod** and pick the mod's `.zip` (on
+Android too). **Delete** removes the selected mod. You can also put a mod (a folder or its `.zip`) in the Mods folder
+yourself, then turn it on in the Mods screen:
 
 | Platform | Mods folder |
 |---|---|
@@ -296,7 +315,7 @@ them removes their items (refunded). In multiplayer the host decides whether mod
 same mods installed.
 
 To make a mod, see the modders' guide [Modding/README.md](Modding/README.md), with two example mods in
-[Modding/Examples](Modding/Examples).
+[Modding/Examples](Modding/Examples). [Modding/ai](Modding/ai) has a guide to making mods with Claude or ChatGPT.
 
 ## VR (experimental)
 

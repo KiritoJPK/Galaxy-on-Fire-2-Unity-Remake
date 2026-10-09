@@ -5,10 +5,8 @@
 // Fingerprint: what multiplayer compares instead (two builds of the same code play together, whenever they were built):
 // the hash of the code and data the Editor's BuildFingerprint wrote into Resources/GoF2Build for the build; a build
 // without it (older) falls back to its version.
-// Commit: which code the build was made from, "<branch>@<short commit>" with "+dirty" when the working tree had uncommitted
-// changes, written by BuildVersionStamp into Resources/GoF2Build/BuildCommit (git at build time; "" when git wasn't there).
-// Full = "<version>-b<commit>" (just the version without one): the main menu's credit line, /version in the chat, the
-// multiplayer window and the dedicated server's log show it, so a tester can tell which code a build runs.
+// Text is what the main menu's credit line, /version in the chat, the multiplayer window and the dedicated server's log
+// show (no git branch / commit: joining a game compares the fingerprint, not the commit).
 
 using UnityEngine;
 
@@ -19,27 +17,8 @@ namespace GoF2Remake.UI
     {
         public const string Format = "yyyy.MM.dd.HHmm";
         public const string FingerprintResource = "GoF2Build/BuildFingerprint";
-        public const string CommitResource = "GoF2Build/BuildCommit";
 
-        static string fingerprint, commit;
-
-        /// <summary>The build's code: "branch@abc1234" (+dirty), "" when unknown; "local" in the Editor.</summary>
-        public static string Commit
-        {
-            get
-            {
-                if (Application.isEditor) return "local";
-                if (commit == null)
-                {
-                    var asset = Resources.Load<TextAsset>(CommitResource);
-                    commit = asset != null ? asset.text.Trim() : "";
-                }
-                return commit;
-            }
-        }
-
-        /// <summary>"2026.10.03.1530-bmp-server-profiles@a1b2c3d" (the version alone when the commit is unknown).</summary>
-        public static string Full => Commit.Length > 0 ? $"{Text}-b{Commit}" : Text;
+        static string fingerprint;
 
         public static string Text => Application.isEditor ? "editor" : Application.version;
 

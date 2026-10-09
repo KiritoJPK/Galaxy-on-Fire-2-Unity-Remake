@@ -36,7 +36,7 @@ namespace GoF2Remake.UI
         /// <summary>The credit line under the menu and on the About page (the heart is the text icons' sprite, the version
         /// the build's date and time, BuildVersion).</summary>
         static string VersionText =>
-            "Galaxy on Fire 2 Unity Remake created with <sprite=\"gof2_text_icons\" name=\"heart\"> by JoppieToppie  ·  " + BuildVersion.Full;
+            "Galaxy on Fire 2 Unity Remake created with <sprite=\"gof2_text_icons\" name=\"heart\"> by JoppieToppie  ·  " + BuildVersion.Text;
 
         [Tooltip("Editor only: pretend this build version (e.g. 2026.09.29.2200) so the update check runs; empty = no check.")]
         public string editorTestVersion = "";

@@ -597,6 +597,8 @@ namespace GoF2Remake.World
             dofVolume = go.AddComponent<Volume>();
             dofVolume.isGlobal = true;
             dofVolume.priority = 50f;
+            // A profile made in code: URP keeps the depth of field shaders in a build only because
+            // Assets/Settings/HangarDepthOfFieldShaders.asset has it on (ShaderBuildPreprocessor scans the profile assets).
             dofProfile = ScriptableObject.CreateInstance<VolumeProfile>();
             dof = dofProfile.Add<UnityEngine.Rendering.Universal.DepthOfField>(true);
             bool bokeh = !Application.isMobilePlatform;
