@@ -65,7 +65,7 @@ namespace GoF2Remake.Visuals
             Station = OrbitBuilder.SpawnStation(db, Layout, transform);
             if (Station != null) foreach (var lg in Station.GetComponentsInChildren<LODGroup>()) lg.enabled = false;
             var gate = OrbitBuilder.SpawnJumpgate(db, Layout, transform);
-            OrbitBuilder.AddObstacles(Layout, Station, gate);
+            OrbitBuilder.AddObstacles(Layout, Station, gate, meshCollision: false);   // Remake: the original's shapes here, never the models'
             SpawnStatics();
 
             // CutScene::initialize mode 2: (rnd(20000) - 20000, 0, rnd(60000) + 40000). Remake: the big stations reach

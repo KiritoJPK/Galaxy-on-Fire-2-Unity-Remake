@@ -37,6 +37,8 @@
  "capitalOn": "Améliorés",
  "capitalShips": "Vaisseaux capitaux améliorés",
  "capitalShipsHelp": "Les cuirassés et les porte-vaisseaux reçoivent une escorte et des tourelles plus puissantes ; le porte-vaisseaux et le cuirassé vossk peuvent être détruits pour leur butin, le porte-vaisseaux lance des Inflict quand il est attaqué et laisse les pilotes de confiance s'y amarrer pour se ravitailler. Absent de l'original.",
+ "stationMeshCollision": "Collision précise des stations",
+ "stationMeshCollisionHelp": "Les vaisseaux heurtent la vraie coque des stations et des portails au lieu des formes approximatives de l'original (on peut traverser l'anneau d'un portail). Prend effet à la prochaine orbite. Absent de l'original.",
  "capitalTitle": "Vaisseaux capitaux",
  "carrierHostile": "Le pont d'envol du porte-vaisseaux t'est fermé.",
  "carrierInBattle": "Le porte-vaisseaux est au combat : son pont d'envol est fermé.",

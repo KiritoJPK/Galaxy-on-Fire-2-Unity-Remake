@@ -37,6 +37,8 @@
  "capitalOn": "Verbeterd",
  "capitalShips": "Verbeterde kapitaalschepen",
  "capitalShipsHelp": "Slagschepen en vliegdekschepen krijgen escortes en sterkere geschutstorens; het vliegdekschip en het Vossk-slagschip zijn te vernietigen voor buit, het vliegdekschip lanceert Inflicts als het wordt aangevallen en laat vertrouwde piloten aanmeren om te bevoorraden. Niet in het origineel.",
+ "stationMeshCollision": "Nauwkeurige stationsbotsing",
+ "stationMeshCollisionHelp": "Schepen botsen tegen de echte romp van de stations en springpoorten in plaats van de ruwe vormen van het origineel (je kunt door de ring van een poort vliegen). Geldt vanaf de volgende baan. Niet in het origineel.",
  "capitalTitle": "Kapitaalschepen",
  "carrierHostile": "Het vliegdek van het vliegdekschip is voor jou gesloten.",
  "carrierInBattle": "Het vliegdekschip is in gevecht: het vliegdek is gesloten.",

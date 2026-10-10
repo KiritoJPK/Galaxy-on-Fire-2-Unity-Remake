@@ -37,6 +37,8 @@
  "capitalOn": "강화",
  "capitalShips": "주력함 강화",
  "capitalShipsHelp": "전함과 항공모함에 호위대와 더 강한 터렛이 붙습니다. 항공모함과 보스크 전함을 파괴해 전리품을 얻을 수 있고, 항공모함은 공격받으면 Inflict를 출격시키며 신뢰받는 파일럿의 보급 도킹을 허용합니다. 원작에는 없는 기능입니다.",
+ "stationMeshCollision": "정밀한 정거장 충돌",
+ "stationMeshCollisionHelp": "함선이 원작의 대략적인 형태 대신 정거장과 점프 게이트의 실제 선체에 부딪힙니다(게이트의 고리 사이로 날아갈 수 있습니다). 다음 궤도부터 적용됩니다. 원작에는 없습니다.",
  "capitalTitle": "주력함",
  "carrierHostile": "항공모함의 비행갑판은 당신에게 닫혀 있습니다.",
  "carrierInBattle": "항공모함이 전투 중입니다: 비행갑판이 닫혀 있습니다.",

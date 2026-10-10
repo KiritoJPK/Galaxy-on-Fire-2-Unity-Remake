@@ -342,6 +342,10 @@ namespace GoF2Remake.UI
                 () => Settings.CapitalShips, v => Settings.CapitalShips = v);
             capitalShips.description = () => X("capitalShipsHelp", "Battleships and carriers get escorts and stronger turrets; the carrier and the Vossk battleship can be destroyed for loot, the carrier launches Inflicts when attacked and lets trusted pilots dock to resupply. Not in the original.");
             list.Add(capitalShips);
+            var stationMesh = Toggle("stationMeshCollision", OptionPage.Gameplay, () => X("stationMeshCollision", "Precise station collision"),
+                () => Settings.StationMeshCollision, v => Settings.StationMeshCollision = v);
+            stationMesh.description = () => X("stationMeshCollisionHelp", "Ships bump into the actual hulls of the stations and jumpgates instead of the original's rough shapes (you can fly through a gate's ring). Takes effect on the next orbit. Not in the original.");
+            list.Add(stationMesh);
             var kaamoStacking = Toggle("kaamoStacking", OptionPage.Gameplay, () => X("kaamoStacking", "Stackable Kaamo Club upgrades"),
                 () => Settings.KaamoStacking, v => Settings.KaamoStacking = v);
             kaamoStacking.description = () => X("kaamoStackingHelp", "The Kaamo Club's mechanics fit their upgrade again and again, each level costing twice the last. Off: one of each, as in the original. Not in the original.");

@@ -37,6 +37,8 @@
  "capitalOn": "Potenziate",
  "capitalShips": "Navi capitali potenziate",
  "capitalShipsHelp": "Le corazzate e le portaerei ottengono una scorta e torrette più potenti; la portaerei e la corazzata vossk possono essere distrutte per il bottino, la portaerei lancia Inflict quando viene attaccata e fa attraccare i piloti fidati per rifornirsi. Non presente nell'originale.",
+ "stationMeshCollision": "Collisione precisa delle stazioni",
+ "stationMeshCollisionHelp": "Le navi urtano lo scafo reale delle stazioni e dei portali invece delle forme approssimative dell'originale (si può volare attraverso l'anello di un portale). Valida dall'orbita successiva. Non presente nell'originale.",
  "capitalTitle": "Navi capitali",
  "carrierHostile": "Il ponte di volo della portaerei è chiuso per te.",
  "carrierInBattle": "La portaerei è in battaglia: il suo ponte di volo è chiuso.",

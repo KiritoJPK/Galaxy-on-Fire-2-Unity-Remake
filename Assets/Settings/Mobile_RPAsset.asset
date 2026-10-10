@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -51,7 +52,7 @@ MonoBehaviour:
   m_EnableLODCrossFade: 1
   m_LODCrossFadeDitheringType: 1
   m_ShEvalMode: 0
-  m_LightFalloffMode: 0
+  m_ObsoleteLightFalloffMode: 0
   m_LightProbeSystem: 0
   m_ProbeVolumeMemoryBudget: 1024
   m_ProbeVolumeBlendingMemoryBudget: 256
@@ -151,7 +152,8 @@ MonoBehaviour:
   m_PrefilterReflectionProbeAtlas: 1
   m_PrefilterPointSamplingUpsampling: 1
   m_PrefilterExposure: 1
-  m_PrefilterVolumetricFog: 0
+  m_PrefilterVolumetricFog: 1
+  m_PrefilterLightFalloffQuadratic: 1
   m_Light2DPrefilteringMode: 0
   m_Light2DKeptVariantCombos: []
   m_ShaderVariantLogLevel: 0

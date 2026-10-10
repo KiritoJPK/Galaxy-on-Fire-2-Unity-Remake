@@ -189,13 +189,73 @@ namespace GoF2Remake.World
             if (name == "station_void") PartAnimation.HoldAllAfterOneOff(go);
             else if ((layout.stationIndex == 101 && Session.CampaignMission >= 0x50) || (layout.alienOrbit && Story.Dlc1Won)) PartAnimation.HoldAllAtEnd(go);
             else if (layout.stationIndex == 101 || layout.alienOrbit) PartAnimation.HoldAll(go);
+            if (name == DeepScienceDamaged) CutDeepScienceDamaged(go);   // Remake: a stray piece off its hull
             return go;
+        }
+
+        // Remake: Kothar's station, damaged or exploding (StationAssembly), collides like that model (collision 1005: the
+        // blown-off module's box gone, its debris as spheres), not like the intact station (100).
+        const int DeepScienceDamagedCollision = 1005;
+        static bool DeepScienceDamagedNow(OrbitLayout layout) =>
+            layout.stationIndex == 100 && !layout.alienOrbit && (Story.Dlc1Won || (!Session.FreePlay && Story.Index == 80));
+
+        // Remake: the damaged deep science station (Kothar after the Valkyrie add-on) has a piece of hull that isn't there in
+        // the original. Its triangles inside these boxes (centre, rotation in degrees, size; in the hull part's own frame, as
+        // a Cube made a child of v_station_deep_science_damaged_part0 shows them in the Inspector) are left out of a copy of
+        // the mesh. The model needs Read/Write (v_station_deep_science_damaged.fbx, Model tab); without it the hull stays whole.
+        const string DeepScienceDamaged = "v_station_deep_science_damaged";
+        const string DeepScienceDamagedHull = "v_station_deep_science_damaged_part0";
+        static readonly (Vector3 centre, Vector3 rotation, Vector3 size)[] DeepScienceDamagedCuts =
+        {
+            (new Vector3(2528.1f, -359.8f, -485.1f), new Vector3(9.256f, -26.529f, 32.689f), new Vector3(-272.9183f, 132.3788f, 131.2f)),
+        };
+        static Mesh deepScienceDamagedCut;   // made once, shared by every visit (and the menu backdrop)
+
+        static void CutDeepScienceDamaged(GameObject station)
+        {
+            MeshFilter hull = null;
+            foreach (var mf in station.GetComponentsInChildren<MeshFilter>(true))
+                if (mf.name.StartsWith(DeepScienceDamagedHull)) { hull = mf; break; }
+            if (hull == null || hull.sharedMesh == null) { Debug.LogWarning($"OrbitBuilder: {DeepScienceDamagedHull} not found"); return; }
+            if (deepScienceDamagedCut == null)
+            {
+                var mesh = hull.sharedMesh;
+                if (!mesh.isReadable) { Debug.LogWarning($"OrbitBuilder: turn on Read/Write for {mesh.name}'s model to cut its stray piece"); return; }
+                var verts = mesh.vertices;
+                var cut = Object.Instantiate(mesh);
+                cut.name = mesh.name + " (cut)";
+                for (int m = 0; m < mesh.subMeshCount; m++)
+                {
+                    var tris = mesh.GetTriangles(m);
+                    var kept = new List<int>(tris.Length);
+                    for (int i = 0; i + 2 < tris.Length; i += 3)
+                    {
+                        var c = (verts[tris[i]] + verts[tris[i + 1]] + verts[tris[i + 2]]) / 3f;
+                        if (InsideCut(c)) continue;
+                        kept.Add(tris[i]); kept.Add(tris[i + 1]); kept.Add(tris[i + 2]);
+                    }
+                    cut.SetTriangles(kept, m);
+                }
+                deepScienceDamagedCut = cut;
+            }
+            hull.sharedMesh = deepScienceDamagedCut;
+        }
+
+        static bool InsideCut(Vector3 p)
+        {
+            foreach (var (centre, rotation, size) in DeepScienceDamagedCuts)
+            {
+                var q = Quaternion.Inverse(Quaternion.Euler(rotation)) * (p - centre);
+                var half = new Vector3(Mathf.Abs(size.x), Mathf.Abs(size.y), Mathf.Abs(size.z)) * 0.5f;   // a flipped scale is the same box
+                if (Mathf.Abs(q.x) <= half.x && Mathf.Abs(q.y) <= half.y && Mathf.Abs(q.z) <= half.z) return true;
+            }
+            return false;
         }
 
         /// <summary>The station's volumes (collision.json) and the visible jumpgate's sphere (Obstacle): the player slides
         /// along them (PlayerEgo::calcCollision) and NPC fighters turn away from them (PlayerFighter::update, the first
         /// landmark's volumes). The flight level and the menu backdrop.</summary>
-        public static void AddObstacles(OrbitLayout layout, GameObject station, GameObject jumpgate)
+        public static void AddObstacles(OrbitLayout layout, GameObject station, GameObject jumpgate, bool meshCollision = true)
         {
             const float M = OrbitLayout.MetersPerUnit;
             if (station != null)
@@ -204,7 +264,8 @@ namespace GoF2Remake.World
                 o.landmark = o.isStation = true;
                 var own = Modding.ModWorld.ModelOf(layout.stationIndex);
                 o.volumes = own != null && Modding.ModStations.Built(own.station) ? Modding.ModStations.Volumes(own, station)   // a mod's model
-                          : GoF2Remake.Flight.CollisionVolume.ForStation(StationLook(layout.stationIndex), layout.systemIndex < 0,
+                          : GoF2Remake.Flight.CollisionVolume.ForStation(DeepScienceDamagedNow(layout) ? DeepScienceDamagedCollision
+                                                                                 : StationLook(layout.stationIndex), layout.systemIndex < 0,
                                                                          layout.alienOrbit && Story.Dlc1Won);
                 // PlayerStation+0x150: the transform's bounding radius (Transform+0xe0, about the station's own origin)
                 // + 5000 units. A radius from the origin, not the bounds' half size: a lopsided station (Tornard, 57,
@@ -219,6 +280,13 @@ namespace GoF2Remake.World
                     radius = Mathf.Max(radius, (corner - pos).magnitude);
                 }
                 o.cubeHalf = radius + 5000f * M;
+                // Remake: the station collides with its own model (Obstacle.UseMeshes): a mod station whose "collision" is
+                // "mesh", or any station with the option "Precise station collision" on (not a mod station that gave its own
+                // volumes or another collision). The volumes above stay as the fallback when the model isn't readable.
+                // Not the main menu's backdrop (meshCollision false): nobody flies there, the colliders would only cost loading.
+                bool modMesh = meshCollision && own != null && Modding.ModStations.Built(own.station) && own.collision == "mesh";
+                bool optionMesh = meshCollision && Settings.StationMeshCollision && (own == null || !Modding.ModStations.Built(own.station));
+                if (modMesh || optionMesh) o.UseMeshes(station);
             }
             if (jumpgate != null)
             {
@@ -226,6 +294,21 @@ namespace GoF2Remake.World
                 o.landmark = o.cubeIsContact = true;
                 o.cubeHalf = layout.JumpgateRadius * M;
                 o.volumes.Add(GoF2Remake.Flight.CollisionVolume.Sphere(Vector3.zero, layout.JumpgateRadius * M));
+                // Remake (option "Precise station collision"): the gate's own model, so a ship flies through its ring; the
+                // autopilot's way in is untouched (PlayerCollision.ignoreGate, Navigation.ReachedGate). The prefilter cube
+                // grows to the model's reach.
+                if (meshCollision && Settings.StationMeshCollision && o.UseMeshes(jumpgate))
+                {
+                    var gpos = jumpgate.transform.position;
+                    float reach = 0f;
+                    foreach (var mc in o.meshes)
+                    {
+                        var gb = mc.bounds;
+                        reach = Mathf.Max(reach, Mathf.Abs(gb.min.x - gpos.x), Mathf.Abs(gb.max.x - gpos.x), Mathf.Abs(gb.min.y - gpos.y),
+                                          Mathf.Abs(gb.max.y - gpos.y), Mathf.Abs(gb.min.z - gpos.z), Mathf.Abs(gb.max.z - gpos.z));
+                    }
+                    o.cubeHalf = Mathf.Max(o.cubeHalf, reach + 2f * GoF2Remake.Flight.Obstacle.MeshProbeRadius);
+                }
             }
         }
 

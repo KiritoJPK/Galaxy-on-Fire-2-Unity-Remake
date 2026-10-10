@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -12,7 +13,7 @@ MonoBehaviour:
   m_Script: {fileID: 19001, guid: 0000000000000000e000000000000000, type: 0}
   m_Name: Inter-Regular-SDF
   m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.TextCore.Text.FontAsset
-  m_Version: 1.1.0
+  m_Version: 1.2.0
   m_Material: {fileID: 2837009181615223023}
   m_SourceFontFileGUID: 59bf0a05de67a554388f4825dd375966
   m_ShowObsoleteProperties: 0
@@ -69,6 +70,7 @@ MonoBehaviour:
   m_IsMultiAtlasTexturesEnabled: 1
   m_GetFontFeatures: 1
   m_ClearDynamicDataOnBuild: 1
+  m_DynamicDataPersistence: 0
   m_AtlasWidth: 1024
   m_AtlasHeight: 1024
   m_AtlasPadding: 9
@@ -183,9 +185,9 @@ Texture2D:
     Hash: 00000000000000000000000000000000
   m_IsAlphaChannelOptional: 0
   serializedVersion: 4
-  m_Width: 1
-  m_Height: 1
-  m_CompleteImageSize: 1
+  m_Width: 0
+  m_Height: 0
+  m_CompleteImageSize: 0
   m_MipsStripped: 0
   m_TextureFormat: 1
   m_MipCount: 1
@@ -210,8 +212,8 @@ Texture2D:
   m_LightmapFormat: 0
   m_ColorSpace: 1
   m_PlatformBlob: 
-  image data: 1
-  _typelessdata: 00
+  image data: 0
+  _typelessdata: 
   m_StreamData:
     serializedVersion: 2
     offset: 0

@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -17,7 +18,7 @@ MonoBehaviour:
   m_Subtarget: 0
   m_PlatformId: b9b35072a6f44c2e863f17467ea3dc13
   m_PlatformBuildProfile:
-    rid: 3196867975910522881
+    rid: 2811956133451792384
   m_SelectedPlatformGuid: 
   m_OverrideGlobalSceneList: 0
   m_Scenes: []
@@ -29,7 +30,7 @@ MonoBehaviour:
   references:
     version: 2
     RefIds:
-    - rid: 3196867975910522881
+    - rid: 2811956133451792384
       type: {class: AndroidPlatformBuildSettings, ns: UnityEditor.Android, asm: UnityEditor.Android.Extensions}
       data:
         m_Development: 0

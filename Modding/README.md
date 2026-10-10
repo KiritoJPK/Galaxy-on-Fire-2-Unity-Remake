@@ -478,7 +478,7 @@ nebula on black, not on a dark blue. The sky also lights the scene a little (its
 | `modelYaw` | Degrees to turn the model about its up axis. A launch leaves along the station's front (the model's +Z after the turn, toward the orbit's planet); arrivals come from there too. |
 | `modelCentre` | `true` (default): the middle of the model is the station's centre; `false`: the model's own origin is. |
 | `materials` | Replace the model's materials on parts it names, like [ships.json's materials](#materials). |
-| `collision` | What ships bump into: `"box"` (default, the model's bounds), `"sphere"`, or `"none"`. |
+| `collision` | What ships bump into: `"box"` (default, the model's bounds), `"sphere"`, `"mesh"` (the model itself, every surface: precise, a little heavier to load), or `"none"`. |
 | `volumes` | Instead of `collision`, your own shapes in game units around the station's centre: `[{ "box": [x, y, z, half x, half y, half z] }, { "sphere": [x, y, z, radius] }]`. Boxes stay axis-aligned, like the originals'. |
 | `interior` | The hangar and bar you see when docked: `"terran"`, `"vossk"`, `"nivelian"`, `"midorian"` (or 0-3). Default: those of its system's race. |
 | `hangar`, `bar` | Your own hangar / bar room from `interiors.json` (see [Hangars and bars](#hangars-and-bars)): its id, or `"mod_id:interior_id"` for another mod's. `interior` still picks the race whose ships park there. |

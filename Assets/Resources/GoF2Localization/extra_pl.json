@@ -37,6 +37,8 @@
  "capitalOn": "Ulepszone",
  "capitalShips": "Ulepszone okręty liniowe",
  "capitalShipsHelp": "Pancerniki i lotniskowce dostają eskortę i silniejsze wieżyczki; lotniskowiec i pancernik Vossk można zniszczyć dla łupu, zaatakowany lotniskowiec wypuszcza Inflicty i pozwala zaufanym pilotom zadokować, by uzupełnić zapasy. Nie ma tego w oryginale.",
+ "stationMeshCollision": "Dokładne kolizje stacji",
+ "stationMeshCollisionHelp": "Statki zderzają się z prawdziwym kadłubem stacji i bram skokowych zamiast z przybliżonymi kształtami z oryginału (można przelecieć przez pierścień bramy). Działa od następnej orbity. Brak w oryginale.",
  "capitalTitle": "Okręty liniowe",
  "carrierHostile": "Pokład startowy lotniskowca jest dla ciebie zamknięty.",
  "carrierInBattle": "Lotniskowiec walczy: jego pokład startowy jest zamknięty.",

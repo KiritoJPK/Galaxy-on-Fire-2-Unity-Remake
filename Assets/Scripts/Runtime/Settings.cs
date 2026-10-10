@@ -200,6 +200,9 @@ namespace GoF2Remake.Data
         /// <summary>Remake (players' suggestion): the capital ships fight back (World.CapitalShips): escorts, stronger turrets,
         /// a killable carrier and Vossk battleship with loot, the carrier's Inflicts and its resupply dock. Off = the original.</summary>
         public static bool CapitalShips { get => GetBool("capitalShips", false); set => SetBool("capitalShips", value); }
+        /// <summary>Remake: the stations and jumpgates collide with their own models (Obstacle.UseMeshes) instead of the original's boxes / sphere.
+        /// Off = the original. Models that aren't readable keep their boxes.</summary>
+        public static bool StationMeshCollision { get => GetBool("stationMeshCollision", false); set => SetBool("stationMeshCollision", value); }
 
         /// <summary>DialogueWindow::update: with voice, turn the page once the line has ended.</summary>
         public static bool AutoAdvanceDialogue { get => GetBool("autoAdvanceDialogue", true); set => SetBool("autoAdvanceDialogue", value); }
@@ -263,7 +266,7 @@ namespace GoF2Remake.Data
         };
         public static readonly string[] GameplayKeys =
         {
-            "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoKeepsEquipment", "informerOriginalRule",
+            "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "stationMeshCollision", "kaamoStacking", "kaamoKeepsEquipment", "informerOriginalRule",
             "originalTargetLock", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "discordPresence",
         };
         public static readonly string[] LanguageKeys = { "voiceLanguage" };

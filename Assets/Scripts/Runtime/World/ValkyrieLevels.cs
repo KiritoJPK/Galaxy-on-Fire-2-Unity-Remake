@@ -509,6 +509,8 @@ namespace GoF2Remake.World
                     v.centre = new Vector3(-v.centre.x, v.centre.y, -v.centre.z);
                     o.volumes[i] = v;
                 }
+            // Remake (option "Precise station collision"): its own model instead (the volumes stay as the fallback).
+            if (Settings.StationMeshCollision) o.UseMeshes(go);
         }
 
         static void PauseAnimation(GameObject go)

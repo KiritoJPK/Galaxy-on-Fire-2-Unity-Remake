@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &-9214024926011002127
@@ -59,6 +60,9 @@ MonoBehaviour:
     m_OverrideState: 1
     m_Value: 0
   m_SpatialFilter:
+    m_OverrideState: 1
+    m_Value: 0
+  m_DepthSampling:
     m_OverrideState: 1
     m_Value: 0
   m_TemporalFilter:

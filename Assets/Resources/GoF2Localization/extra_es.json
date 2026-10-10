@@ -37,6 +37,8 @@
  "capitalOn": "Mejoradas",
  "capitalShips": "Naves capitales mejoradas",
  "capitalShipsHelp": "Los acorazados y los portanaves reciben escolta y torretas más fuertes; el portanaves y el acorazado vossk pueden destruirse para obtener botín, el portanaves lanza Inflicts cuando lo atacan y deja acoplarse a los pilotos de confianza para reabastecerse. No está en el original.",
+ "stationMeshCollision": "Colisión precisa de estaciones",
+ "stationMeshCollisionHelp": "Las naves chocan con el casco real de las estaciones y portales de salto en lugar de las formas aproximadas del original (se puede volar a través del anillo de un portal). Se aplica desde la siguiente órbita. No está en el original.",
  "capitalTitle": "Naves capitales",
  "carrierHostile": "La cubierta de vuelo del portanaves está cerrada para ti.",
  "carrierInBattle": "El portanaves está en combate: su cubierta de vuelo está cerrada.",

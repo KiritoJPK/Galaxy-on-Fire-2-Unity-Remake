@@ -37,6 +37,8 @@
   "capitalOn": "增强",
   "capitalShips": "主力舰增强",
   "capitalShipsHelp": "战舰和航空母舰会有护航舰并配备更强的炮塔；航空母舰和Vossk战舰可被摧毁以获取战利品，航空母舰遭到攻击时会放出Inflict，并允许受信任的飞行员停靠补给。原版中没有。",
+ "stationMeshCollision": "精确的空间站碰撞",
+ "stationMeshCollisionHelp": "飞船会撞上空间站和跳跃门的真实外壳，而不是原版中粗略的形状（可以从跳跃门的环中穿过）。从下一个轨道开始生效。原版中没有。",
   "capitalTitle": "主力舰",
   "carrierHostile": "航空母舰的飞行甲板不对您开放。",
   "carrierInBattle": "航空母舰正在作战：飞行甲板已关闭。",

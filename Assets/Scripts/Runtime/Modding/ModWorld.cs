@@ -12,7 +12,7 @@
 // Looks (new or override): a station's own 3D model ("model": a glTF / GLB, "modelSize" its largest extent in game units
 // (default 40000 = 2 km; the originals are 1-5 km), "modelYaw" degrees, "modelCentre" (default true: the bounds' centre at
 // the station's origin), "materials" like ships.json's; its collision "collision": "box" (default: the model's bounds),
-// "sphere", "none", or "volumes": [{ "box": [x, y, z, hx, hy, hz] } | { "sphere": [x, y, z, r] }] in game units around the
+// "sphere", "mesh" (the model itself, Obstacle.UseMeshes; its bounds as a box while it isn't built), "none", or "volumes": [{ "box": [x, y, z, hx, hy, hz] } | { "sphere": [x, y, z, r] }] in game units around the
 // station; built by ModStations, "looksLike" stands in while it loads or when it fails), "interior" (the hangar and bar:
 // terran / vossk / nivelian / midorian or 0-3; default the system's race), "planetTexture" (a PNG with transparency: the
 // station's planet, seen from its own orbit and the system's others); systems: "sunTexture" (a PNG), "sunColor" [r, g, b]
@@ -96,8 +96,8 @@ namespace GoF2Remake.Modding
                 if (ModJson.Has(o, "interior") && InteriorOf(o) < 0)
                     throw new ModJsonException($"{d.where}: \"interior\" must be terran, vossk, nivelian, midorian or 0-3");
                 string collision = ModJson.Str(o, "collision", "box");
-                if (collision != "box" && collision != "sphere" && collision != "none")
-                    throw new ModJsonException($"{d.where}: \"collision\" must be box, sphere or none");
+                if (collision != "box" && collision != "sphere" && collision != "none" && collision != "mesh")
+                    throw new ModJsonException($"{d.where}: \"collision\" must be box, sphere, mesh or none");
                 ReadVolumes(o, d);   // checks the list
                 if (ModJson.Has(o, "materials") && !(ModJson.Get(o, "materials") is JArray))
                     throw new ModJsonException($"{d.where}: \"materials\" must be a list like ships.json's");

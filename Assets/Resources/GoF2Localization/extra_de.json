@@ -37,6 +37,8 @@
  "capitalOn": "Erweitert",
  "capitalShips": "Verbesserte Großkampfschiffe",
  "capitalShipsHelp": "Schlachtschiffe und Träger bekommen Begleitschutz und stärkere Geschütze; der Träger und das Vossk-Schlachtschiff lassen sich für Beute zerstören, der Träger startet bei Angriffen Inflicts und lässt vertrauenswürdige Piloten zum Nachschub andocken. Nicht im Original.",
+ "stationMeshCollision": "Präzise Stationskollision",
+ "stationMeshCollisionHelp": "Schiffe stoßen an die echten Rümpfe der Stationen und Sprungtore statt an die groben Formen des Originals (man kann durch den Ring eines Tores fliegen). Gilt ab dem nächsten Orbit. Nicht im Original.",
  "capitalTitle": "Großkampfschiffe",
  "carrierHostile": "Das Flugdeck des Trägers ist für dich gesperrt.",
  "carrierInBattle": "Der Träger ist im Gefecht: Sein Flugdeck ist geschlossen.",
