@@ -500,8 +500,11 @@ namespace GoF2Remake.World
 
         /// <summary>PlayerFighter::PlayerFighter: race 9 (the Void) gets no cargo list (KIPlayer+0x4c = 0), so the scanner
         /// reads "Nothing to salvage." and there is nothing to steal; its 1-3 t Alien Remains are made at death (OnDied).
+        /// Level::createShip 0xcf83c deletes the cargo list of ships 44 (Specter) and 49 (Scimitar), and PlayerFighter::revive
+        /// gives the Specters (race 10) none: they never leave a container (the remake's first life rolled loot until 2026-10).
         /// The others: Generator::getLootList.</summary>
-        List<ItemStack> RollLoot() => Spec.race == Standing.Void ? new List<ItemStack>() : NpcTables.RollLoot(db, Spec.freighter);
+        List<ItemStack> RollLoot() => Spec.race == Standing.Void || Spec.race == Standing.Specter || Spec.ship == 44 || Spec.ship == 49
+            ? new List<ItemStack>() : NpcTables.RollLoot(db, Spec.freighter);
 
         // ---- turrets (PlayerTurret::handleTurret / pickEnemy / handleRotation) ---------------------------------------
 
@@ -1235,7 +1238,9 @@ namespace GoF2Remake.World
                     {
                         var firing = useEmp && empGun != null ? empGun : useSecond && secondGun != null ? secondGun : gun;
                         if (firing == null || !target.Targetable) attacking = false;
-                        else if (shootingEnabled && !RadarHidden && !(dockedPlayer && target.transform.position.y > transform.position.y)
+                        // PlayerFighter::update's fire block checks the target's cloak (+0x5e), not its own: a cloaked Specter
+                        // fires (handleCloaking only sets the look and the radar flag); a script's hidden ship doesn't.
+                        else if (shootingEnabled && !radarHidden && !(dockedPlayer && target.transform.position.y > transform.position.y)
                                  && firing.TryFire(transform) >= 0)
                         {
                             int shot = NpcTables.ShotSound(Race);

@@ -327,7 +327,8 @@ namespace GoF2Remake.Flight
             {
                 // Docked at an object the chase camera is off (ObjectDocking's look-at camera): on for the turret's view.
                 if (docking == null) docking = GetComponent<ObjectDocking>();
-                if (docking != null && docking.Busy) chase.enabled = on;
+                if (docking != null && (docking.State == ObjectDocking.Phase.Entering || docking.State == ObjectDocking.Phase.Docked
+                                        || docking.State == ObjectDocking.Phase.Leaving)) chase.enabled = on;
                 chase.follow = on ? camAnchor : null;
                 // Under the hull the camera hangs below the turret (still upright: the anchor keeps the ship's up).
                 float side = UpsideDown ? -1f : 1f;

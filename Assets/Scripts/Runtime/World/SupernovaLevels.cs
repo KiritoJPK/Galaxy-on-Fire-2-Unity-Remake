@@ -410,7 +410,9 @@ namespace GoF2Remake.World
             var route = new Route(false);
             route.points.Add(new Vector3(-500000, 0, -1700000));
             route.points.Add(new Vector3(-500000, 0, -3700000));
-            var s = c.SpawnShip(Standing.Specter, 44, route.points[0], false, sp => { sp.alwaysFriend = true; sp.hitpoints = 1; sp.route = route; sp.inactive = true; sp.noLoot = true; });
+            // "hitpoints 1" is Player::setHitpoints(1): the current hull only, the maximum stays (setHitpoints raises it, never
+            // lowers it), so the crippled fighter trails smoke and fire (PlayerFighter::update's 33 % rule). Set as it's shown.
+            var s = c.SpawnShip(Standing.Specter, 44, route.points[0], false, sp => { sp.alwaysFriend = true; sp.route = route; sp.inactive = true; sp.noLoot = true; });
             s.Place(ToUnity(route.points[0]), Dir(new Vector3(-1, 0, 0)));
             s.CloakingPossible = false;
             s.SetVisible(false);
@@ -799,8 +801,13 @@ namespace GoF2Remake.World
         {
             c.Cutscene = false;
             c.PlayerInvulnerable = false;
-            Ship.externalControl = false;
-            if (level.Weapons != null) level.Weapons.Blocked = false;
+            // A ship docked at an object (92: the freighter) stays the docking's: its controls come back on undocking.
+            var d = level.Docking;
+            if (d == null || !d.Busy || d.State == ObjectDocking.Phase.Approach)
+            {
+                Ship.externalControl = false;
+                if (level.Weapons != null) level.Weapons.Blocked = false;
+            }
             SetPlayerVisible(true);
             cam.Release();
         }
@@ -1357,7 +1364,7 @@ namespace GoF2Remake.World
             {
                 case 1:
                     cam.SetDolly(new Vector3(-0.3f, -0.05f, 0.1f));
-                    if (Over(2) && sp != null) { sp.Wake(); sp.SetVisible(true); sp.scriptedSpeed = 1f; Step = 2; }
+                    if (Over(2) && sp != null) { sp.Wake(); sp.SetVisible(true); sp.SetHull(1, false); sp.scriptedSpeed = 1f; Step = 2; }
                     break;
                 case 2:
                     cam.SetDolly(new Vector3(-0.1f, -0.1f, 0.4f));

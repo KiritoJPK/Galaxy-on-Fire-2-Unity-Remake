@@ -258,7 +258,7 @@ namespace GoF2Remake.Flight
             var q = Target.transform.rotation;
             var nose = q * dockDirLocal;
             toRot = Quaternion.LookRotation(nose.sqrMagnitude > 1e-6f ? nose : ship.transform.forward, q * upLocal);
-            if (chase != null) chase.enabled = false;
+            if (chase != null && !PlayerTurret.ViewActive(gameObject)) chase.enabled = false;   // the turret view keeps its camera
             SetExhaust(false);
             // Remake: no sound at the carrier (Docking_Landing sounded like mining there; nothing fitting yet).
             if (Target.DockingType != Resupply) Play(dockSound);

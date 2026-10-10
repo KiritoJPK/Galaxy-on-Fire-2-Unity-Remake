@@ -302,9 +302,14 @@ namespace GoF2Remake.World
             Docking.Setup(db, Player, chase, Weapons);
             if (FreeLook != null)
                 FreeLook.Blocked = () => Cutscene || !LaunchCameraOver || (Mining != null && Mining.State != Mining.Phase.Idle)
-                                         || (Docking != null && Docking.Busy) || (Navigation != null && Navigation.Jumping)
+                                         || (Docking != null && Docking.Busy && Docking.State != ObjectDocking.Phase.Approach)   // the approach is an autopilot leg
+                                         || (Navigation != null && Navigation.Jumping)
                                          || (SystemJump != null && SystemJump.Cinematic) || (Health != null && Health.Dead);
-            if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && Docking.IsDocked && Docking.Hacking == null && !Cutscene;
+            // MGame::switchCamera / PlayerEgo::setTurretMode refuse the turret view only while docking to an asteroid, mining,
+            // for an auto turret and while the Liberator flies: through an object docking's ease-in and docked too (#91/92:
+            // the remake refused it from the approach on).
+            if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && (Docking.State == ObjectDocking.Phase.Entering || Docking.IsDocked)
+                                                                 && Docking.Hacking == null && !Cutscene;
             Navigation.Docking = Docking;
             Navigation.Ships = Traffic.Ships;
             Collision.docking = Docking;

@@ -996,7 +996,15 @@ namespace GoF2Remake.World
             if (MusicMuted) { if (music.isPlaying) music.Stop(); musicCategory = pendingCategory = -1; return; }
             // MGame::OnRender2D skips Radar::draw while LevelScript's cutscene flag is set, so nothing switches the music
             // during a story cutscene (index 14's arrest: the pirates vanish, the battle track plays on).
-            if (RadarHidden != null && RadarHidden() && musicCategory >= 0) { music.volume = fade * Settings.MusicVolume * Events.EventScreen.SceneMusic; return; }
+            // The track's fade-in goes on: a level in its cutscene from the start (the Supernova's "Meanwhile..." orbits,
+            // MGame::OnInitialize's playMusicAndFadeOutCurrent(1) playing 152 at Thynome) started its track at 0 and kept it
+            // there.
+            if (RadarHidden != null && RadarHidden() && musicCategory >= 0)
+            {
+                fade = Mathf.Min(1f, fade + dt / 1.5f);
+                music.volume = fade * Settings.MusicVolume * Events.EventScreen.SceneMusic;
+                return;
+            }
             // Radar::draw 0x157c6c: while 143 IntroAtmo plays nothing switches.
             var introAtmo = StoryAssets.Load()?.introAtmo;
             if (introAtmo != null && music.clip == introAtmo && music.isPlaying) { music.volume = fade * Settings.MusicVolume * Events.EventScreen.SceneMusic; return; }
