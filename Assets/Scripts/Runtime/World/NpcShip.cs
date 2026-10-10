@@ -401,6 +401,8 @@ namespace GoF2Remake.World
                 // Remake (CapitalShips): a killable capital ship is hit on its collision boxes, not the +-1000 cube at its centre.
                 if (spec.capitalEnhanced) Target.boxes = LocalBoxes(obstacle.volumes);
             }
+            // Remake: shots hit its real shape and the player slides along it (HullCollision); NPCs still steer by the volumes.
+            if (modelGo != null) HullCollision.Attach(modelGo, Target, obstacle);
             if (spec.deadButSelectable) ShowWreckAtEnd();
             Target.Damaged += OnDamaged;
             Target.Died += OnDied;
@@ -498,8 +500,11 @@ namespace GoF2Remake.World
 
         /// <summary>PlayerFighter::PlayerFighter: race 9 (the Void) gets no cargo list (KIPlayer+0x4c = 0), so the scanner
         /// reads "Nothing to salvage." and there is nothing to steal; its 1-3 t Alien Remains are made at death (OnDied).
+        /// Level::createShip 0xcf83c deletes the cargo list of ships 44 (Specter) and 49 (Scimitar), and PlayerFighter::revive
+        /// gives the Specters (race 10) none: they never leave a container (the remake's first life rolled loot until 2026-10).
         /// The others: Generator::getLootList.</summary>
-        List<ItemStack> RollLoot() => Spec.race == Standing.Void ? new List<ItemStack>() : NpcTables.RollLoot(db, Spec.freighter);
+        List<ItemStack> RollLoot() => Spec.race == Standing.Void || Spec.race == Standing.Specter || Spec.ship == 44 || Spec.ship == 49
+            ? new List<ItemStack>() : NpcTables.RollLoot(db, Spec.freighter);
 
         // ---- turrets (PlayerTurret::handleTurret / pickEnemy / handleRotation) ---------------------------------------
 
@@ -555,7 +560,7 @@ namespace GoF2Remake.World
                 turretPickMs = 0f;
                 turretTarget = PickTurretTarget();
             }
-            if (turretTarget == null) return;
+            if (turretTarget == null || turretTarget.cloaked) return;   // handleTurret: no turning toward a cloaked target
             var at = Spec.capitalEnhanced && turretTarget.boxes != null && turretTarget.boxes.Length > 0 ? TurretAimPoint(turretTarget, turretBarrel.position)
                    : turretTarget.transform.position + turretTarget.transform.forward * TurretLeadUnits * M;
             bool aligned = turretAim.Step(at, dtMs);
@@ -615,6 +620,7 @@ namespace GoF2Remake.World
         public void DestroyAsTurret()
         {
             if (!IsTurret || !Target.Alive) return;
+            Target.invulnerable = false;   // a fighter's turret is invulnerable: it stayed in space after its host died
             Target.Damage(9999999f, true);
         }
 
@@ -698,6 +704,11 @@ namespace GoF2Remake.World
             Hp.Update(dtMs);
             // PlayerFighter::handleCloaking: race 10 only (Harval's Scimitar cloaks as a Specter, at 158); scripted ships too.
             if (Race == Standing.Specter) cloak?.Update(dtMs, !Asleep && !inactive, panic, Hp.empDisabled);
+            // Remake: a cloaked ship can't be targeted, whoever flies it. The original's cloaked Specter only leaves the
+            // radar (KIPlayer+0x70); turrets (PlayerTurret::handleTurret) and the fighters' fire block read Player+0x5e,
+            // which only the player's cloak sets, so the Rhinos' turrets and the locals kept shooting at it. Target.cloaked
+            // gives it the player's rules: turrets don't aim, fighters chase but hold fire, missiles lose their lock.
+            Target.cloaked = cloak != null && cloak.Hidden;
             UpdatePush(dtMs);
             UpdateSmoke();
             UpdateSparks();
@@ -1095,13 +1106,28 @@ namespace GoF2Remake.World
             followingWaypoint = true;
         }
 
+        /// <summary>Remake option (Settings.CloakLosesPursuers, off = the original, which keeps chasing a cloaked target
+        /// and only holds its fire): a cloaked target is lost. The ship flies to where it was last seen, then back to its
+        /// route.</summary>
+        static bool LostToCloak(Target t) => t != null && t.cloaked && Settings.CloakLosesPursuers;   // a session: the host's (NetRules)
+        static bool Pursuable(Target t) => Valid(t) && !LostToCloak(t);
+        const float SearchMs = 12000f, SearchReach = 3000f;
+        Vector3 lastSeen;
+        float searchMs;
+
         /// <summary>§5.3 target selection.</summary>
         void UpdateTargeting()
         {
+            if (attacking && target != null && LostToCloak(target)) { lastSeen = target.transform.position; searchMs = SearchMs; }
+            if (searchMs > 0f)
+            {
+                searchMs -= Time.deltaTime * 1000f;
+                if ((lastSeen - transform.position).sqrMagnitude < SearchReach * M * SearchReach * M) searchMs = 0f;
+            }
             // Multiplayer: another player it is hostile to, kept while valid, hostile and in the box.
             if (remoteTarget != null)
             {
-                if (Valid(remoteTarget) && HostileToRemote != null && HostileToRemote(this, remoteTarget) && InBox(remoteTarget))
+                if (Pursuable(remoteTarget) && HostileToRemote != null && HostileToRemote(this, remoteTarget) && InBox(remoteTarget))
                 {
                     target = remoteTarget;
                     targetPos = target.transform.position;
@@ -1117,7 +1143,7 @@ namespace GoF2Remake.World
             if (remote == null || HostileToRemote == null) return;
             foreach (var r in remote)
             {
-                if (!Valid(r) || !HostileToRemote(this, r) || !InBox(r)) continue;
+                if (!Pursuable(r) || !HostileToRemote(this, r) || !InBox(r)) continue;
                 remoteTarget = r;
                 target = r;
                 targetPos = r.transform.position;
@@ -1133,13 +1159,13 @@ namespace GoF2Remake.World
             int idx = targetIdx;
             if (idx >= n) idx = -1;
             if (!attacking) idx = -1;
-            else if (idx >= 0 && !Valid(enemies[idx])) attacking = false;
+            else if (idx >= 0 && !Pursuable(enemies[idx])) attacking = false;
             bool pirate = Race == Standing.Pirate;
             if (reselectTimer < 5001f)
             {
                 if (!attacking)
                     for (int i = 0; i < n; i++)
-                        if (Valid(enemies[i]) && ((!pirate && turnedEnemy) || InBox(enemies[i]))) { idx = i; attacking = true; break; }
+                        if (Pursuable(enemies[i]) && ((!pirate && turnedEnemy) || InBox(enemies[i]))) { idx = i; attacking = true; break; }
             }
             else
             {
@@ -1151,13 +1177,13 @@ namespace GoF2Remake.World
                     for (int k = 0; k < 5; k++)
                     {
                         int i = Random.Range(0, n);
-                        if (Valid(enemies[i]) && ((!pirate && turnedEnemy) || InBox(enemies[i]))) { idx = i; attacking = true; break; }
+                        if (Pursuable(enemies[i]) && ((!pirate && turnedEnemy) || InBox(enemies[i]))) { idx = i; attacking = true; break; }
                     }
                     if (!attacking) idx = 0;
                 }
                 else idx = 0;
                 // The 5 s re-roll: a target outside the box is dropped (a turned ship too: it flies its route until the next one).
-                if (n > 0 && Valid(enemies[idx])) { if (!InBox(enemies[idx])) idx = -1; }
+                if (n > 0 && Pursuable(enemies[idx])) { if (!InBox(enemies[idx])) idx = -1; }
                 else { idx = -1; attacking = false; }
             }
             if (!Target.hostileToPlayer && idx == 0) { idx = 1; attacking = false; }
@@ -1167,7 +1193,7 @@ namespace GoF2Remake.World
                 for (int i = 1; i < n; i++)
                 {
                     var e = enemies[i];
-                    if (!Valid(e)) continue;
+                    if (!Pursuable(e)) continue;
                     if (Standing.RacesHostile(Race, e.race)) { idx = i; attacking = true; break; }
                 }
             }
@@ -1176,10 +1202,13 @@ namespace GoF2Remake.World
             target = null;
             if (idx < 0 || idx >= n)
             {
+                if (searchMs > 0f) { attacking = false; targetPos = lastSeen; followingWaypoint = true; return; }   // the option
                 var wp = route.Waypoint;
                 // A finished route: the target is the player (PlayerFighter+0x144), so the break-off circle applies, but it isn't
                 // an attack: no firing.
-                if (wp == null) { target = traffic.Player; attacking = false; targetPos = traffic.Player != null ? traffic.Player.transform.position : transform.position; }
+                if (wp == null && LostToCloak(traffic.Player))   // the option: no circling a cloaked player, straight on
+                { attacking = false; targetPos = transform.position + transform.forward * (20000f * M); followingWaypoint = true; }
+                else if (wp == null) { target = traffic.Player; attacking = false; targetPos = traffic.Player != null ? traffic.Player.transform.position : transform.position; }
                 else { route.Update(ToGame(transform.position)); wp = route.Waypoint; targetPos = wp.HasValue ? ToUnity(wp.Value) : transform.position; followingWaypoint = true; }
             }
             else { target = enemies[idx]; targetPos = target.transform.position; }
@@ -1205,7 +1234,7 @@ namespace GoF2Remake.World
 
             if (attacking && !followingWaypoint && target != null)
             {
-                if (target.untargetable || target.cloaked) attacking = false;   // a cloaked player: chased, never fired at
+                if (target.untargetable || target.cloaked) attacking = false;   // a cloaked ship: chased, never fired at
                 else
                 {
                     var d = targetPos - transform.position;
@@ -1215,7 +1244,9 @@ namespace GoF2Remake.World
                     {
                         var firing = useEmp && empGun != null ? empGun : useSecond && secondGun != null ? secondGun : gun;
                         if (firing == null || !target.Targetable) attacking = false;
-                        else if (shootingEnabled && !RadarHidden && !(dockedPlayer && target.transform.position.y > transform.position.y)
+                        // PlayerFighter::update's fire block checks the target's cloak (+0x5e), not its own: a cloaked Specter
+                        // fires (handleCloaking only sets the look and the radar flag); a script's hidden ship doesn't.
+                        else if (shootingEnabled && !radarHidden && !(dockedPlayer && target.transform.position.y > transform.position.y)
                                  && firing.TryFire(transform) >= 0)
                         {
                             int shot = NpcTables.ShotSound(Race);
@@ -1584,6 +1615,7 @@ namespace GoF2Remake.World
         void OnDied(Target t)
         {
             cloak?.Stop();
+            Target.cloaked = false;
             // PlayerFighter's death: a hostile Void ship leaves 1-3 t Alien Remains (131).
             if (Race == Standing.Void && !Spec.noLoot && Target.hostileToPlayer && !loot.Exists(s => s.item == 131))
                 loot = new List<ItemStack> { new ItemStack(131, Random.Range(0, 3) + 1) };
@@ -1733,6 +1765,19 @@ namespace GoF2Remake.World
         /// <summary>KIPlayer::cargoAvailable: something aboard to steal (the Hijacker's mission container drops by itself).</summary>
         public bool HasCargo => Spec.missionCrate < 0 && loot.Exists(s => s.amount > 0);
 
+        /// <summary>PlayerFighter::update 0xf1... sets KIPlayer+0x48 = cargoAvailable() as a fighter starts dying: until it
+        /// explodes Radar::draw gives it the crate markers (0x4f2 near, 0x4f1 far, 0x451 / 0x44d off screen) and it is a
+        /// salvage target (TractorBeam::update makes its crate at the ship, KIPlayer::createCrate(0)); a dying ship without
+        /// cargo has no marker at all. Freighters and fixed objects drop their crate as they die.</summary>
+        public bool DyingWithCargo => Current == State.Dying && !IsFixed && !IsFreighter && !IsTurret && HasCargo && !crateDropped
+                                      && stealCrate == null;
+        public bool Dying => Current == State.Dying;
+
+        /// <summary>KIPlayer::captureCrate on a dying or dead ship clears +0x48: the explosion leaves no crate.</summary>
+        public void LootTaken() => crateDropped = true;
+
+        Crate stealCrate;   // the crate TractorBeam::update made at the ship, while it exists
+
         /// <summary>KIPlayer::createCrate(0) for a living ship (TractorBeam::update's steal): a container of its cargo at the
         /// ship; the capture takes from the ship's own list (StealFrom).</summary>
         public Crate CreateStealCrate()
@@ -1745,6 +1790,7 @@ namespace GoF2Remake.World
             c.Setup(loot, Race);
             c.stolenFrom = this;
             c.pulled = true;
+            stealCrate = c;
             return c;
         }
 
@@ -1766,6 +1812,16 @@ namespace GoF2Remake.World
             // outpost's loot came twice. One crate per death.
             if (crateDropped || loot.Count == 0 || assets == null) return;
             crateDropped = true;
+            // The beam was already pulling the ship's own crate (KIPlayer+0x74): that one is its crate now.
+            if (stealCrate != null)
+            {
+                crate = stealCrate;
+                crate.stolenFrom = null;
+                crate.fromFriend = Target.friendToPlayer;
+                crate.missionLoot = MissionShip;
+                Target.crate = crate;
+                return;
+            }
             var prefab = assets.Crate(Race);
             var go = prefab != null ? Instantiate(prefab, transform.position, Random.rotation) : new GameObject("Crate");
             go.name = "Crate";

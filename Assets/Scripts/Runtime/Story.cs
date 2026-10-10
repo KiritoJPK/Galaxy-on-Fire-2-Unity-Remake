@@ -79,13 +79,34 @@ namespace GoF2Remake.Data
 
         /// <summary>StarMap::drawOnScreenInfo: the stations the map marks with the story icon. Type 0xa3 (step 59, the arms
         /// convoy) marks every target of Status+0x90 not yet done (done ones are negative) instead of the mission's own
-        /// station (101 Valkyrie / system 23, skipped at 0x3b); else the target station.</summary>
+        /// station (101 Valkyrie / system 23, skipped at 0x3b); else the target station.
+        /// StarMap::drawOnScreenInfo / Radar::draw also mark: at 116 the Pescal Inartu bars not searched yet (the mission
+        /// value's bits, StationMenu.SpecialLounge), at 120 only Maissa (93), where the K'mirrk Toad Mutagen goes (the
+        /// level's own orbit, Valadon, isn't marked), at 125 the freighter stations not scanned yet; and the target isn't
+        /// marked at 52, 128, 130 and 148-151. The remake marked the plain target at every step until 2026-10.</summary>
         public static bool MapMarks(int station)
         {
-            if (station < 0) return false;
-            if (Mission != null && Mission.type == StoryType.TargetList) return Session.StoryTargets.Contains(station);
+            if (station < 0 || Mission == null) return false;
+            int v = Mission.value;
+            if (Index == 116)
+            {
+                int slot = station == 94 ? 3 : station >= 90 && station <= 92 ? station - 90 : -1;
+                if (slot >= 0 && (v & (1 << slot)) == 0) return true;
+            }
+            if (Index == 120) return station == 93;
+            if (Index == 125)
+            {
+                int bit = System.Array.IndexOf(FreighterStations, station);
+                if (bit >= 0 && (v & (1 << bit)) == 0) return true;
+            }
+            if (Mission.type == StoryType.TargetList) return Session.StoryTargets.Contains(station);
+            if (Index == 52 || Index == 128 || Index == 130 || (Index >= 148 && Index <= 151)) return false;
             return station == TargetStation;
         }
+
+        /// <summary>Status::isFreighterMissionStation: the stations of step 125's decoy freighters, in the order of their bit
+        /// in the mission value (the remake's order; StorySpace sets them).</summary>
+        public static readonly int[] FreighterStations = { 15, 30, 40, 45, 60, 70, 80, 85, 95 };
 
         /// <summary>The station the Missions window's map centres on: step 59's first remaining convoy target, else the
         /// target station.</summary>
@@ -95,6 +116,7 @@ namespace GoF2Remake.Data
             {
                 if (Mission != null && Mission.type == StoryType.TargetList)
                     foreach (int t in Session.StoryTargets) if (t >= 0) return t;
+                if (Index == 120) return 93;   // Maissa, like the map's story icon (MapMarks)
                 return TargetStation;
             }
         }
@@ -340,7 +362,9 @@ namespace GoF2Remake.Data
             {
                 int type = db.Item(e.item)?.TypeId ?? 4;
                 int max = slots == null ? 0 : type switch { 0 => slots.primary, 1 => slots.secondary, 2 => slots.turret, 3 => slots.equipment, _ => 0 };
-                if (Session.Equipment.FindAll(x => (db.Item(x.item)?.TypeId ?? 4) == type).Count < max) Session.Equipment.Add(e);
+                if (type == 3) max += Hangar.BaySlot(db, ship, Session.Equipment);
+                if (Session.Equipment.FindAll(x => (db.Item(x.item)?.TypeId ?? 4) == type).Count < max || Hangar.BayTakes(db, ship, e.item, Session.Equipment))
+                    Session.Equipment.Add(e);
                 else Shop.AddToCargo(e.item, Mathf.Max(1, e.amount));
             }
         }
@@ -415,6 +439,9 @@ namespace GoF2Remake.Data
                 case 79: if (!Session.FreePlay) { Session.CampaignMission = 78; Session.StoryMission = M(0x04, 101); } break;
                 case 35: if (Mission.station != 29) Session.StoryMission = M(0x0b, 29); break;
             }
+            // Remake fix: step 77's unsaleable jump drive is the original's flag on that one Item, which goes with it at 78;
+            // kept as the item number it locked every Khador Drive bought after the Valkyrie campaign (saves since then).
+            if (Index != 77) Session.Unsaleable.Remove(GalaxyMap.KhadorDriveItem);
         }
 
         // ---- completion (Status::missionCompleted 0x0b924c) ------------------------------------------------------
@@ -671,11 +698,14 @@ namespace GoF2Remake.Data
                     int drive = Session.Equipment.FindIndex(e => db.Item(e.item)?.categoryId == 18);
                     if (drive >= 0) Session.Equipment.RemoveAt(drive);
                     else Shop.RemoveFromCargo(GalaxyMap.KhadorDriveItem, 1);
+                    // The original's unsaleable flag was on that Item: it goes with it (the remake's flag is per item
+                    // number, so it stayed and locked every later Khador Drive).
+                    Session.Unsaleable.Remove(GalaxyMap.KhadorDriveItem);
                     Blueprints.ResetAtStation(db, 101);
                     break;
                 }
                 case 84:   // dlc1Won: the jump drive saleable again, one more Khador Drive in the hold
-                    SetJumpDriveSaleable(db, true);
+                    Session.Unsaleable.Remove(GalaxyMap.KhadorDriveItem);   // SetJumpDriveSaleable skipped it with no drive aboard
                     Shop.AddToCargo(GalaxyMap.KhadorDriveItem, 1);
                     break;
                 // ---- Supernova (cases 0x54-0xa1) ----

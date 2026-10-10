@@ -25,8 +25,9 @@ namespace GoF2Remake.Flight
         static GameObject host;
         static readonly Dictionary<AudioClip, Voices> byClip = new Dictionary<AudioClip, Voices>();
 
-        /// <summary>A shot at the listener (the player's own guns); 'volume' already includes the FX volume.</summary>
-        public static void Play(AudioClip clip, float volume)
+        /// <summary>A shot at the listener (the player's own guns); 'volume' already includes the FX volume; 'pitch' the
+        /// player's primaries' (a fire-rate weapon mod, WeaponSystem).</summary>
+        public static void Play(AudioClip clip, float volume, float pitch = 1f)
         {
             if (clip == null || volume <= 0.001f) return;
             if (host == null)
@@ -54,6 +55,7 @@ namespace GoF2Remake.Flight
             if (pick < 0) pick = newest;   // behaviour 1: the newest instance gives way
             var src = v.sources[pick];
             src.volume = volume;
+            src.pitch = pitch;
             src.Stop();
             src.Play();
             v.started[pick] = now;

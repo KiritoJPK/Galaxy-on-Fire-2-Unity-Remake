@@ -4,7 +4,8 @@
 //     off screen a dot (ring when locked) on the radar ellipse 657 x 491; on screen far (any axis > 24000 units from the
 //     camera) the dot / ring, plus the distance for the locked ship at (-61, +61); near: the hull bar (114 x 10 frame at
 //     (-59, +63), 110 x 6 fill) and, when locked, the faction bracket 81 x 81
-//   crates: far a white diamond 0x4f1, near the white bracket 0x4f2, off screen the box 0x451 (0x44d Void)
+//   crates: far a white diamond 0x4f1, near the white bracket 0x4f2, off screen the box 0x451 (0x44d Void); also a
+//     fighter dying with cargo (KIPlayer+0x48) until it explodes
 //   ship lock: the lock ring on the crosshair (24 frames, from t = 0; crates after 500 ms) and the top plate
 //     "<race> NN%" with the race icon (Radar::drawCurrentLock)
 //   player status (Hud::draw, top left): shield icon (red 500 ms after a hit) + cyan bar, hull icon (red once the armor is
@@ -49,7 +50,7 @@ namespace GoF2Remake.UI
         // The lock plate as last built (Update).
         Target plateTarget;
         int platePct = -1, plateRace = int.MinValue;
-        string plateName;
+        string plateName, plateText;
         Texture2D plateIcon;
         readonly MarkerTextures[] factionTextures = new MarkerTextures[3];
 
@@ -168,7 +169,14 @@ namespace GoF2Remake.UI
                     {
                         // Radar::draw skips inactive players: a sleeping ship (KIPlayer::setToSleep) has no marker until it
                         // wakes, e.g. a pirate outpost until an enemy comes within its +-50 000 box.
-                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.DockingType > 0) continue;
+                        // A fighter dying with cargo (KIPlayer+0x48): the crate markers until it explodes; without cargo none.
+                        // Remake option (Settings.DyingCargoMarkers): none at all.
+                        if (s.DyingWithCargo && !s.Gone && !s.Hidden && !s.RadarHidden)
+                        {
+                            if (Settings.DyingCargoMarkers) DrawCrate(Get(s), s.transform.position, s.Race == Standing.Void, cam, origin, centre);
+                            continue;
+                        }
+                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.DockingType > 0 || s.Target.untargetable) continue;
                         int f = s.Target.hostileToPlayer ? 0 : s.Target.friendToPlayer ? 1 : 2;
                         DrawShip(Get(s), s.transform.position, f, s.Target.HullFraction, radar.Locked == s.Target, cam, origin, centre);
                         DrawEmp(Get(s), s.Hp != null ? s.Hp.EmpFraction : 1f);
@@ -185,6 +193,12 @@ namespace GoF2Remake.UI
                         DrawShip(Get(sg), sg.transform.position, 1, sg.Target.HullFraction, radar.Locked == sg.Target, cam, origin, centre);
                 foreach (var c in Crate.All)   // the registry: a scene search every frame before
                     DrawCrate(Get(c), c.transform.position, c.race == 9, cam, origin, centre);
+                // Radar::draw 0x1570ec: a spectral filter's gas clouds (attr 57), off screen too with attr 58 (Omega).
+                var clouds = radar.Clouds;
+                if (radar.CloudRadar && clouds != null)
+                    for (int i = 0; i < clouds.Count; i++)
+                        if (clouds.IsLive(i) && clouds.ObjectOf(i) != null)
+                            DrawCloud(Get(clouds.ObjectOf(i)), clouds.PositionOf(i), radar.LockedCloud == i, radar.CloudOffScreen, cam, origin, centre);
 
                 // Lock ring and plate for ships / crates (after the navigation view, which owns them otherwise).
                 if (radar.LockFrame >= 0)
@@ -198,18 +212,30 @@ namespace GoF2Remake.UI
                     lockPlate.EnableInClassList("lock-plate--shown", true);
                     // Radar::drawCurrentLock 0x158548: "<name or race> NN%"; the Hijacker / the Informer their name alone; a Most
                     // Wanted criminal in its own colour.
-                    // Built again only when something on it changed (every frame allocated the text and the icon's name).
+                    // Built again only when something on it changed (every frame allocated the text and the icon's name), or
+                    // when the mining / navigation view wrote its own text on the shared plate meanwhile (an asteroid's ore or a
+                    // planet's name stayed on the ship's plate).
                     int pct = Mathf.RoundToInt(locked.HullFraction * 100f);
-                    if (locked != plateTarget || pct != platePct || locked.displayName != plateName || locked.race != plateRace)
+                    if (locked != plateTarget || pct != platePct || locked.displayName != plateName || locked.race != plateRace || lockOre.text != plateText)
                     {
                         plateTarget = locked; platePct = pct; plateName = locked.displayName; plateRace = locked.race;
                         string who = string.IsNullOrEmpty(locked.displayName) ? RaceName(locked.race) : locked.displayName;
                         lockOre.text = locked.plateNameOnly && !string.IsNullOrEmpty(locked.displayName) ? locked.displayName : $"{who} {pct}%";
+                        plateText = lockOre.text;
                         plateIcon = !locked.plateNoIcon && (locked.race >= 0 && locked.race <= 3 || locked.race == 8 || locked.race == 9) ? Tex($"race_{locked.race}") : null;
                     }
                     lockOre.EnableInClassList("lock-ore--wanted", locked.plateWanted);
                     lockClass.style.display = plateIcon != null ? DisplayStyle.Flex : DisplayStyle.None;
                     Image(lockClass, plateIcon);
+                }
+                else if (plateFree && radar.LockedCloud >= 0)
+                {
+                    // Radar::drawCurrentLock: a locked gas cloud's plate reads 3236 "Gas cloud", no icon.
+                    lockPlate.EnableInClassList("lock-plate--shown", true);
+                    plateTarget = null;
+                    lockOre.text = Localization.Get(3236);
+                    lockOre.EnableInClassList("lock-ore--wanted", false);
+                    lockClass.style.display = DisplayStyle.None;
                 }
             }
             List<Object> gone = null;
@@ -328,6 +354,26 @@ namespace GoF2Remake.UI
             var tex = !onScreen ? Tex(voidCrate ? "crate_off_void" : "crate_off") : near ? Tex("bracket") : Tex("crate_dot");
             Image(m.dot, tex);
             if (tex != null) Place(m.dot, p.x - tex.width / 2f, p.y - tex.height / 2f);
+        }
+
+        /// <summary>A gas cloud (Radar::draw): on screen the white diamond 0x4f1 with the distance under it while locked; off
+        /// screen, with the Omega (attr 58), 0x1f62 on the radar ellipse.</summary>
+        void DrawCloud(Marker m, Vector3 world, bool locked, bool offScreen, Camera cam, Vector2 origin, Vector2 centre)
+        {
+            bool onScreen = Project(cam, world, origin, centre, out var p, out _);
+            Show(m.bar, false); Show(m.fill, false); Show(m.bracket, false); Show(m.emp, false); Show(m.empFill, false);
+            bool dot = onScreen || (offScreen && !Vr.VrMode.Enabled);
+            Show(m.dot, dot);
+            Show(m.distance, onScreen && locked);
+            if (!dot) return;
+            var tex = onScreen ? Tex("crate_dot") : Tex("cloud_off");
+            Image(m.dot, tex);
+            if (tex != null) Place(m.dot, p.x - tex.width / 2f, p.y - tex.height / 2f);
+            if (onScreen && locked)
+            {
+                m.distance.text = Navigation.FormatDistance((world - cam.transform.position).magnitude / M);
+                Place(m.distance, p.x - 61f, p.y + 61f);
+            }
         }
 
         void UpdateStatus(PlayerHealth health, bool cinematic)

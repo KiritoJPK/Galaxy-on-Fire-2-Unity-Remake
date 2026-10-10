@@ -1,8 +1,6 @@
 // PlayerCollision.cs
 // PlayerEgo::calcCollision 0xab550 (Reference/research/ship_combat.md 2.9), on the player ship. Runs after the ship has
 // moved each frame, like PlayerEgo::update, over the landmarks, then the NPC ships, then the asteroids:
-// Remake: the ship is a sphere (ShipSpheres: centred on its hull, out to its farthest part) instead of a point, for the
-// obstacles and the asteroids below.
 //   station, jumpgate, freighters (Obstacle)   the ship is put on the surface of the volumes it is inside
 //                                              (projectCollisionOnSurface) and keeps flying, so it slides along them;
 //                                              camera hit() (shake 1000 ms, +-6 units); no damage
@@ -48,35 +46,6 @@ namespace GoF2Remake.Flight
         ChaseCamera chase;
         Mining mining;
         bool scraping, scrapedLastFrame;   // haptics: touching a landmark this frame / the frame before
-        // Remake: the ship's collision sphere (ShipSpheres: centred on its hull, out to its farthest part; in the ship's own
-        // space), measured again now and then (a new hull, a turret mounted)
-        Vector3 sphereLocal;
-        float sphereRadius, sphereCheckAt = -1f;
-        const float SphereCheckSeconds = 1f;
-        /// <summary>Remake: the collision sphere's centre (world) and radius (metres).</summary>
-        public Vector3 SphereCentre => transform.TransformPoint(sphereLocal);
-        public float SphereRadius => sphereRadius;
-
-        /// <summary>Editor aid: the collision sphere (cyan) and its centre, with the ship selected (Scene, or Game with Gizmos on).</summary>
-        void OnDrawGizmosSelected()
-        {
-            if (sphereRadius <= 0f) return;
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawWireSphere(SphereCentre, sphereRadius);
-            Gizmos.DrawWireSphere(SphereCentre, Mathf.Min(1f, sphereRadius * 0.05f));
-        }
-
-        void RefreshSphere()
-        {
-            if (Time.unscaledTime < sphereCheckAt) return;
-            sphereCheckAt = Time.unscaledTime + SphereCheckSeconds;
-            (sphereLocal, sphereRadius) = ShipSpheres.ForShip(transform);
-        }
-
-        // Remake: where the ship's sphere was last frame, for the mesh obstacles' sweep (Obstacle.SweepBlocked); none after a skip
-        Vector3 lastPosition;
-        bool hasLastPosition;
-        const float MaxSweepMeters = 300f;   // a longer step is a teleport (a jump, a launch), not flight
         const float ScrapeRumble = 0.35f;
         /// <summary>Docking at a story object: no collision while easing in, docked or leaving (set by the level).</summary>
         [System.NonSerialized] public ObjectDocking docking;
@@ -94,14 +63,15 @@ namespace GoF2Remake.Flight
         {
             TouchingStation = false;
             scraping = false;
-            if (off || health == null || health.Dead) { wormhole?.SetSound(false); scrapedLastFrame = false; hasLastPosition = false; return; }
-            if (mining != null && mining.State != Mining.Phase.Idle) { scrapedLastFrame = false; hasLastPosition = false; return; }
-            if (docking != null && docking.Busy && docking.State != ObjectDocking.Phase.Approach) { scrapedLastFrame = false; hasLastPosition = false; return; }   // easing onto a docking point
-            RefreshSphere();
+            if (off || health == null || health.Dead) { wormhole?.SetSound(false); scrapedLastFrame = false; return; }
+            if (mining != null && mining.State != Mining.Phase.Idle) { scrapedLastFrame = false; return; }
+            if (docking != null && docking.Busy && docking.State != ObjectDocking.Phase.Approach) { scrapedLastFrame = false; return; }   // easing onto a docking point
             CheckWormhole();
             if (cloak != null && cloak.Phasing) { scrapedLastFrame = false; return; }   // phased out: nothing solid
             CheckObstacles(true);
+            CheckHulls(true);
             CheckObstacles(false);
+            CheckHulls(false);
             CheckAsteroids();
             if (scraping)
             {
@@ -109,8 +79,6 @@ namespace GoF2Remake.Flight
                 Haptics.Rumble(ScrapeRumble);
             }
             scrapedLastFrame = scraping;
-            lastPosition = SphereCentre;
-            hasLastPosition = true;
         }
 
         void Hit()
@@ -124,30 +92,86 @@ namespace GoF2Remake.Flight
             for (int i = 0; i < all.Count; i++)
             {
                 var o = all[i];
-                if (o == null || o.landmark != landmarks || !o.Active) continue;
+                if (o == null || o.landmark != landmarks || !o.Active || o.UsesHull) continue;   // a hull: CheckHulls
                 if (ignoreGate && o.cubeIsContact) continue;
                 // Remake: the object being docked at doesn't block its own approach (the original's autopilot could pin the
                 // ship on a hull face when it started beside the object; from afar it comes in over the top anyway).
                 if (docking != null && docking.State == ObjectDocking.Phase.Approach && docking.Target != null
-                    && o.gameObject == docking.Target.gameObject) continue;
-                // Remake: the ship is its sphere (ShipSpheres), centred on its hull: it touches and is pushed out as a whole.
-                var centre = SphereCentre;
-                // Remake: a mesh obstacle stops a fast ship at the surface it would have flown through in one frame
-                bool swept = false;
-                if (hasLastPosition && (centre - lastPosition).sqrMagnitude < MaxSweepMeters * MaxSweepMeters
-                    && o.SweepBlocked(lastPosition, centre, sphereRadius, out var stop))
-                {
-                    transform.position += stop - centre;
-                    centre = stop;
-                    swept = true;
-                }
-                if (!o.Touches(centre, sphereRadius, out _) && !swept) continue;
-                transform.position += o.PushOut(centre, sphereRadius) - centre;
+                    && (o.gameObject == docking.Target.gameObject
+                        // ... nor the station a docking target stands in for (102: Tadram's pads)
+                        || (o.isStation && (o.transform.position - docking.Target.transform.position).sqrMagnitude < 1f))) continue;
+                var pos = transform.position;
+                if (!o.Touches(pos, out _)) continue;
+                transform.position = o.PushOut(pos);
                 if (o.isStation) TouchingStation = true;
                 scraping = true;
                 Hit();
             }
         }
+
+        // Remake (HullCollision): the landmarks' / freighters' real shapes. The ship is a sphere (ProbeRadius) pushed out of
+        // every hull it overlaps (Physics.ComputePenetration), so it slides along the hull as on the original's volumes,
+        // flies through its gaps and doesn't stop short of it in a box's empty corner.
+        static readonly Collider[] overlaps = new Collider[32];
+        SphereCollider probe;
+
+        void CheckHulls(bool landmarks)
+        {
+            if (!HullCollision.Any) return;
+            var pos = transform.position;
+            float r = ProbeRadius();
+            int n = HullCollision.Overlap(pos, r, overlaps);
+            for (int k = 0; k < n; k++)
+            {
+                var c = overlaps[k];
+                var body = HullCollision.BodyOf(c);
+                var o = body != null ? body.obstacle : null;
+                // Active: it has volumes too (a mod station's "collision": "none" has none, so no hull contact either).
+                if (o == null || o.landmark != landmarks || !o.Active) continue;
+                if (ignoreGate && o.cubeIsContact) continue;
+                // The object being docked at doesn't block its own approach, nor the station a docking target stands in for.
+                if (docking != null && docking.State == ObjectDocking.Phase.Approach && docking.Target != null
+                    && (o.gameObject == docking.Target.gameObject
+                        || (o.isStation && (o.transform.position - docking.Target.transform.position).sqrMagnitude < 1f))) continue;
+                probe.transform.position = pos;
+                if (!Physics.ComputePenetration(probe, pos, Quaternion.identity, c, c.transform.position, c.transform.rotation, out var dir, out float dist)) continue;
+                pos += dir * dist;
+                transform.position = pos;
+                if (o.isStation) TouchingStation = true;
+                scraping = true;
+                Hit();
+            }
+        }
+
+        /// <summary>Metres: the probe sphere round the ship's centre, a third of the model's largest extent (the original
+        /// tests the ship's centre point, so half the hull sank into a station). Made once per model.</summary>
+        float ProbeRadius()
+        {
+            var ship = GetComponent<ShipController>();
+            var model = ship != null ? ship.visualModel : null;
+            if (probe == null)
+            {
+                var go = new GameObject("CollisionProbe") { layer = HullCollision.ProbeLayer };
+                go.transform.SetParent(transform, false);
+                probe = go.AddComponent<SphereCollider>();
+                probe.isTrigger = true;
+            }
+            if (model != probeModel)
+            {
+                probeModel = model;
+                float size = 20f;
+                if (model != null)
+                {
+                    var b = new Bounds(model.position, Vector3.zero);
+                    foreach (var mr in model.GetComponentsInChildren<MeshRenderer>()) b.Encapsulate(mr.bounds);
+                    size = Mathf.Max(b.size.x, Mathf.Max(b.size.y, b.size.z));
+                }
+                probe.radius = Mathf.Clamp(size / 3f, 3f, 60f);
+            }
+            return probe.radius;
+        }
+
+        Transform probeModel;
 
         void CheckWormhole()
         {
@@ -172,25 +196,16 @@ namespace GoF2Remake.Flight
         /// <summary>PlayerEgo::calcCollision: an asteroid touched (the volatile goods' +0.2).</summary>
         public event System.Action AsteroidHit;
 
-        /// <summary>Remake: the asteroid's cube (+-radius) grown by the ship's sphere; its own hit boxes (if any) as they are.</summary>
-        bool TouchesAsteroid(Target t, Vector3 centre)
-        {
-            if (t.boxes != null && t.boxes.Length > 0) return t.Contains(centre);
-            var d = t.transform.position - centre;
-            float r = t.radius + sphereRadius;
-            return Mathf.Abs(d.x) < r && Mathf.Abs(d.y) < r && Mathf.Abs(d.z) < r;
-        }
-
         /// <summary>The asteroid part: the asteroid is destroyed, the player takes 20.</summary>
         void CheckAsteroids()
         {
-            var pos = SphereCentre;   // Remake: the ship's sphere, not its centre point
+            var pos = transform.position;
             var all = Target.All;
             for (int i = all.Count - 1; i >= 0; i--)
             {
                 var t = all[i];
                 if (t == null || !t.isAsteroid || !t.Alive) continue;
-                if (!TouchesAsteroid(t, pos)) continue;
+                if (!t.Contains(pos)) continue;
                 t.Damage(9999f);
                 if (!health.invulnerable) health.Target.Damage(20f);
                 AsteroidHit?.Invoke();   // volatile goods: +0.2 (VolatileCargo)

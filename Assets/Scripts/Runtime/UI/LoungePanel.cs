@@ -168,6 +168,10 @@ namespace GoF2Remake.UI
             if (on != root.ClassListContains("lounge-open")) OnViewChanged();
             if (built && tagItems.Count != level.VisitorAgentCount) Build();   // remake multiplayer: event missions' visitors joined
             if (!on || tags.panel == null) return;
+            // Remake (#82): the camera puts the visitor talked to in the middle of the room left of the chat window.
+            var wb = chatWindow.worldBound;
+            float panelW = root.panel.visualTree.worldBound.width;
+            if (selected >= 0 && wb.width > 0f && panelW > 0f) level.ChatFrameX = Mathf.Clamp(wb.xMin * 0.5f / panelW, 0.15f, 0.5f);
             var cam = level.MainCamera;
             if (cam == null) return;
             for (int i = 0; i < tagItems.Count; i++)
@@ -189,6 +193,7 @@ namespace GoF2Remake.UI
         {
             if (index < 0 || index >= level.VisitorAgentCount) return;
             selected = index;
+            level.FocusVisitor(index);   // remake: the camera turns to them and zooms in a little
             var a = level.VisitorAgent(index);
             chat = new LoungeChat(Db, a, Station, smallTalkUsed);
             chat.Start();
@@ -211,6 +216,7 @@ namespace GoF2Remake.UI
         {
             if (chat == null) return;
             chat = null;
+            level.FocusVisitor(-1);   // back to the room's view
             menu.PlayVoice(null);
             root.RemoveFromClassList("chat-open");
             RefreshMarks();
@@ -264,9 +270,9 @@ namespace GoF2Remake.UI
                     // choice (#31), only with the Kaamo Club owned 327 asks "sell your old ship or keep it" (330 / 331); the
                     // turntable's ship swapped, toast 303.
                     var current = chat;
-                    void Trade(bool keep)
+                    void Trade(bool keep, bool move = false)
                     {
-                        string refusal = current.ConfirmShipTrade(keep);
+                        string refusal = current.ConfirmShipTrade(keep, move);
                         if (refusal != null) { menu.ShowDialog(refusal, null, true); return; }
                         level.ReplacePlayerShip(Session.ShipIndex);
                         if (keep) level.RefreshParkedShips();
@@ -274,7 +280,8 @@ namespace GoF2Remake.UI
                         AfterDeal(current);
                     }
                     if (KaamoClub.Owned)
-                        menu.ShowChoice(Localization.Get(327), Localization.Get(330), Localization.Get(331), () => Trade(false), () => Trade(true));
+                        menu.ShowChoice(Localization.Get(327), Localization.Get(330), Localization.Get(331), () => Trade(false),
+                            () => menu.AskMoveEquipment(move => Trade(true, move)));   // #83
                     else Trade(false);
                     return;
                 }

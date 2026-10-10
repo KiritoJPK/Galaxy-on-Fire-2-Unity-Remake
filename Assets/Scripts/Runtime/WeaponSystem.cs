@@ -134,9 +134,11 @@ namespace GoF2Remake.Flight
         }
         public string SecondaryName => SelectedSecondary >= 0 ? UI.ItemInfo.ItemName(SelectedSecondary) : "";
         /// <summary>The mounted secondary items in mount order, each once (Hud::initHudMenu(1)'s list).</summary>
-        public List<int> SecondaryItems()
+        public List<int> SecondaryItems() => SecondaryItems(new List<int>());
+        /// <summary>The same into a list of the caller's (cleared first; the HUD's weapon strip asks every frame).</summary>
+        public List<int> SecondaryItems(List<int> items)
         {
-            var items = new List<int>();
+            items.Clear();
             foreach (var r in rigs) if (r.gun.isSecondary && !items.Contains(r.gun.itemIndex)) items.Add(r.gun.itemIndex);
             return items;
         }
@@ -225,6 +227,11 @@ namespace GoF2Remake.Flight
                 var it = db.Item(e.item);
                 if (it != null && it.categoryId == 28) { fireRate = 1f - it.Attr(39) / 100f; damageFactor = 1f + it.Attr(40) / 100f; }
             }
+            // MGame::OnInitialize 0x1a6ebc -> PlayerEgo::pitchAllPrimaryGuns(1 - getFireRateFactor()) when it is >= 0: Gun+0xb0,
+            // the raw FMOD pitch Player::playShootSound passes to FModSound::play (set only when != 0; raw x 4 = octaves,
+            // EventI::getPitch). The Nirai Overdrive (+20 % fire rate) raises the primaries' shots by 0.8 octaves; the
+            // Overcharge (-10 %) gives a negative value the original skips: no change (#76).
+            primaryPitch = 1f - fireRate > 0f ? Mathf.Pow(2f, 4f * (1f - fireRate)) : 1f;
             int p = 0, s = 0;
             for (int e = 0; e < equipment.Count; e++)
             {
@@ -234,8 +241,10 @@ namespace GoF2Remake.Flight
                 if (item.type != "primary" && !secondary) continue;
                 var mounts = secondary ? secondaryMounts : primaryMounts;
                 int slot = secondary ? s++ : p++;
-                if (slot >= mounts.Count) { Debug.LogWarning($"WeaponSystem: no free {(secondary ? "secondary" : "primary")} mount for {item.name}"); continue; }
-                var gun = new Gun(item, MountToLocal(mounts[slot]), secondary);
+                // Remake: more weapons than the model has mounts (a mod's or a Kaamo upgrade's extra slots) reuse the mounts in
+                // turn, the ship's centre without any; they were skipped, so an extra secondary could be neither selected nor fired.
+                var at = mounts.Count > 0 ? MountToLocal(mounts[slot % mounts.Count]) : Vector3.zero;
+                var gun = new Gun(item, at, secondary);
                 gun.Ignores = t => t.playerProof;   // multiplayer: through squadmates
                 if (!secondary)
                 {
@@ -278,6 +287,7 @@ namespace GoF2Remake.Flight
                 rig.loop.loop = true;
                 rig.loop.playOnAwake = false;
                 rig.loop.spatialBlend = 0f;
+                if (!gun.isSecondary) rig.loop.pitch = primaryPitch;   // pitchAllPrimaryGuns
             }
             gun.owner = owner;
             gun.Hit += (i, target, point) => OnHit(rig, i, target, point);
@@ -391,7 +401,7 @@ namespace GoF2Remake.Flight
             if (primaryHeld && FireClaimed != null && FireClaimed()) primaryHeld = false;   // the mining beam
             if (!halted && !TurretView && useBuiltInInput && fireSecondaryAction.WasReleasedThisFrame() && !secondaryLatched) FireSecondary();
             if (!secondaryPressed) secondaryLatched = false;
-            if (!halted && useBuiltInInput && cycleSecondaryAction.WasPressedThisFrame()) CycleSecondary();
+            if (!Navigation.PressesBlocked && useBuiltInInput && cycleSecondaryAction.WasPressedThisFrame()) CycleSecondary();
 
             if (liberator != null) UpdateLiberator(dtMs);
             var cam = Camera.main;
@@ -487,6 +497,8 @@ namespace GoF2Remake.Flight
 
         VolatileCargo volatileCargo;
         ChaseCamera chaseCam;
+        /// <summary>The primaries' shot pitch (Gun+0xb0, pitchAllPrimaryGuns): a weapon mod speeding up the fire rate raises it.</summary>
+        float primaryPitch = 1f;
 
         /// <summary>Player::shoot: every shot + 0.008 on the volatile meter; Gun::shootAt: TargetFollowCamera::hitSmall
         /// (50 ms, +-2 units).</summary>
@@ -501,7 +513,8 @@ namespace GoF2Remake.Flight
         void PlayShot(Rig r)
         {
             var clip = r.fx != null ? r.fx.Shot : null;
-            if (clip != null) ShotVoices.Play(clip, shotVolume * Settings.SfxVolume);   // two voices per shot sound (FEV max_playbacks)
+            // Two voices per shot sound (FEV max_playbacks); the primaries at the weapon mod's pitch (pitchAllPrimaryGuns).
+            if (clip != null) ShotVoices.Play(clip, shotVolume * Settings.SfxVolume, r.gun.isSecondary ? 1f : primaryPitch);
         }
 
         /// <summary>Radar::draw's auto-aim flag (KIPlayer+0x6f) for the beams: the nearest target (to the player) on screen,
@@ -615,7 +628,7 @@ namespace GoF2Remake.Flight
             liberator = r;
             Session.LiberatorAsteroids = 0;   // Gun::shootAt 0xb3: a new Liberator starts medal 44's count
             var ship = GetComponent<ShipController>();
-            if (ship != null) ship.steeringLocked = true;
+            if (ship != null) { ship.steeringLocked = true; ship.CenterMouse(); }   // the rocket starts straight
             if (liberatorAnchor == null) liberatorAnchor = new GameObject("Liberator camera target").transform;
             PlaceLiberatorAnchor();
             var chase = Camera.main != null ? Camera.main.GetComponent<ChaseCamera>() : null;
@@ -657,7 +670,18 @@ namespace GoF2Remake.Flight
         {
             if (!liberator.gun.BombInFlight || (owner != null && !owner.Alive)) { EndLiberator(); return; }
             var ship = GetComponent<ShipController>();
-            if (!Navigation.InputHalted && !Blocked) liberator.gun.SteerBullet(0, ship != null ? ship.SteerInput : Vector2.zero, dtMs, LiberatorTurnRadPerMs);
+            if (!Navigation.InputHalted && !Blocked)
+            {
+                // Remake: steered as seen through the camera, which follows the rocket upright (world up, like the
+                // original's TargetFollowCamera::useTargetsUpVector(false)): stick right turns it right on screen, stick
+                // up up, whatever the ship's roll at launch (turned about the rocket's own up and right, a Liberator fired
+                // upside down steered mirrored); the flight's invert options apply.
+                var stick = ship != null ? ship.SteerInput : Vector2.zero;
+                if (ship != null) stick = new Vector2(ship.invertYaw ? -stick.x : stick.x, ship.invertPitch ? -stick.y : stick.y);
+                var cam = Camera.main;
+                if (cam != null) liberator.gun.SteerBullet(0, stick, dtMs, LiberatorTurnRadPerMs, cam.transform.up, cam.transform.right);
+                else liberator.gun.SteerBullet(0, stick, dtMs, LiberatorTurnRadPerMs);
+            }
             PlaceLiberatorAnchor();
             UpdateLiberatorSound(dtMs);
         }
@@ -706,7 +730,7 @@ namespace GoF2Remake.Flight
             liberator = null;
             GuidedRocket = null;
             var ship = GetComponent<ShipController>();
-            if (ship != null) ship.steeringLocked = false;
+            if (ship != null) { ship.steeringLocked = false; ship.CenterMouse(); }   // the ship doesn't turn with the rocket's last steer
             var chase = Camera.main != null ? Camera.main.GetComponent<ChaseCamera>() : null;
             if (chase != null && chase.follow == liberatorAnchor)
             {

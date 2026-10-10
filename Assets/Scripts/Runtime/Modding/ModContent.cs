@@ -620,6 +620,11 @@ namespace GoF2Remake.Modding
                                 string asm = ModelOverrideAssembly(t);
                                 if (db.AssemblyByName(asm) == null)
                                     db.Assemblies.Add(new AssemblyData { name = asm, pack = ModShips.Pack, category = "ships", origin = "mod " + mod.Id });
+                            }
+                            // Its own hardpoints ("mounts": weapon / turret / exhaust points), with a new model or on the
+                            // ship's own (more primaries or secondaries need points to fire from; extra ones share them).
+                            if (ModJson.Has(o, "mounts"))
+                            {
                                 var own = JsonUtility.FromJson<CustomShipData>(d.data);
                                 if (own.mounts != null && own.mounts.Count > 0)
                                 {

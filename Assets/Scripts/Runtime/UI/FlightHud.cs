@@ -276,6 +276,8 @@ namespace GoF2Remake.UI
 
         // ---- touch controls (TouchControls, touch_hud.md) ----------------------------------------------------------
 
+        readonly List<int> stripItems = new List<int>();
+
         void BuildTouchControls()
         {
             touch = new TouchControls(root.Q("touchLayer"), root, root.Q("navButtons"))
@@ -292,6 +294,10 @@ namespace GoF2Remake.UI
                 PauseReleased = () => { PlayButton(false); OpenPause(); },
                 LevelOut = () => ship?.AlignToHorizon(),
                 CycleSecondary = () => weapons?.CycleSecondary(),
+                SecondaryList = () => weapons?.SecondaryItems(stripItems),
+                SecondaryAmmo = item => weapons != null ? weapons.AmmoOf(item) : 0,
+                SelectedSecondary = () => weapons != null ? weapons.SelectedSecondary : -1,
+                SelectSecondary = item => weapons?.SelectSecondary(item),
                 Dodge = side => { if (nav == null || !nav.MenuOpen) ship?.RequestDodge(side); },
                 GetThrust = () => ship != null ? ship.Model.Throttle : 0f,
                 SetThrust = t => ship?.SetThrottle(t),
@@ -632,7 +638,7 @@ namespace GoF2Remake.UI
             bool cursor = Settings.MouseSteering && !Application.isMobilePlatform && InputMode.Current == InputKind.KeyboardMouse && !Vr.VrMode.Enabled
                       && !pauseMenu.IsOpen && !(nav != null && nav.MenuOpen) && !StarMap.IsOpen && !storyDialogue.IsOpen
                       && !level.Cutscene && level.LaunchCameraOver && Time.timeScale > 0f && (health == null || !health.Dead)
-                      && (weapons == null || !weapons.SteeringMissile) && (level.Docking == null || !level.Docking.Busy)
+                      && (level.Docking == null || !level.Docking.Busy)   // the Liberator too: the mouse steers it (it was off)
                       && !GoF2Remake.Multiplayer.NetChat.Typing   // multiplayer: the cursor free for the chat
                       && !MultiplayerWindow.IsOpenAny;            // and for the multiplayer window
             // PlayerEgo::right etc. forward to the MiningGame while drilling (0xacd48): the mouse steers the drill then (the PC
@@ -1405,14 +1411,22 @@ namespace GoF2Remake.UI
             var cam = Camera.main;
             if (cam == null || crosshair.panel == null) return;
             // Hud::draw at crosshairPos: in the turret view (PlayerEgo::setTurretMode) where the turret's gun points, the
-            // plasma collectors with their own crosshair (0x1f5d, GoF2Hud/plasma_crosshair); else the ship's nose.
+            // plasma collectors with their own crosshair (0x1f5e, GoF2Hud/plasma_crosshair_idle; 0x1f5d plasma_crosshair while
+            // plasma is in range); else the ship's nose.
             var viewTurret = level != null ? level.Turret : null;
             bool turretView = viewTurret != null && viewTurret.InTurretView;
             var aim = turretView ? viewTurret.GunPosition + viewTurret.AimForward * CrosshairDistanceMeters
                                  : ship.transform.position + ship.transform.forward * CrosshairDistanceMeters;
-            crosshair.EnableInClassList("crosshair--plasma", turretView && viewTurret.IsCollector);
+            bool collector = turretView && viewTurret.IsCollector;
+            crosshair.EnableInClassList("crosshair--plasma", collector);
+            // PlayerEgo::draw: 0x1f5d while Radar::isPlasmaInRange, else 0x1f5e (#78: the remake showed 0x1f5d all the time).
+            crosshair.EnableInClassList("crosshair--plasma-in", collector && level.GasClouds != null && level.GasClouds.PlasmaInRange);
             bool visible = Vector3.Dot(aim - cam.transform.position, cam.transform.forward) > 0f;
             crosshair.EnableInClassList("crosshair--hidden", !visible);
+            // PlayerEgo::draw 0xae4d0: on the autopilot (+0x158, setAutoPilot) only the throttle is drawn, no crosshair,
+            // except in the turret view (#85: the remake kept it). Transparent, not hidden: the throttle gauge and the lock
+            // rings still take its place.
+            crosshair.EnableInClassList("crosshair--autopilot", nav != null && nav.Autopilot && !turretView);
             if (!visible) return;
             var p = RuntimePanelUtils.CameraTransformWorldToPanel(crosshair.panel, aim, cam);
             var parent = crosshair.parent.worldBound;

@@ -264,6 +264,7 @@ namespace GoF2Remake.World
             // Ship combat: the player's Player object, the orbit's NPC traffic, the ship / salvage locks.
             Health = Player.gameObject.AddComponent<PlayerHealth>();
             Health.Setup(db, Player, chase, Weapons);
+            if (Player.visualModel != null) HullCollision.Attach(Player.visualModel.gameObject, Health.Target, null);   // NPC shots hit its real shape
             Collision = Player.gameObject.AddComponent<PlayerCollision>();
             Collision.Setup(Health, chase, Mining);
             Collision.wormhole = Wormhole;
@@ -301,9 +302,14 @@ namespace GoF2Remake.World
             Docking.Setup(db, Player, chase, Weapons);
             if (FreeLook != null)
                 FreeLook.Blocked = () => Cutscene || !LaunchCameraOver || (Mining != null && Mining.State != Mining.Phase.Idle)
-                                         || (Docking != null && Docking.Busy) || (Navigation != null && Navigation.Jumping)
+                                         || (Docking != null && Docking.Busy && Docking.State != ObjectDocking.Phase.Approach)   // the approach is an autopilot leg
+                                         || (Navigation != null && Navigation.Jumping)
                                          || (SystemJump != null && SystemJump.Cinematic) || (Health != null && Health.Dead);
-            if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && Docking.IsDocked && Docking.Hacking == null && !Cutscene;
+            // MGame::switchCamera / PlayerEgo::setTurretMode refuse the turret view only while docking to an asteroid, mining,
+            // for an auto turret and while the Liberator flies: through an object docking's ease-in and docked too (#91/92:
+            // the remake refused it from the approach on).
+            if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && (Docking.State == ObjectDocking.Phase.Entering || Docking.IsDocked)
+                                                                 && Docking.Hacking == null && !Cutscene;
             Navigation.Docking = Docking;
             Navigation.Ships = Traffic.Ships;
             Collision.docking = Docking;
@@ -352,7 +358,11 @@ namespace GoF2Remake.World
             Navigation.JumpsBlocked = () => NetArenaClient.InMatch || !Story.PlanetJumpsAllowed || Story.BlocksJumps(Layout.stationIndex, IsStoryOrbit) || (Siege != null && Siege.Active)
                                             || FreelanceBlocks   // a freelance mission's orbit (#32)
                                             || Events.EventRules.NoJumps   // an event's Restrict Travel
-                                            || (!Session.FreePlay && Story.Index == 65 && Layout.stationIndex == 100);   // escorting Khador (MGame::UseKhadorDrive)
+                                            || (!Session.FreePlay && Story.Index == 65 && Layout.stationIndex == 100)   // escorting Khador (MGame::UseKhadorDrive)
+                                            // Remake (#84): at 42 the way out of the alien orbit is the wormhole, which shows the
+                                            // mother ship's explosion; its 0xa0 mission isn't a level mission there (its target is
+                                            // that orbit), so the original's Khador Drive skipped the ending.
+                                            || (!Session.FreePlay && Story.Index == 42 && Layout.stationIndex == Session.VoidOrbit);
             // MGame::UseKhadorDrive 0x1a9480 has no Void rule of its own: the mission gate above (Story.BlocksJumps, 525) is the
             // only refusal, and in the alien orbit the drive returns to Status+0x84 (#26: the remake used to refuse it there
             // through the main story).
@@ -363,6 +373,7 @@ namespace GoF2Remake.World
                                            || (Siege != null && Siege.Active) || Events.EventRules.NoJumps;
             Radar = Player.gameObject.AddComponent<CombatRadar>();
             Radar.Setup(db, Player, Navigation, Mining, Weapons, Health, Traffic);
+            Radar.Clouds = GasClouds;
             Traffic.LockedTarget = () => Radar != null ? Radar.Locked : null;   // locking a Most Wanted criminal uncovers it
             // Equipment (combat_equipment.md): the cloak (autopilot menu entry), the time extender, the repair / transfusion beams.
             Cloak = PlayerCloak.Attach(Player.gameObject, db, Session.ShipIndex, Health.Target, Player.visualModel);
@@ -606,6 +617,9 @@ namespace GoF2Remake.World
         void AddObstacles()
         {
             OrbitBuilder.AddObstacles(Layout, Station, Jumpgate);
+            // Remake: the player slides along their real shapes (HullCollision); shots pass them as in the original.
+            if (Station != null) HullCollision.Attach(Station, null, Station.GetComponent<Obstacle>());
+            if (Jumpgate != null) HullCollision.Attach(Jumpgate, null, Jumpgate.GetComponent<Obstacle>());
             // Remake mods: a station of its own model sizes the dock range and the launch point.
             var own = Modding.ModWorld.ModelOf(Layout.stationIndex);
             var obstacle = Station != null ? Station.GetComponent<Obstacle>() : null;
@@ -651,6 +665,7 @@ namespace GoF2Remake.World
             foreach (var lg in model.GetComponentsInChildren<LODGroup>(true)) lg.ForceLOD(0);
             PlayerHull.PrepareModel(db, model);   // the Void ship at its full size
             ctrl.visualModel = model.transform;
+            if (Health != null) HullCollision.Attach(model, Health.Target, null);
 
             var ship = db.Ship(shipIndex);
             var equipment = new System.Collections.Generic.List<ItemData>();
@@ -695,9 +710,9 @@ namespace GoF2Remake.World
                 root.transform.SetPositionAndRotation(
                     OrbitLayout.ToUnity(UndockPoint),
                     OrbitLayout.RotationToUnity(new Vector3(0f, (Random.value < 0.5f ? 1 : -1) * OrbitLayout.UndockYaw / 65536f * 2f * Mathf.PI, 0f)));
-            // Multiplayer: players launching together sit side by side, 80 m apart by client id; an arena's spawn ring.
+            // Multiplayer: an arena's spawn ring. (Players launching together were set 80 m apart by client id: a server's
+            // client ids are never reused, so after a few dozen joins players launched 2-3 km to the side of the station.)
             if (NetArenaClient.InMatch) { var spawn = NetArenaClient.SpawnPose(); root.transform.SetPositionAndRotation(spawn.position, spawn.rotation); }
-            else if (NetGame.Active) root.transform.position += root.transform.right * (NetGame.LocalId * 80f);
             // Multiplayer: answering a squadmate's distress call, next to them (NetDistress).
             if (NetGame.Active && Session.ArrivedByTravel && NetDistress.ArrivalNear(Layout.stationIndex, out var near, out var nearFacing))
                 root.transform.SetPositionAndRotation(near, nearFacing);
@@ -766,6 +781,7 @@ namespace GoF2Remake.World
             FreeLook = FreeLookCamera.Attach(root, chase, Turret);
             // Level::createGasClouds: the Supernova plasma clouds (a spectral filter mounted).
             GasClouds = GasCloudField.Spawn(db, Layout, ctrl, Turret);
+            if (Radar != null) Radar.Clouds = GasClouds;   // the spectral filters' markers and lock
             Extender = TimeExtender.Attach(root, db);
 
             // Asteroid mining (lock, autopilot approach, minigame): needs a drill (category 19) to lock.

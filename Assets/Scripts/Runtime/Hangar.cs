@@ -20,6 +20,7 @@ using UnityEngine;
 
 namespace GoF2Remake.Data
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class Hangar
     {
         public enum Result { Ok, NoStock, NoCredits, NothingToSell, NoFreeSlot, Swap, NotMountable, SameShip, NotSaleable, Passengers, AlreadyStored }
@@ -40,7 +41,33 @@ namespace GoF2Remake.Data
             AddPrices(Session.Equipment.Select(e => e.item).ToList());
             AddPrices(Session.Cargo.Select(e => e.item).ToList());
             AddPrices(stock.items.Select(e => e.item).ToList());
+            PinPrices();
             RecordKnownPrices();
+        }
+
+        // Remake: an item's price is fixed for the docking. Each list's prices come from a fresh Random(station), so an
+        // item's price depends on its place in the lists, and a trade moving it between the stock and the hold could
+        // shift it by up to +-2 %: in multiplayer the window is priced again after every trade (the host's shared stock),
+        // and buying at 724 and selling at 746 at once made money with every click. The first price an item gets at
+        // this docking is kept (NewDocking clears them; another station starts afresh).
+        static readonly Dictionary<int, int> pinned = new Dictionary<int, int>();
+        static int pinnedStation = -1;
+
+        /// <summary>A new docking (StationLevel): its prices are worked out afresh.</summary>
+        public static void NewDocking()
+        {
+            pinned.Clear();
+            pinnedStation = -1;
+        }
+
+        void PinPrices()
+        {
+            if (pinnedStation != Station) { pinned.Clear(); pinnedStation = Station; }
+            foreach (var item in prices.Keys.ToList())
+            {
+                if (pinned.TryGetValue(item, out int p)) prices[item] = p;
+                else pinned[item] = prices[item];
+            }
         }
 
         void AddPrices(List<int> items)
@@ -71,7 +98,7 @@ namespace GoF2Remake.Data
         public int PriceOf(int item)
         {
             // An item that joined the list after this opening (multiplayer: another player's sale) gets its price now.
-            if (!prices.ContainsKey(item)) AddPrices(new List<int> { item });
+            if (!prices.ContainsKey(item)) { AddPrices(new List<int> { item }); PinPrices(); }
             return Story.AdjustPrice(Station, item, prices.TryGetValue(item, out int p) ? p : 0);
         }
         /// <summary>Item::isSaleable: story items (Gunant's Drill, the Alien Remains...) can't be sold or demounted (323).</summary>
@@ -99,10 +126,54 @@ namespace GoF2Remake.Data
         {
             var s = Ship?.slots;
             if (s == null) return 0;
-            return type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + Session.ModLevel(2), _ => 0 };   // mod 2: +1 equipment slot per level
+            // mod 2: +1 equipment slot per level; the cloak bay (remake option) holds a mounted cloak besides the slots
+            return type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + Session.ModLevel(2) + BaySlot(db, Session.ShipIndex, Session.Equipment), _ => 0 };
         }
 
+        /// <summary>Remake option (Settings.CloakBay): the Specter (44) and the Scimitar (49) have the U'tool built in
+        /// (Ship::hasCloakIntegrated, PlayerCloak); a cloak mounted on them goes into that bay, replacing it, instead of
+        /// taking one of the equipment slots (the original: a slot like any equipment).</summary>
+        public static bool HasCloakBay(int ship) => (ship == 44 || ship == 49) && Settings.CloakBay;
+
+        static bool IsCloak(Database db, int item) => db.Item(item)?.categoryId == 21;
+
+        /// <summary>The bay's extra equipment place: 1 while a cloak is mounted on a ship with a cloak bay.</summary>
+        public static int BaySlot(Database db, int ship, List<ItemStack> equipment) =>
+            HasCloakBay(ship) && equipment != null && equipment.Exists(e => IsCloak(db, e.item)) ? 1 : 0;
+
+        /// <summary>'item' goes into the empty cloak bay of 'ship' (a cloak, the bay free).</summary>
+        public static bool BayTakes(Database db, int ship, int item, List<ItemStack> equipment) =>
+            HasCloakBay(ship) && IsCloak(db, item) && BaySlot(db, ship, equipment) == 0;
+
         public int TypeOf(int item) => db.Item(item)?.TypeId ?? 4;
+
+        /// <summary>Remake: the flown ship's equipment fitted to its slots on docking (StationLevel). A mod lowering a ship's
+        /// slots, or a debug hull swap (PlayerHull), could leave more mounted than it has slots, and in flight each mounted
+        /// weapon gets a gun (WeaponSystem reuses the mounts): what is past a type's slots goes to the hold, in slot order,
+        /// like a bought ship's (SwitchTo); the story's unsaleable items keep their place. Returns how many moved.</summary>
+        public static int FitToSlots(Database db)
+        {
+            var s = db.Ship(Session.ShipIndex)?.slots;
+            if (s == null) return 0;
+            int Slots(int type) => type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + Session.ModLevel(2) + BaySlot(db, Session.ShipIndex, Session.Equipment), _ => int.MaxValue };
+            int TypeOfItem(int item) => db.Item(item)?.TypeId ?? 4;
+            var used = new int[5];
+            foreach (var e in Session.Equipment) if (!IsSaleable(e.item)) used[Mathf.Clamp(TypeOfItem(e.item), 0, 4)]++;
+            var keep = new List<ItemStack>();
+            int moved = 0;
+            foreach (var e in Session.Equipment)
+            {
+                int type = Mathf.Clamp(TypeOfItem(e.item), 0, 4);
+                if (!IsSaleable(e.item) || used[type] < Slots(type))
+                {
+                    if (IsSaleable(e.item)) used[type]++;
+                    keep.Add(e);
+                }
+                else { Shop.AddToCargo(e.item, Mathf.Max(1, e.amount)); moved++; }
+            }
+            if (moved > 0) Session.Equipment = keep;
+            return moved;
+        }
 
         /// <summary>Indices into Session.Equipment of the items mounted in slots of this type, in slot order.</summary>
         public List<int> MountedOfType(int type)
@@ -174,7 +245,7 @@ namespace GoF2Remake.Data
                 Stock.items.Insert(at < 0 ? Stock.items.Count : at, new ItemStack(item, 1));   // the stock stays in index order
             }
             if (!Storage) Shared(item, 1, 0);   // multiplayer: the shared stock
-            if (!Storage) ChangeCredits(PriceOf(item));
+            if (!Storage) ChangeCredits(GoF2Remake.Multiplayer.NetFactionsClient.SellPrice(Station, PriceOf(item)));   // multiplayer: no more than a member pays
             Session.SeenItems.Add(item);
             if (Session.IsBooze(item)) Session.BoozeTypes.Add(item);   // HangarWindow::selectItem: a committed booze trade
             return Result.Ok;
@@ -207,6 +278,7 @@ namespace GoF2Remake.Data
                 swapWith = perSlot ? -1 : Session.Equipment.FindIndex(e => db.Item(e.item)?.categoryId == it.categoryId);
                 if (swapWith >= 0) return Result.Swap;
             }
+            if (BayTakes(db, Session.ShipIndex, item, Session.Equipment)) return Result.Ok;   // the cloak bay (remake option)
             return MountedOfType(type).Count < SlotCount(type) ? Result.Ok : Result.NoFreeSlot;
         }
 
@@ -339,13 +411,17 @@ namespace GoF2Remake.Data
         /// mounted on it; this takes it off the flown ship (the new hull then starts bare, or with what its own storage row
         /// kept). Null with the option off: the items move over as in the original. The story's unsaleable items (the jump
         /// drive, a mission's gear) never stay behind: they stay mounted and move to the new hull.</summary>
-        static List<ItemStack> EquipmentToStore()
+        static List<ItemStack> EquipmentToStore(bool moveToNewShip = false)
         {
-            if (!Settings.KaamoKeepsEquipment) return null;
+            if (moveToNewShip || !Settings.KaamoKeepsEquipment) return null;
             var kept = Session.Equipment.Where(e => IsSaleable(e.item)).ToList();
             Session.Equipment = Session.Equipment.Where(e => !IsSaleable(e.item)).ToList();
             return kept;
         }
+
+        /// <summary>Remake (#83): "Keep" asks whether the equipment moves to the new ship (Yes) or stays on the old hull in
+        /// the club (No): only while the option keeps it there and something the player may move is mounted.</summary>
+        public static bool KeepAsksAboutEquipment => Settings.KaamoKeepsEquipment && Session.Equipment.Any(e => IsSaleable(e.item));
 
         /// <summary>The new hull becomes the flown ship: every mounted item moves to the first free slot of its type (in
         /// slot order, secondaries with their ammo), the rest to the hold; the cargo stays with the player. 'mount' = the
@@ -359,7 +435,7 @@ namespace GoF2Remake.Data
             foreach (var e in mounted)
             {
                 int type = TypeOf(e.item);
-                if (MountedOfType(type).Count < SlotCount(type)) Session.Equipment.Add(e);
+                if (MountedOfType(type).Count < SlotCount(type) || BayTakes(db, ship, e.item, Session.Equipment)) Session.Equipment.Add(e);
                 else AddToCargo(e.item, Mathf.Max(1, e.amount));
             }
         }
@@ -397,13 +473,13 @@ namespace GoF2Remake.Data
             return Result.Ok;
         }
 
-        public bool KeepAndBuyShipFor(int ship, int price)
+        public bool KeepAndBuyShipFor(int ship, int price, bool moveEquipment = false)
         {
             if (CanKeepAndBuyShipFor(ship, price, out _) != Result.Ok) return false;
             int old = Session.ShipIndex;
             var oldMods = Session.ShipMods;
             if (!Cheats.FreeShopping) ChangeCredits(-price);
-            var kept = EquipmentToStore();
+            var kept = EquipmentToStore(moveEquipment);
             SwitchTo(ship, null);
             KaamoClub.Store(old, 0, oldMods, kept);
             return true;
@@ -421,13 +497,13 @@ namespace GoF2Remake.Data
             return Result.Ok;
         }
 
-        public bool KeepAndBuyShip(int ship)
+        public bool KeepAndBuyShip(int ship, bool moveEquipment = false)
         {
             if (CanKeepAndBuyShip(ship, out _) != Result.Ok) return false;
             int old = Session.ShipIndex;
             var oldMods = Session.ShipMods;
             if (!Cheats.FreeShopping) ChangeCredits(-ShipPrice(ship));
-            var kept = EquipmentToStore();
+            var kept = EquipmentToStore(moveEquipment);
             SwitchTo(ship, Stock.TakeMods(ship));   // the bought row's mods (OnTouchEnd: getMods of the row, both branches)
             Stock.ships.Remove(ship);   // the bought row is gone
             GoF2Remake.Multiplayer.NetStock.ShipChanged(Station, ship, -1);

@@ -770,6 +770,18 @@ namespace GoF2Remake.UI
             Select(dialogYes);
         }
 
+        /// <summary>Remake (#83): after "Keep" (331), whether the equipment mounted now moves to the new ship (true) or stays on
+        /// the old hull in the Kaamo Club (false); asked only while Settings.KaamoKeepsEquipment would keep it there and
+        /// something movable is mounted (Hangar.KeepAsksAboutEquipment), else 'then(false)' at once.</summary>
+        public void AskMoveEquipment(System.Action<bool> then)
+        {
+            if (!Hangar.KeepAsksAboutEquipment) { then(false); return; }
+            string text = string.Format(Localization.Extra("kaamoMoveEquipment",
+                "Move your equipment to the new ship?\n\nYes: it is mounted on the new ship (what doesn't fit goes to the cargo hold).\nNo: it stays on your {0} in the Kaamo Club."),
+                ItemInfo.ShipName(Session.ShipIndex));
+            ShowChoice(text, Localization.Get(134), Localization.Get(135), () => then(true), () => then(false));
+        }
+
         /// <summary>ChoiceWindow with its own two labels (327: 330 "Sell" / 331 "Keep").</summary>
         public void ShowChoice(string text, string yes, string no, System.Action onYes, System.Action onNo)
         {
@@ -1706,12 +1718,22 @@ namespace GoF2Remake.UI
                 root.focusController?.IgnoreEvent(e);
                 return;
             }
-            if (!DialogOpen && SystemMenuOpen && DebugPage && horizontal)
+            if (!DialogOpen && SystemMenuOpen && DebugPage && (horizontal || vertical))
             {
-                // Left / right steps the focused option (OptionControl.Step, like the pause menu).
+                // Left / right step a value (a stepper, segments, a slider: OptionControl.Step, like the pause menu); else
+                // the keys move on screen (SpatialNav): the toggles stand two to a row, the Give items buttons side by side
+                // (a toggle flipped on left / right, and down went to the button beside).
                 var f = root.focusController?.focusedElement as VisualElement;
                 var c = stationOptions.Find(o => o.Field == f);
-                if (c != null) c.Step(e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1);
+                if (horizontal && c != null && c.StepsSideways) c.Step(e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1);
+                else if (vertical && CheatsCatalog.MoveVertical(f, e.direction == NavigationMoveEvent.Direction.Up ? -1 : 1)) { }
+                else if (System.Array.IndexOf(items, f) < 0) NextNavigable(items, -1, 1)?.Focus();
+                else
+                {
+                    int dx = !horizontal ? 0 : e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1;
+                    int dy = !vertical ? 0 : e.direction == NavigationMoveEvent.Direction.Up ? -1 : 1;
+                    SpatialNav.Next(items, f, dx, dy, Navigable)?.Focus();
+                }
                 e.StopPropagation();
                 root.focusController?.IgnoreEvent(e);
                 return;
@@ -1770,11 +1792,14 @@ namespace GoF2Remake.UI
                                                                         : $"{T("shopSell", "SELL")} / {T("shopBuy", "BUY")}";   // ingredients: ADD
                 string tabs = $"{Localization.Get(183)} / {Localization.Get(store ? 186 : 185)} / {Localization.Get(272)}".ToUpperInvariant(), confirm = T("hudConfirm", "CONFIRM");
                 string sellShip = T("kaamoSellShip", "SELL SHIP");
+                string tradeAll = store ? $"{T("shopStoreAll", "STORE ALL")} / {T("shopTakeAll", "TAKE ALL")}"
+                                        : $"{T("shopSellAll", "SELL ALL")} / {T("shopBuyAll", "BUY ALL")}";
                 string info = Localization.Get(390).ToUpperInvariant();   // the details window's "Info" (ItemInfoWindow)
                 if (kind == InputKind.KeyboardMouse)
                 {
                     Hint(select, InputGlyph.Key("W"), InputGlyph.Key("S"));
                     Hint(trade, InputGlyph.Key("A"), InputGlyph.Key("D"));
+                    Hint(tradeAll, InputGlyph.Key("SHIFT", true), InputGlyph.Key("A"), InputGlyph.Key("D"));
                     Hint(confirm, InputGlyph.Key("ENTER", true));
                     Hint(tabs, InputGlyph.Key("Q"), InputGlyph.Key("E"));
                     Hint(info, InputGlyph.Key("I"));
@@ -1786,6 +1811,7 @@ namespace GoF2Remake.UI
                     Hint($"{select} / {trade}", InputGlyph.Pad(PadButton.DPad));
                     Hint(confirm, InputGlyph.Pad(PadButton.A));
                     Hint(trade, InputGlyph.Pad(PadButton.X), InputGlyph.Pad(PadButton.A));   // a shop row: X sells, A buys
+                    Hint(tradeAll, InputGlyph.Pad(PadButton.LeftTrigger), InputGlyph.Pad(PadButton.RightTrigger));
                     Hint(tabs, InputGlyph.Pad(PadButton.LeftBumper), InputGlyph.Pad(PadButton.RightBumper));
                     Hint(info, InputGlyph.Pad(PadButton.Y));
                     if (store) Hint(sellShip, InputGlyph.Pad(PadButton.X));
@@ -2243,6 +2269,11 @@ namespace GoF2Remake.UI
                     hangarWindow.Action();
                 else if ((kb != null && kb.xKey.wasPressedThisFrame) || (pad != null && pad.buttonWest.wasPressedThisFrame))
                     hangarWindow.SecondaryAction();   // Sell a stored hull (Kaamo Club)
+                // Remake: LT / RT = Sell all / Buy all (Store all / Take all), the keyboard's Shift + left / right.
+                else if (pad != null && pad.leftTrigger.wasPressedThisFrame)
+                    hangarWindow.TradeAll(-1);
+                else if (pad != null && pad.rightTrigger.wasPressedThisFrame)
+                    hangarWindow.TradeAll(1);
                 else if ((kb != null && kb.qKey.wasPressedThisFrame) || (pad != null && pad.leftShoulder.wasPressedThisFrame))
                 {
                     Play(buttonPush);

@@ -435,6 +435,7 @@ namespace GoF2Remake.Multiplayer
                 obstacle.volumes.Add(CollisionVolume.Sphere(Vector3.zero, size * CollisionScale));
             }
             model.SetActive(shown);
+            HullCollision.Attach(model, target, obstacle);   // shots hit and the local ship slides along its real shape
             BuildTurret();
             // Its look and sound: the exhaust, the cloak, the engine loop (3D, at space distances).
             asm = model.GetComponent<AssembledObject>();
@@ -442,7 +443,7 @@ namespace GoF2Remake.Multiplayer
             exhaust = ShipExhaust.AttachRemote(gameObject, Database.Load(), model.transform, index, () => shown && engine.Value && cloak.Value < 25f,
                                                () => boost.Value, () => cloak.Value);
             cloakLook?.Dispose();
-            cloakLook = new World.NpcCloak(model.transform);
+            cloakLook = new World.NpcCloak(model.transform, keepEngine: true);
             if (engineLoop != null) Destroy(engineLoop);
             engineLoop = World.HangarFlight.AddEngine(model, true, Database.Load(), index, out engineVolume);
             if (engineLoop != null) EngineVoices.Setup3D(engineLoop);   // the engine events' rolloff (0.05 .. 500 m) in space

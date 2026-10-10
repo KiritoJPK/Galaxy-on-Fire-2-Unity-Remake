@@ -78,6 +78,12 @@ namespace GoF2Remake.World
         /// <summary>Campaign 142's script: any cloud burst into sparks ("ionized").</summary>
         public bool AnyExploded => clouds.Exists(c => c.exploded);
         public int Count => clouds.Count;
+
+        /// <summary>Radar::draw's live PlayerGasClouds (Player::isActive and not dying: not burst yet), by a stable index
+        /// 0..Count-1: the spectral filters' markers and lock (CombatRadar, CombatView).</summary>
+        public bool IsLive(int i) => i >= 0 && i < clouds.Count && !clouds[i].exploded && !clouds[i].done;
+        public Vector3 PositionOf(int i) => clouds[i].position;
+        public GameObject ObjectOf(int i) => clouds[i].go;
         public event System.Action<string> Message;
 
         static readonly string[] Assemblies = { "sn_gas_cloud_green_anim_lookat_add", "sn_gas_cloud_blue_anim_lookat_add",
@@ -238,7 +244,9 @@ namespace GoF2Remake.World
                     else if (dt < ShrinkUnits) s.scale = (dt - CollectUnits) / 2700f;
                     else s.scale = 1f;
                     bool pulled = collecting && c.ageMs >= CollectDelayMs && InSight(pos);
-                    if (pulled) pos += (gun - pos).normalized * turret.PullSpeed * dtMs * M;
+                    // PlayerGasCloud::update 0x1a5e54..: in sight the spark's own direction becomes "toward the turret"
+                    // (kept after it leaves the sight: it drifts on that way at its own speed, #79) and it moves at attr 49.
+                    if (pulled) { s.dir = (gun - pos).normalized; pos += s.dir * turret.PullSpeed * dtMs * M; }
                     else pos += s.dir * s.speed * dtMs * M;
                     if (s.tr != null) { s.tr.position = pos; s.tr.localScale = sparkBaseScale * Mathf.Max(0f, s.scale); }
                     if (s.Alive) anyAlive = true;
@@ -303,7 +311,7 @@ namespace GoF2Remake.World
                 if (turret == null || !turret.IsCollector || !turret.InTurretView) return false;
                 foreach (var c in clouds)
                     if (c.exploded && !c.done)
-                        foreach (var s in c.sparks) if (s.Alive && s.tr != null && InSight(s.tr.position)) return true;
+                        foreach (var s in c.sparks) if (s.lifeMs > 0f && s.tr != null && InSight(s.tr.position)) return true;   // not one fading out
                 return false;
             }
         }

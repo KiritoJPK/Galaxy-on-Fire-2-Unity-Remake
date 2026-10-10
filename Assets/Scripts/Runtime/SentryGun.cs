@@ -124,7 +124,7 @@ namespace GoF2Remake.Flight
             rig.UpdateVisuals(dtMs, Camera.main, aim.BarrelForward);
             if (ageMs < InvulnerableMs) return;
             pickMs += dtMs;
-            if (pickMs >= PickMs || target == null || !target.Alive || !target.isActiveAndEnabled) { pickMs = 0f; target = Pick(); }
+            if (pickMs >= PickMs || target == null || !target.Alive || !target.isActiveAndEnabled || target.cloaked) { pickMs = 0f; target = Pick(); }
             if (target == null) return;
             if (aim.Step(target.transform.position + target.transform.forward * LeadUnits * M, dtMs))
             {
@@ -144,7 +144,7 @@ namespace GoF2Remake.Flight
             float bestD = RangeUnits * M;
             foreach (var t in Target.All)
             {
-                if (t == null || !t.isShip || !t.hostileToPlayer || !t.Alive || t.untargetable || !t.isActiveAndEnabled) continue;
+                if (t == null || !t.isShip || !t.hostileToPlayer || !t.Alive || t.untargetable || t.cloaked || !t.isActiveAndEnabled) continue;
                 float d = (t.transform.position - transform.position).magnitude;
                 if (d < bestD) { bestD = d; best = t; }
             }

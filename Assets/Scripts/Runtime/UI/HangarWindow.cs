@@ -130,9 +130,39 @@ namespace GoF2Remake.UI
             HookArrow(buyButton, 1);
             if (sellAllButton != null) { sellAllButton.focusable = false; sellAllButton.clicked += () => TradeAll(-1); }
             if (buyAllButton != null) { buyAllButton.focusable = false; buyAllButton.clicked += () => TradeAll(1); }
+            // Remake: with a controller the buttons show their triggers (LT / RT, StationMenu), placed left of the text.
+            AddPadGlyph(sellAllButton, PadButton.LeftTrigger);
+            AddPadGlyph(buyAllButton, PadButton.RightTrigger);
             foreach (var b in new VisualElement[] { tabShip, tabShop, tabBlueprints, actionButton, actionButton2 }) if (b != null) b.focusable = false;
             list.focusable = detailScroll.focusable = false;
             detailText.parent?.Insert(detailText.parent.IndexOf(detailText) + 1, detailMods);
+            // Remake (#82): a ship's details show it turning in 3D under the name (the item window's view, which a click /
+            // tap on it still opens, as "i" does); the shop icon gives it the room.
+            var head = detailIcon.parent;
+            head.parent.Insert(head.parent.IndexOf(head) + 1, shipPreview.Element);
+            shipPreview.Element.AddToClassList("detail-preview");
+            shipPreview.AutoSpin = 1.2f;   // 0.3 rad/s
+            shipPreview.Clicked += OpenInfo;
+            shipPreview.Hide();
+        }
+
+        /// <summary>The details panel's turning ship (a stage of its own beside the item window's).</summary>
+        readonly ShipPreview shipPreview = new ShipPreview(new Vector3(0f, -24000f, 0f), 1400, 460, 0.6f);
+
+        /// <summary>The ship the selected row shows in 3D (a ship row or a mod's ship blueprint), -1 = the icon.</summary>
+        int PreviewShip()
+        {
+            if (selected == null || !IsOpen) return -1;
+            int item = selected.kind == RowKind.Slot && selected.equipment >= 0 ? Session.Equipment[selected.equipment].item : selected.item;
+            if (item >= 0) return tab == Tab.Blueprints ? Modding.ModBlueprints.ShipOf(item) : -1;
+            return selected.ship;
+        }
+
+        void UpdatePreview()
+        {
+            int ship = PreviewShip();
+            if (ship >= 0) shipPreview.Show(level.Database, ship); else shipPreview.Hide();
+            detailIcon.style.display = shipPreview.Shown ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         // ---- open / close ------------------------------------------------------------------------------------
@@ -173,6 +203,7 @@ namespace GoF2Remake.UI
             IsOpen = false;
             editing = -1;
             ReleaseArrow();
+            UpdatePreview();
         }
 
         /// <summary>HangarWindow::readyToClose: an uncommitted shipment to another station asks first.</summary>
@@ -601,6 +632,7 @@ namespace GoF2Remake.UI
             detailStats.Clear();
             detailText.text = "";
             ItemInfo.FillModLines(detailMods, null);
+            UpdatePreview();
             details.style.visibility = selected == null ? Visibility.Hidden : Visibility.Visible;
             tradeBox.AddToClassList("trade-box--hidden");
             tradeAllRow?.AddToClassList("trade-box--hidden");
@@ -965,7 +997,7 @@ namespace GoF2Remake.UI
         /// <summary>Remake (players' suggestion): every unit of the selected shop item at once. Sell all / Store all: what the
         /// hold has of it (mounted units stay); Buy all / Take all: the station's whole stock, as far as the hold has room and
         /// the credits reach. In a multiplayer session the host hears of them as one message (Hangar.BeginBatch / EndBatch).
-        /// Shift + left / right does the same with keys.</summary>
+        /// Shift + left / right does the same with keys, LT / RT with a controller.</summary>
         public void TradeAll(int direction)
         {
             if (selected == null || selected.kind != RowKind.ShopItem) return;
@@ -985,6 +1017,15 @@ namespace GoF2Remake.UI
             hangar.BeginBatch();
             try { Trade(direction, true, units, true); }
             finally { hangar.EndBatch(); }
+        }
+
+        static void AddPadGlyph(VisualElement button, PadButton pad)
+        {
+            if (button == null) return;
+            var holder = new VisualElement { pickingMode = PickingMode.Ignore };
+            holder.AddToClassList("trade-all-pad");
+            holder.Add(InputGlyph.Pad(pad));
+            button.Add(holder);
         }
 
         /// <summary>Left / right: sell / buy one unit of the selected shop item (Item::transaction). 'all' (TradeAll): running out
@@ -1122,7 +1163,7 @@ namespace GoF2Remake.UI
                         var k = hangar.CanKeepAndBuyShip(ship, out int missing);
                         if (k == Hangar.Result.AlreadyStored) { menu.ShowDialog(Localization.Get(328), null, true); return; }
                         if (k == Hangar.Result.NoCredits) { menu.ShowToast(Localization.Get(203).Replace("#C", ItemInfo.Credits(missing))); return; }
-                        Reserved(() => hangar.KeepAndBuyShip(ship));
+                        menu.AskMoveEquipment(move => Reserved(() => hangar.KeepAndBuyShip(ship, move)));   // #83
                     }));
                     break;
                 }

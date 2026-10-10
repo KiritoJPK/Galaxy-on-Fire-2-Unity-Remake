@@ -1296,5 +1296,12 @@
  "mpCmdTrade": "handluje kredytami i ładunkiem z pilotem zadokowanym na twojej stacji",
  "mpTradeWaitingCmd": "{0} chce z tobą handlować: /trade accept lub /trade decline.",
  "mpTradeNoRequest": "Nie czeka żadna prośba o handel.",
- "mpTradeNone": "Nie handlujesz."
+ "mpTradeNone": "Nie handlujesz.",
+ "kaamoMoveEquipment": "Przenieść wyposażenie na nowy statek?\n\nTak: zostanie zamontowane na nowym statku (co się nie zmieści, trafi do ładowni).\nNie: zostanie na twoim {0} w Kaamo Club.",
+ "dyingCargoMarkers": "Znaczniki odzysku na ginących statkach",
+ "dyingCargoMarkersHelp": "Statek z ładunkiem pokazuje znaczniki kontenera, gdy koziołkuje przed wybuchem, jak w oryginale. Wyłączone: brak znaczników; wyceluj w niego, a promień ściągający nadal przyciągnie ładunek.",
+ "cloakLosesPursuers": "Kamuflaż gubi pościg",
+ "cloakLosesPursuersHelp": "Wrogie statki tracą cię z oczu, gdy jesteś zamaskowany: lecą tam, gdzie widziały cię ostatnio, a potem wracają do patrolu. Wyłączone: jak w oryginale, nadal cię ścigają i celują, ale nie strzelają.",
+ "cloakBay": "Wnęka maskowania w statkach maskujących",
+ "cloakBayHelp": "Specter i Scimitar mają wbudowany kamuflaż. Zamontowany kamuflaż zastępuje go bez zajmowania miejsca na wyposażenie. Wyłączone: zajmuje miejsce, jak w oryginale."
 }
