@@ -464,14 +464,16 @@ namespace GoF2Remake.Flight
 
         /// <summary>PlayerEgo::left / right / up / down in rocket control: turns bullet 'i' by the stick (x yaw, y pitch)
         /// at 'rateRadPerMs' (the original's rates were stored but their reader wasn't found: a tuned rate).</summary>
-        public void SteerBullet(int i, Vector2 stick, float dtMs, float rateRadPerMs)
+        /// <summary>Turns bullet 'i' by the stick: yaw about 'yawAxis', pitch about 'pitchAxis' (null: the bullet's own up and
+        /// right).</summary>
+        public void SteerBullet(int i, Vector2 stick, float dtMs, float rateRadPerMs, Vector3? yawAxis = null, Vector3? pitchAxis = null)
         {
             ref var b = ref bullets[i];
             float speed = b.velocity.magnitude;
             if (speed < 1e-9f) return;
             var fwd = b.velocity / speed;
-            var right = Vector3.Cross(b.up, fwd).normalized;
-            var rot = Quaternion.AngleAxis(stick.x * rateRadPerMs * dtMs * Mathf.Rad2Deg, b.up)
+            var right = pitchAxis ?? Vector3.Cross(b.up, fwd).normalized;
+            var rot = Quaternion.AngleAxis(stick.x * rateRadPerMs * dtMs * Mathf.Rad2Deg, yawAxis ?? b.up)
                     * Quaternion.AngleAxis(-stick.y * rateRadPerMs * dtMs * Mathf.Rad2Deg, right);
             b.velocity = rot * fwd * speed;
             b.up = rot * b.up;

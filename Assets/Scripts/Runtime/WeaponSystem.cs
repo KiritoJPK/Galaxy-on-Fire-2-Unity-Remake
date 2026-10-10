@@ -628,7 +628,7 @@ namespace GoF2Remake.Flight
             liberator = r;
             Session.LiberatorAsteroids = 0;   // Gun::shootAt 0xb3: a new Liberator starts medal 44's count
             var ship = GetComponent<ShipController>();
-            if (ship != null) ship.steeringLocked = true;
+            if (ship != null) { ship.steeringLocked = true; ship.CenterMouse(); }   // the rocket starts straight
             if (liberatorAnchor == null) liberatorAnchor = new GameObject("Liberator camera target").transform;
             PlaceLiberatorAnchor();
             var chase = Camera.main != null ? Camera.main.GetComponent<ChaseCamera>() : null;
@@ -670,7 +670,18 @@ namespace GoF2Remake.Flight
         {
             if (!liberator.gun.BombInFlight || (owner != null && !owner.Alive)) { EndLiberator(); return; }
             var ship = GetComponent<ShipController>();
-            if (!Navigation.InputHalted && !Blocked) liberator.gun.SteerBullet(0, ship != null ? ship.SteerInput : Vector2.zero, dtMs, LiberatorTurnRadPerMs);
+            if (!Navigation.InputHalted && !Blocked)
+            {
+                // Remake: steered as seen through the camera, which follows the rocket upright (world up, like the
+                // original's TargetFollowCamera::useTargetsUpVector(false)): stick right turns it right on screen, stick
+                // up up, whatever the ship's roll at launch (turned about the rocket's own up and right, a Liberator fired
+                // upside down steered mirrored); the flight's invert options apply.
+                var stick = ship != null ? ship.SteerInput : Vector2.zero;
+                if (ship != null) stick = new Vector2(ship.invertYaw ? -stick.x : stick.x, ship.invertPitch ? -stick.y : stick.y);
+                var cam = Camera.main;
+                if (cam != null) liberator.gun.SteerBullet(0, stick, dtMs, LiberatorTurnRadPerMs, cam.transform.up, cam.transform.right);
+                else liberator.gun.SteerBullet(0, stick, dtMs, LiberatorTurnRadPerMs);
+            }
             PlaceLiberatorAnchor();
             UpdateLiberatorSound(dtMs);
         }
@@ -719,7 +730,7 @@ namespace GoF2Remake.Flight
             liberator = null;
             GuidedRocket = null;
             var ship = GetComponent<ShipController>();
-            if (ship != null) ship.steeringLocked = false;
+            if (ship != null) { ship.steeringLocked = false; ship.CenterMouse(); }   // the ship doesn't turn with the rocket's last steer
             var chase = Camera.main != null ? Camera.main.GetComponent<ChaseCamera>() : null;
             if (chase != null && chase.follow == liberatorAnchor)
             {

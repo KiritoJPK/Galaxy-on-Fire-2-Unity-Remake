@@ -131,6 +131,9 @@ namespace GoF2Remake.Flight
         [System.NonSerialized] public bool mouseSteering;
         /// <summary>The crosshair's offset from the screen centre (screen pixels, x right, y up).</summary>
         public Vector2 MouseOffset { get; private set; }
+
+        /// <summary>Mouse steering's virtual stick back to the centre (the Liberator starts and ends straight).</summary>
+        public void CenterMouse() => MouseOffset = Vector2.zero;
         /// <summary>Remake: the mouse offset is inside the steering dead zone (Settings.MouseDeadzone): no turning.</summary>
         public bool MouseInDeadzone { get; private set; } = true;
 

@@ -638,7 +638,7 @@ namespace GoF2Remake.UI
             bool cursor = Settings.MouseSteering && !Application.isMobilePlatform && InputMode.Current == InputKind.KeyboardMouse && !Vr.VrMode.Enabled
                       && !pauseMenu.IsOpen && !(nav != null && nav.MenuOpen) && !StarMap.IsOpen && !storyDialogue.IsOpen
                       && !level.Cutscene && level.LaunchCameraOver && Time.timeScale > 0f && (health == null || !health.Dead)
-                      && (weapons == null || !weapons.SteeringMissile) && (level.Docking == null || !level.Docking.Busy)
+                      && (level.Docking == null || !level.Docking.Busy)   // the Liberator too: the mouse steers it (it was off)
                       && !GoF2Remake.Multiplayer.NetChat.Typing   // multiplayer: the cursor free for the chat
                       && !MultiplayerWindow.IsOpenAny;            // and for the multiplayer window
             // PlayerEgo::right etc. forward to the MiningGame while drilling (0xacd48): the mouse steers the drill then (the PC
