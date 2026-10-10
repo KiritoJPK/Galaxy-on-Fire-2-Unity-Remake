@@ -414,7 +414,7 @@ namespace GoF2Remake.Flight
         bool AutoAim(float dtMs)
         {
             pickMs += dtMs;
-            if (pickMs >= PickMs || target == null || !target.Alive || !target.isActiveAndEnabled)
+            if (pickMs >= PickMs || target == null || !target.Alive || !target.isActiveAndEnabled || target.cloaked)
             {
                 pickMs = 0f;
                 target = PickTarget();
@@ -433,7 +433,8 @@ namespace GoF2Remake.Flight
             foreach (var t in Target.All)
             {
                 if (t == null || !t.isShip || !t.hostileToPlayer || !t.Alive || t == unreachable || t.untargetable || !t.isActiveAndEnabled) continue;
-                if (t.GetComponent<World.NpcShip>() is World.NpcShip npc && npc.RadarHidden) continue;   // KIPlayer+0x70: cloaked too
+                if (t.cloaked) continue;   // a cloaked ship (Target.cloaked, NpcShip: a Specter past a quarter of its fade)
+                if (t.GetComponent<World.NpcShip>() is World.NpcShip npc && npc.RadarHidden) continue;   // KIPlayer+0x70
                 float d = (t.transform.position - transform.position).magnitude;
                 if (d < bestD) { bestD = d; best = t; }
             }

@@ -560,7 +560,7 @@ namespace GoF2Remake.World
                 turretPickMs = 0f;
                 turretTarget = PickTurretTarget();
             }
-            if (turretTarget == null) return;
+            if (turretTarget == null || turretTarget.cloaked) return;   // handleTurret: no turning toward a cloaked target
             var at = Spec.capitalEnhanced && turretTarget.boxes != null && turretTarget.boxes.Length > 0 ? TurretAimPoint(turretTarget, turretBarrel.position)
                    : turretTarget.transform.position + turretTarget.transform.forward * TurretLeadUnits * M;
             bool aligned = turretAim.Step(at, dtMs);
@@ -704,6 +704,11 @@ namespace GoF2Remake.World
             Hp.Update(dtMs);
             // PlayerFighter::handleCloaking: race 10 only (Harval's Scimitar cloaks as a Specter, at 158); scripted ships too.
             if (Race == Standing.Specter) cloak?.Update(dtMs, !Asleep && !inactive, panic, Hp.empDisabled);
+            // Remake: a cloaked ship can't be targeted, whoever flies it. The original's cloaked Specter only leaves the
+            // radar (KIPlayer+0x70); turrets (PlayerTurret::handleTurret) and the fighters' fire block read Player+0x5e,
+            // which only the player's cloak sets, so the Rhinos' turrets and the locals kept shooting at it. Target.cloaked
+            // gives it the player's rules: turrets don't aim, fighters chase but hold fire, missiles lose their lock.
+            Target.cloaked = cloak != null && cloak.Hidden;
             UpdatePush(dtMs);
             UpdateSmoke();
             UpdateSparks();
@@ -1229,7 +1234,7 @@ namespace GoF2Remake.World
 
             if (attacking && !followingWaypoint && target != null)
             {
-                if (target.untargetable || target.cloaked) attacking = false;   // a cloaked player: chased, never fired at
+                if (target.untargetable || target.cloaked) attacking = false;   // a cloaked ship: chased, never fired at
                 else
                 {
                     var d = targetPos - transform.position;
@@ -1610,6 +1615,7 @@ namespace GoF2Remake.World
         void OnDied(Target t)
         {
             cloak?.Stop();
+            Target.cloaked = false;
             // PlayerFighter's death: a hostile Void ship leaves 1-3 t Alien Remains (131).
             if (Race == Standing.Void && !Spec.noLoot && Target.hostileToPlayer && !loot.Exists(s => s.item == 131))
                 loot = new List<ItemStack> { new ItemStack(131, Random.Range(0, 3) + 1) };
