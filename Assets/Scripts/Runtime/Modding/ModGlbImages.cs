@@ -6,7 +6,8 @@
 // and ran the phones out of memory (players' reports, 2026-10).
 // Each image taken out points at one shared 1 x 1 PNG instead (its bufferView is kept, so every index in the file stays
 // as it was), the other bufferViews are packed into a new binary chunk. Which role each image has comes from the
-// materials: base colour and emission (sRGB), normal map, metallic-roughness map. GLBs this doesn't handle (several or
+// materials: base colour and emission (sRGB), normal map, metallic-roughness map (with the material's metallic / roughness
+// factors, which the conversion bakes in: GoF3's maps are fully metallic in B with metallicFactor 0). GLBs this doesn't handle (several or
 // external buffers, meshopt compression, no embedded images) are loaded as they are (null).
 // Any thread.
 
@@ -31,6 +32,8 @@ namespace GoF2Remake.Modding
             public string hash, ext;
             public byte[] bytes;   // the file's bytes, until the texture is made
             public Role roles;
+            /// <summary>The (metallicFactor, roughnessFactor) pairs of the materials using it as a metallic-roughness map.</summary>
+            public readonly HashSet<(float metal, float rough)> mrFactors = new HashSet<(float, float)>();
         }
 
         public sealed class Result
@@ -113,7 +116,8 @@ namespace GoF2Remake.Modding
                     Mark(result, pbr?["baseColorTexture"], Role.Color);
                     Mark(result, m?["emissiveTexture"], Role.Color);
                     Mark(result, m?["normalTexture"], Role.Normal);
-                    Mark(result, pbr?["metallicRoughnessTexture"], Role.MetallicRoughness);
+                    var mr = Mark(result, pbr?["metallicRoughnessTexture"], Role.MetallicRoughness);
+                    mr?.mrFactors.Add((Factor(pbr?["metallicFactor"]), Factor(pbr?["roughnessFactor"])));
                 }
 
             // The new binary chunk: every other bufferView packed (16-byte aligned), then the stand-in PNG.
@@ -154,12 +158,20 @@ namespace GoF2Remake.Modding
             return result;
         }
 
-        static void Mark(Result r, JToken info, Role role)
+        static Image Mark(Result r, JToken info, Role role)
         {
             if (info?["index"] is JValue i && i.Type == JTokenType.Integer && r.textureImage.TryGetValue((int)i, out int image)
                 && r.images.TryGetValue(image, out var img))
+            {
                 img.roles |= role;
+                return img;
+            }
+            return null;
         }
+
+        /// <summary>A glTF metallic / roughness factor: 0..1, default 1.</summary>
+        static float Factor(JToken t) =>
+            t is JValue v && (v.Type == JTokenType.Float || v.Type == JTokenType.Integer) ? Math.Max(0f, Math.Min(1f, (float)v)) : 1f;
 
         static void CollectViews(JToken t, HashSet<int> into)
         {

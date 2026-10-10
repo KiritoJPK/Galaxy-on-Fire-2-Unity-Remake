@@ -119,7 +119,8 @@ boostDurationMs 27, agility 28 (steering nozzle), lockTimeMs 29 (scanner), showC
 drillSpeed 32, miningYield 33, cabins 34, cloakDurationMs 35, cloakChargeMs 36, energyCells 38 (per cloak), fireRateFactor 39,
 damageFactor 40 (weapon mods %), emergencyMs 41, timeExtenderMs 42, timeExtenderCooldownMs 43, collectorSpeed 49,
 collectorMagnitude 50, collectorRange 51, gammaShielding 52, beamRange 53, beamStrength 54, beamTargets 55, miningBeam 100 (a
-drill based on 86-90 that cuts while flying), miningBeamRange 101, miningBeamLayerMs 102, miningBeamLook 103 (9/10/11/228).
+drill based on 86-90 that cuts while flying), miningBeamRange 101, miningBeamLayerMs 102, miningBeamLook 103 (9/10/11/228), phaseCloak 104 (a
+cloak based on 94-96 whose ship passes through asteroids, stations, gates, ships, shots and explosions while cloaked).
 items.json's own names (`loadingTimeMs`, `range`, `projectileSpeed`...) work too. An unknown stat name is an error.
 
 ### Weapon fx
@@ -311,7 +312,10 @@ required). `override` changes originals (name, techLevel, looks, music...).
   quests.
 - `sounds/<name>.ogg`: replaces the game sound with that file name (from the game's Assets/Audio folders).
 - `textures/<name>.png`: replaces that game texture everywhere (`ship_028_terran_diffuse`; keep the original UV layout,
-  2048 x 2048).
+  2048 x 2048). Also the sky's planets, suns and rings (`planet_000_small` ... `planet_019_big`, `planet_void_*`,
+  `sn_planet_024_*` ... `sn_planet_026_*`, `sun_000` ..., `sn_sun_011`, `sn_planet_ring`): one whole disc image each, keep the
+  transparent edge. `backdrop.json` `{ "planets": "star", "planetGlow": 2, "planetFlare": 0.35 }` draws the retextured planets
+  as stars (facing the camera, no ring, a core glow, a weaker copy of the sun's flare).
 
 ## Quests and bar missions (event graphs)
 

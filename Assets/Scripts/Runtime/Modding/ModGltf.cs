@@ -20,19 +20,24 @@ namespace GoF2Remake.Modding
             ModGlbImages.Result stripped = null;
             try { stripped = await Task.Run(() => ModGlbImages.Strip(bytes)); }
             catch (System.Exception e) { Debug.LogWarning($"Mods: {mod.Id}: a model's images are left to glTFast ({e.Message})"); }
-            System.Func<int, ModGlbImages.Role, Texture2D> images = null;
+            System.Func<int, ModGlbImages.Role, float, float, Texture2D> images = null;
             if (stripped != null)
             {
                 bytes = stripped.glb;
                 var tasks = new List<Task>();
                 foreach (var img in stripped.images.Values)
-                    foreach (var role in new[] { ModGlbImages.Role.Color, ModGlbImages.Role.Normal, ModGlbImages.Role.MetallicRoughness })
+                {
+                    foreach (var role in new[] { ModGlbImages.Role.Color, ModGlbImages.Role.Normal })
                         if ((img.roles & role) != 0) tasks.Add(ModMaterials.PreloadImage(mod, img.hash, img.ext, img.bytes, role));
+                    // A metallic-roughness map once per factor pair its materials give it (baked into the conversion).
+                    foreach (var f in img.mrFactors)
+                        tasks.Add(ModMaterials.PreloadImage(mod, img.hash, img.ext, img.bytes, ModGlbImages.Role.MetallicRoughness, f.metal, f.rough));
+                }
                 await Task.WhenAll(tasks);
                 foreach (var img in stripped.images.Values) img.bytes = null;
-                images = (texture, role) =>
+                images = (texture, role, metal, rough) =>
                     stripped.textureImage.TryGetValue(texture, out int i) && stripped.images.TryGetValue(i, out var img)
-                        ? ModMaterials.Image(mod, img.hash, role) : null;
+                        ? ModMaterials.Image(mod, img.hash, role, metal, rough) : null;
             }
             var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials(images));
             var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };

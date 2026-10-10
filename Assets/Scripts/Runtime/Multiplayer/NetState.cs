@@ -155,6 +155,7 @@ namespace GoF2Remake.Multiplayer
                 proxyPrefab = Resources.Load<GameObject>($"{NetGame.PrefabFolder}/NetProxy");
                 cratePrefab = Resources.Load<GameObject>($"{NetGame.PrefabFolder}/NetCrate");
                 NetRateLimit.Reset();
+                NetTrade.Reset();
             }
             else
             {
@@ -469,6 +470,105 @@ namespace GoF2Remake.Multiplayer
             foreach (var p in NetPlayer.All)
                 if (p != null && p.IsSpawned && p.SquadId != 0 && count[p.SquadId] < 2) p.SetSquad(0);
         }
+
+        // ---- trades between players (NetTrade on the server, NetTradeClient on each game) ---------------------------
+
+        /// <summary>A player asks another docked at the same station to trade (the pilot list's Trade, /trade).</summary>
+        [Rpc(SendTo.Server)]
+        public void TradeRequestRpc(ulong target, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (!NetRateLimit.Allow(client, NetRateLimit.Kind.Invite)) return;
+            Notify(client, NetTrade.Request(NetSquad.Find(client), NetSquad.Find(target)));
+        }
+
+        internal void TradeRequested(ulong to, ulong from, string name)
+        {
+            if (IsServer) TradeRequestedRpc(from, name, RpcTarget.Single(to, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TradeRequestedRpc(ulong from, string name, RpcParams rpc = default) => NetTradeClient.OnRequested(from, name);
+
+        [Rpc(SendTo.Server)]
+        public void TradeAcceptRpc(ulong from, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.Accept(client, from);
+        }
+
+        [Rpc(SendTo.Server)]
+        public void TradeDeclineRpc(ulong from, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.Decline(client, from);
+        }
+
+        /// <summary>A side's whole offer: credits, then item / amount pairs (NetTrade checks it).</summary>
+        [Rpc(SendTo.Server)]
+        public void TradeOfferRpc(int id, int[] offer, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.SetOffer(client, id, offer);
+        }
+
+        [Rpc(SendTo.Server)]
+        public void TradeConfirmRpc(int id, int version, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.Confirm(client, id, version);
+        }
+
+        [Rpc(SendTo.Server)]
+        public void TradeCancelRpc(int id, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.Cancel(client, id);
+        }
+
+        /// <summary>The game paid its offer (or couldn't).</summary>
+        [Rpc(SendTo.Server)]
+        public void TradePaidRpc(int id, bool ok, RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.PlayerTrade)) NetTrade.Paid(client, id, ok);
+        }
+
+        internal void TradeState(ulong to, int id, ulong partner, string partnerName, int station, int version, int[] mine, int[] theirs,
+                                 bool myAccepted, bool theirAccepted, byte phase)
+        {
+            if (IsServer && NetSquad.Find(to) != null) TradeStateRpc(id, partner, partnerName, station, version, mine, theirs, myAccepted, theirAccepted, phase, RpcTarget.Single(to, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TradeStateRpc(int id, ulong partner, string partnerName, int station, int version, int[] mine, int[] theirs,
+                           bool myAccepted, bool theirAccepted, byte phase, RpcParams rpc = default) =>
+            NetTradeClient.OnState(id, partner, partnerName, station, version, mine, theirs, myAccepted, theirAccepted, phase);
+
+        internal void TradePay(ulong to, int id, int[] offer)
+        {
+            if (IsServer && NetSquad.Find(to) != null) TradePayRpc(id, offer, RpcTarget.Single(to, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TradePayRpc(int id, int[] offer, RpcParams rpc = default) => NetTradeClient.OnPay(id, offer);
+
+        internal void TradeDeliver(ulong to, int id, int[] offer, bool refund, string partnerName)
+        {
+            if (IsServer && NetSquad.Find(to) != null) TradeDeliverRpc(id, offer, refund, partnerName ?? "", RpcTarget.Single(to, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TradeDeliverRpc(int id, int[] offer, bool refund, string partnerName, RpcParams rpc = default) =>
+            NetTradeClient.OnDeliver(id, offer, refund, partnerName);
+
+        internal void TradeEnded(ulong to, int id, string reason)
+        {
+            if (IsServer && NetSquad.Find(to) != null) TradeEndedRpc(id, reason ?? "", RpcTarget.Single(to, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TradeEndedRpc(int id, string reason, RpcParams rpc = default) => NetTradeClient.OnEnded(id, reason);
 
         /// <summary>A player's ship was destroyed by another player: everyone hears of it (only of a player who hit them a
         /// moment ago: no notices blaming anyone at will).</summary>
@@ -1284,7 +1384,9 @@ namespace GoF2Remake.Multiplayer
         void Update()
         {
             NetStock.Flush();   // the shared stock that arrived, applied between frames (every player)
+            NetTradeClient.Tick();   // this player's trade offer goes out, kept within the hold
             if (!IsServer || !IsSpawned) return;
+            NetTrade.Tick();      // trade requests and trades that ran out, sides that left the hangar
             NetProfiles.Tick();   // link codes and handovers that ran out
             NetArena.Tick();      // queues, countdowns, time limits
             if (NetProfiles.Enabled) NetFactions.Tick();   // claims kept by docking members, lapses, stale deposits

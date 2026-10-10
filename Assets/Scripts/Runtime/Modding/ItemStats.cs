@@ -25,6 +25,8 @@ namespace GoF2Remake.Modding
             // Remake-only attributes (100+; the original's end at 61): a drill (sort 19) with miningBeam 1 is a mining beam
             // (Flight.Mining's beam mode, MiningBeamExtraction, MiningBeamFx).
             ["miningBeam"] = 100, ["miningBeamRange"] = 101, ["miningBeamLayerMs"] = 102, ["miningBeamLook"] = 103,
+            // A cloak (sort 21) with phaseCloak 1 also phases the ship through objects while cloaked (PlayerCloak.Phasing).
+            ["phaseCloak"] = 104,
             // items.json's statList names
             ["steerable"] = 15, ["handling"] = 17,
             ["loadingTimeMs"] = 11, ["range"] = 12, ["projectileSpeed"] = 13, ["magnitude"] = 14, ["shieldRegenTime"] = 19,

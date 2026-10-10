@@ -202,6 +202,7 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 | `miningBeamRange` | 101 | Mining beam reach from the asteroid's surface (game units, 20 per metre; default 24000) |
 | `miningBeamLayerMs` | 102 | Mining beam: time to cut one rock layer (ms; default 6000, the drill minigame's) |
 | `miningBeamLook` | 103 | Mining beam: the beam laser whose beam and impact it shows (9, 10, 11 or 228; default 228) |
+| `phaseCloak` | 104 | 1 = a cloak that also phases the ship through objects, shots and explosions while cloaked (see [Phase cloaks](#phase-cloaks)) |
 
 Which stats an item uses depends on its category, so copy the stats its base item has (see `items.json` and
 `item_attributes.json` in `Assets/Resources/GoF2Data`). items.json's own stat names (`loadingTimeMs`, `range`,
@@ -229,6 +230,25 @@ of 100 and needs the landing and 6 s per layer.
     "techLevel": 10,
     "price": [480000, 520000],
     "stats": { "miningBeam": 1, "miningYield": 160, "miningBeamLayerMs": 4000, "miningBeamRange": 24000, "miningBeamLook": 228 }
+}
+```
+
+### Phase cloaks
+
+A cloak (an item based on one of the cloaks, 94 to 96) with `"phaseCloak": 1` works like any cloak (the energy cells, the
+charge, the duration, the cooldown, the look) and while it is cloaked, its fades included, the ship is phased out: it flies
+straight through asteroids, stations, jumpgates, freighters and other players' ships without touching them, and shots,
+beams and explosions pass through it without doing any damage (in multiplayer too). The wormhole still pulls. When the cloak ends inside something, the ship collides as usual: pushed out of a station's or a freighter's
+volume, or the asteroid it sits in destroyed for 20 damage.
+
+```json
+{
+    "id": "pegaphase",
+    "base": 96,
+    "name": "PegaPhase",
+    "techLevel": 10,
+    "price": [540000, 580000],
+    "stats": { "cloakDurationMs": 80000, "cloakChargeMs": 7000, "energyCells": 5, "phaseCloak": 1 }
 }
 ```
 
@@ -334,7 +354,8 @@ A list of entries, like items.json: `"id"` adds a ship, `"override"` changes one
 | `dealer` | Optional. The ordinary ship dealers may stock it: `{ "chance": 2, "systemRace": -1, "minTechLevel": 0 }`, `chance` % (decimals allowed) each time a station's dealer list is made, at stations of `systemRace` systems (-1 = any) with at least that tech level. Not the special yards (Kothar, Quineros, Thynome...). |
 | `available` | Optional. A [condition](#conditions) that must hold before it is sold anywhere (dealers and lounges). |
 
-The model's own materials (base colour, metallic-roughness, normal map, emission, transparency) are used as they are. glTF
+The model's own materials (base colour, metallic-roughness with its metallic / roughness factors, normal map, emission,
+transparency) are used as they are. glTF
 from Blender works: File > Export > glTF 2.0, format glTF Binary (.glb), +Y up. Projects made in Unity can use the
 Project window's right-click **GoF2 > Export Model As GLB (Mods)**.
 
@@ -927,6 +948,29 @@ veteran_skin/
   textures/
     ship_028_terran_diffuse.png
 ```
+
+### Planets, suns and rings
+
+The same goes for the planets, suns and rings in the sky: a texture named like the game's replaces it in every system that
+shows it. The planets are `planet_000_small` ... `planet_019_small` (the other stations' planets) and `planet_000_big` ...
+`planet_019_big` (the orbit's own big planet), `planet_void_small` / `_big`, and the Supernova add-on's `sn_planet_024_small`
+... `sn_planet_026_big`; the suns `sun_000` ... (and `sn_sun_011`, the supernova); the rings `sn_planet_ring`. Each is one
+whole image (a disc on a transparent background, not a wrapped map), so keep the original's size and keep the transparent
+edge: the sun swells when it is near the middle of the screen, and a glow reaching the image's edge then shows as a square.
+
+To draw your retextured planets as stars, add a `backdrop.json` to the mod (the last mod in the load order that has one wins):
+
+```json
+{ "planets": "star", "planetGlow": 2, "planetFlare": 0.35 }
+```
+
+| Field | Meaning |
+|---|---|
+| `planets` | `"star"`: the planets whose texture your mod replaces face the camera like the sun, aren't mirrored and have no ring |
+| `planetGlow` | How much their bright core glows with the game's bloom (default 2; 1 = no extra glow) |
+| `planetFlare` | The sun's flare at this share of its strength when you look at them: a slight swell and a horizontal streak (0..1, default 0.35; 0 = none) |
+
+Planets you don't retexture stay planets.
 
 ## Building on other mods
 

@@ -367,6 +367,7 @@ namespace GoF2Remake.World
             // Equipment (combat_equipment.md): the cloak (autopilot menu entry), the time extender, the repair / transfusion beams.
             Cloak = PlayerCloak.Attach(Player.gameObject, db, Session.ShipIndex, Health.Target, Player.visualModel);
             Navigation.Cloak = Cloak;
+            Collision.cloak = Cloak;
             Navigation.Extender = Extender;
             if (Extender != null) Extender.Blocked = () => ExtenderBlocked;
             RepairBeam.AttachAll(Player.gameObject, db, Health.Target, Traffic);
@@ -670,6 +671,7 @@ namespace GoF2Remake.World
             if (Cloak != null) Destroy(Cloak);
             Cloak = PlayerCloak.Attach(root, db, shipIndex, Health.Target, model.transform);
             if (Navigation != null) Navigation.Cloak = Cloak;
+            if (Collision != null) Collision.cloak = Cloak;
             PlayerTurret.RemoveAll(turrets);
             turrets.Clear();
             turrets.AddRange(PlayerTurret.AttachAll(root, db, shipIndex, Session.Equipment, chase));

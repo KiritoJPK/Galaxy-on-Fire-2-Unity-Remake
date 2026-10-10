@@ -358,7 +358,7 @@ namespace GoF2Remake.Flight
                 // The cheap sphere test first (Target.MayContain): most targets are nowhere near the bullet. Scatter guns'
                 // cube grows with the distance, so they keep the full test.
                 if ((object)target == null || (kind != Kind.ScatterGun && !target.MayContain(probe, frame))) continue;
-                if (target == null || target == owner || !target.Alive) continue;
+                if (target == null || target == owner || !target.Alive || target.phased) continue;   // phased: flies through
                 if (Ignores != null && Ignores(target)) continue;
                 if (kind == Kind.ScatterGun ? !InScatterCube(target, b.position - b.velocity) : !target.Contains(b.position - b.velocity)) continue;
                 var point = b.position;
@@ -469,7 +469,7 @@ namespace GoF2Remake.Flight
             for (int t = 0; t < targets.Count; t++)
             {
                 var target = targets[t];
-                if (target == null || target == owner || !target.Alive || target.isPlayer) continue;
+                if (target == null || target == owner || !target.Alive || target.isPlayer || target.phased) continue;
                 if (kind == Kind.EmpBomb && target.isAsteroid) continue;   // sort 6 skips asteroids
                 float d = (target.transform.position - center).magnitude / MetersPerUnit;
                 if (d >= magnitude) continue;

@@ -12,7 +12,7 @@
 //                              quick menu 0x4ba / 0x4bb at bg + (152, 8); camera (the next mode's icon) at bg + (28, 27);
 //                              secondary 0x4bc / 0x4bd at bg + (144, 298) or bg + (-2, 189); the auto-turret toggle 0x547 /
 //                              0x546 at bg + (160, -134)
-//   pause                      0x4b8 / 0x4b9 at (w - 121, 24), also during cutscenes (sounds 124 / 123)
+//   pause                      0x4b8 / 0x4b9 at (w - 121, 24), also during cutscenes (sounds 124 / 123; remake: at 12 % opacity there)
 //   secondary plate            0x4c2 at the bottom centre, "<name> (<n>)" (Hud::updateSecondaryWeaponString; remake: a tap
 //                              switches to the next secondary), in every input mode (Hud::draw redraws it opaque while the PC
 //                              version's mouse steers)
@@ -62,7 +62,11 @@ namespace GoF2Remake.UI
             public bool crosshairVisible;
             public bool gauge;                   // keyboard / controller flight: the throttle gauge without the touch controls
             public bool cursor;                  // the PC cursor mode: the buttons without the stick and the gestures
+            public bool cinematic;               // a cutscene / launch camera / jump scene: the pause button nearly invisible
         }
+
+        /// <summary>The pause button's opacity during a cutscene (remake: the original draws it opaque; lit while held).</summary>
+        const float CinematicPauseAlpha = 0.12f;
 
         // Actions (FlightHud).
         public Func<bool> FirePressed;             // true = the press was an action (no shooting)
@@ -524,7 +528,9 @@ namespace GoF2Remake.UI
             bool full = f.mode == Mode.Full;
             bool menuOpen = f.mode == Mode.MenuOpen;
             Show(pause, f.mode != Mode.Off);
-            SetImage(pause, held.Contains(pause) ? pauseOn : pauseOff);
+            bool pauseHeld = held.Contains(pause);
+            SetImage(pause, pauseHeld ? pauseOn : pauseOff);
+            pause.style.opacity = f.cinematic && !pauseHeld ? CinematicPauseAlpha : 1f;
 
             // Hud::draw 4: the stick (also under a HUD menu); dim (alpha 50) in tilt, autopilot, approaches, hacking.
             bool stickShown = (full || menuOpen) && !f.cursor;
@@ -560,16 +566,17 @@ namespace GoF2Remake.UI
 
             // Hud::draw 18: the boost's alpha shows the charge; a 2 s blink once it is ready again (+0x420 = 2000, +0x424 = 80:
             // one lit frame each time the 80 ms timer runs out, which then restarts at 80). That is tied to the frame rate:
-            // at the phone's 120 Hz the remake runs at, it was an 8 ms flash 12 times a second, a strobe. Remake: the
-            // original's rhythm at its ~30 fps, in time: lit for the last 33 ms of every 100 ms, at any frame rate.
-            const float BlinkPeriodMs = 100f, BlinkLitMs = 100f / 3f;
-            if (f.boostReady && !boostWasReady && f.hasBooster) boostFlashMs = 2000f;
+            // at the phone's 120 Hz the remake runs at, it was an 8 ms flash 12 times a second, a strobe. Remake: 5 flashes
+            // in 1 s, each lit for the last half of its 200 ms, in time at any frame rate (the original's ~30 fps rhythm,
+            // 33 of every 100 ms for 2 s, still flashed too fast).
+            const float BlinkMs = 1000f, BlinkPeriodMs = 200f, BlinkLitMs = 100f;
+            if (f.boostReady && !boostWasReady && f.hasBooster) boostFlashMs = BlinkMs;
             boostWasReady = f.boostReady;
             bool lit = false;
             if (boostFlashMs > 0f)
             {
                 boostFlashMs -= dtMs;
-                float since = 2000f - boostFlashMs;
+                float since = BlinkMs - boostFlashMs;
                 lit = boostFlashMs > 0f && since % BlinkPeriodMs >= BlinkPeriodMs - BlinkLitMs;
             }
             Show(boost, rest && f.hasBooster && !(f.mining && f.boostReady));

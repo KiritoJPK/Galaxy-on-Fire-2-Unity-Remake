@@ -5,9 +5,11 @@
 //     ship lacks: not shown), and Leave; a member calling for help shows a red "⚠ HELP" and a Help button (NetDistress:
 //     the Khador Drive or the autopilot to them); the local player's own row has Distress call / End the call in space;
 //   in the station, the pilot list (collapsible too, only with other players docked here): each with Invite (or "In your
-//     squad" / "Invited");
+//     squad" / "Invited") and Trade (NetTradeClient; or "Asked" / "Trading", which opens the Multiplayer window's Trade tab);
 //   an invitation popup (only while docked: squads form in a hangar): "<name> invites you to their squad", and when this
 //     player has a mission that accepting abandons it (NetMissions.AbandonWarning), with Accept / Decline (45 s);
+//   a trade request popup (docked, while no squad invitation shows): "<name> wants to trade with you", Accept (the
+//     Multiplayer window's Trade tab opens) / Decline;
 //   in the station, an online session's join code with Copy, on its own plate under the system information.
 // The rows are rebuilt only when their content changes (a rebuilt button would lose a press); the bars update live.
 // Styles: Resources/GoF2Net/Squad.uss.
@@ -31,13 +33,14 @@ namespace GoF2Remake.UI
         Label codeLabel;
         Button copyButton;
 
-        VisualElement box, squadPanel, squadBody, pilotsPanel, pilotsBody, invitePopup;
+        VisualElement box, squadPanel, squadBody, pilotsPanel, pilotsBody, invitePopup, tradePopup;
         Button squadHeader, pilotsHeader;
-        Label inviteText;
+        Label inviteText, tradeText;
         bool hangar;
         int hereStation = -1;
         string squadKey = "", pilotsKey = "";
         NetSquad.Invite shownInvite;
+        NetTradeClient.Request shownTrade;
         readonly Dictionary<ulong, (VisualElement shield, VisualElement armor, VisualElement hull)> bars = new Dictionary<ulong, (VisualElement, VisualElement, VisualElement)>();
         float refresh;
         Database db;
@@ -58,8 +61,10 @@ namespace GoF2Remake.UI
             hereStation = hangarStation;
             box?.RemoveFromHierarchy();
             invitePopup?.RemoveFromHierarchy();
+            tradePopup?.RemoveFromHierarchy();
             squadKey = pilotsKey = "";
             shownInvite = null;
+            shownTrade = null;
             var sheet = Resources.Load<StyleSheet>("GoF2Net/Squad");
 
             box = new VisualElement { name = "squad", pickingMode = PickingMode.Ignore };
@@ -84,6 +89,24 @@ namespace GoF2Remake.UI
             row.Add(MakeButton(Localization.Extra("mpDecline", "Decline"), () => { if (shownInvite != null) NetSquad.Decline(shownInvite); shownInvite = null; }, null));
             invitePopup.Add(row);
             parent.Add(invitePopup);
+
+            // A trade request (NetTradeClient): the same popup's look.
+            tradePopup = new VisualElement();
+            tradePopup.AddToClassList("squad-invite");
+            if (sheet != null) tradePopup.styleSheets.Add(sheet);
+            tradeText = new Label();
+            tradeText.AddToClassList("squad-invite-text");
+            tradePopup.Add(tradeText);
+            var tradeRow = new VisualElement();
+            tradeRow.AddToClassList("squad-invite-buttons");
+            tradeRow.Add(MakeButton(Localization.Extra("mpAccept", "Accept"), () =>
+            {
+                if (shownTrade != null) { NetTradeClient.Accept(shownTrade); MultiplayerWindow.OpenTradeAny(); }
+                shownTrade = null;
+            }, "squad-button--accept"));
+            tradeRow.Add(MakeButton(Localization.Extra("mpDecline", "Decline"), () => { if (shownTrade != null) NetTradeClient.Decline(shownTrade); shownTrade = null; }, null));
+            tradePopup.Add(tradeRow);
+            parent.Add(tradePopup);
             BuildCodePlate(parent, sheet);
             Refresh();
         }
@@ -161,7 +184,7 @@ namespace GoF2Remake.UI
             bool session = NetGame.Active;
             box.style.display = session ? DisplayStyle.Flex : DisplayStyle.None;
             RefreshCodePlate();
-            if (!session) { invitePopup.style.display = DisplayStyle.None; return; }
+            if (!session) { invitePopup.style.display = tradePopup.style.display = DisplayStyle.None; return; }
             if ((refresh -= Time.unscaledDeltaTime) > 0f) return;
             refresh = RefreshSeconds;
             Refresh();
@@ -172,6 +195,7 @@ namespace GoF2Remake.UI
             RefreshSquad();
             RefreshPilots();
             RefreshInvite();
+            RefreshTrade();
         }
 
         string Where(NetPlayer p)
@@ -270,7 +294,8 @@ namespace GoF2Remake.UI
             pilotsPanel.style.display = pilots.Count > 0 ? DisplayStyle.Flex : DisplayStyle.None;
             if (pilots.Count == 0) { pilotsKey = ""; return; }
             var sb = new StringBuilder(pilotsCollapsed ? "c" : "o");
-            foreach (var p in pilots) sb.Append('|').Append(p.OwnerClientId).Append(p.DisplayName).Append(NetSquad.Same(p, me)).Append(NetSquad.WasInvited(p));
+            foreach (var p in pilots) sb.Append('|').Append(p.OwnerClientId).Append(p.DisplayName).Append(NetSquad.Same(p, me)).Append(NetSquad.WasInvited(p))
+                                        .Append(NetTradeClient.WasAsked(p)).Append(TradingWith(p));
             string key = sb.ToString();
             if (key == pilotsKey) return;
             pilotsKey = key;
@@ -302,8 +327,40 @@ namespace GoF2Remake.UI
                     var target = p;
                     row.Add(MakeButton(Localization.Extra("mpInvite", "Invite"), () => { NetSquad.InviteTo(target); pilotsKey = ""; }, null));
                 }
+                if (p != me) AddTrade(row, p);
                 pilotsBody.Add(row);
             }
+        }
+
+        static bool TradingWith(NetPlayer p) => NetTradeClient.Current != null && p != null && NetTradeClient.Current.partner == p.OwnerClientId;
+
+        /// <summary>A pilot's trade button: Trade, "Asked" while the request waits, "Trading" (opens the trade) during one.</summary>
+        void AddTrade(VisualElement row, NetPlayer p)
+        {
+            if (TradingWith(p))
+                row.Add(MakeButton(Localization.Extra("mpTradeTrading", "Trading"), MultiplayerWindow.OpenTradeAny, "squad-button--accept"));
+            else if (NetTradeClient.WasAsked(p))
+            {
+                var tag = new Label(Localization.Extra("mpTradeAsked", "Asked"));
+                tag.AddToClassList("squad-tag");
+                row.Add(tag);
+            }
+            else
+            {
+                var target = p;
+                row.Add(MakeButton(Localization.Extra("mpTradeButton", "Trade"), () => { NetTradeClient.Ask(target); pilotsKey = ""; }, null));
+            }
+        }
+
+        void RefreshTrade()
+        {
+            var list = NetTradeClient.Requests;
+            var latest = list.Count > 0 ? list[list.Count - 1] : null;
+            // Docked only, one popup at a time (a squad invitation first), none while a trade is open.
+            if (NetPlayer.Local == null || !NetPlayer.Local.InHangar || shownInvite != null || NetTradeClient.Current != null) latest = null;
+            shownTrade = latest;
+            if (latest != null) tradeText.text = string.Format(Localization.Extra("mpTradeRequested", "{0} wants to trade with you."), latest.name);
+            tradePopup.style.display = shownTrade != null ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         void RefreshInvite()

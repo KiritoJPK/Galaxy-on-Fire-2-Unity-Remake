@@ -4,7 +4,8 @@
 // The original has none (AbyssEngine::Engine::Vibrate is an empty stub, Globals::init switches it off). Created by
 // Bootstrap and kept for the whole run.
 //   output     follows InputMode: the controller last used while playing with a controller, the phone while playing by
-//              touch (touch or tilt steering), nothing with keyboard and mouse
+//              touch (touch or tilt steering), nothing with keyboard and mouse; on Android a controller's go to the device's
+//              own motor too (the Input System has no Android controller rumble; #73)
 //   strength   Settings.HapticsIntensity (Options > Controls "Vibration", 0 = off) scales every motor and phone amplitude
 //   events     Play(pulse) for one-off events (the presets below, called by the game code), Rumble(level) every frame for
 //              continuous ones (ChaseCamera's explosion / boost / Liberator rumble, CutsceneCamera's rumble, scraping a
@@ -96,7 +97,13 @@ namespace GoF2Remake.Flight
                 if (Settings.HapticsIntensity <= 0f) return Output.None;
                 switch (InputMode.Current)
                 {
-                    case InputKind.Gamepad: return Gamepad.current != null ? Output.Controller : Output.None;
+                    // Android: the Input System sends no rumble to a controller there (its Android backend has no rumble
+                    // command; it only reads vibratorCount), so a controller's haptics go to the device's own motor: the
+                    // built-in controls of handhelds (the Konkr Pocket FIT's motor is in the device, #73) and phones in
+                    // controller grips feel them.
+                    case InputKind.Gamepad:
+                        if (Application.platform == RuntimePlatform.Android) return PhoneVibrator.Supported ? Output.Phone : Output.None;
+                        return Gamepad.current != null ? Output.Controller : Output.None;
                     case InputKind.Touch: return PhoneVibrator.Supported ? Output.Phone : Output.None;
                     default: return Output.None;
                 }

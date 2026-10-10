@@ -117,6 +117,7 @@ namespace GoF2Remake.UI
         /// <summary>The plates (race until talked to, then name + role) and a mark on agents not heard yet (remake).</summary>
         void RefreshMarks()
         {
+            numbered = InputMode.Current == InputKind.KeyboardMouse;
             for (int i = 0; i < tagItems.Count; i++)
             {
                 var a = level.VisitorAgent(i);
@@ -127,10 +128,27 @@ namespace GoF2Remake.UI
                 mark.EnableInClassList("lounge-tag-mark--known", a.known);
                 if (i < rows.Count)
                 {
-                    rows[i].Q<Label>(className: "lounge-row-name").text = name;
+                    // Keys and mouse: the row's number key in front (#75; the PC version's numbered menus, like the autopilot's).
+                    rows[i].Q<Label>(className: "lounge-row-name").text = numbered && i < 9 ? $"{i + 1}.  {name}" : name;
                     rows[i].Q<Label>(className: "lounge-row-sub").text = role.Length > 0 ? role : a.known || a.IsStory ? T(406 + a.race) : "";
                 }
             }
+        }
+
+        bool numbered;
+
+        /// <summary>#75: the number keys 1-9 pick the visitors in the list's order (the station menu's 1 / 2 / 3 / 4 / 5 then
+        /// aren't its buttons). True when a number key was pressed: a visitor's chat opened, or none that far down.</summary>
+        public bool NumberKey(UnityEngine.InputSystem.Keyboard kb)
+        {
+            if (kb == null || !Active || ChatOpen) return false;
+            for (int i = 0; i < 9; i++)
+            {
+                if (!kb[UnityEngine.InputSystem.Key.Digit1 + i].wasPressedThisFrame && !kb[UnityEngine.InputSystem.Key.Numpad1 + i].wasPressedThisFrame) continue;
+                if (i < level.VisitorAgentCount) { menu.PlayRelease(); OpenChat(i); }
+                return true;
+            }
+            return false;
         }
 
         public void OnViewChanged()
@@ -145,6 +163,7 @@ namespace GoF2Remake.UI
         public void Update()
         {
             chatReveal.Tick(Time.unscaledDeltaTime * 1000f);
+            if (built && numbered != (InputMode.Current == InputKind.KeyboardMouse)) RefreshMarks();   // the numbers follow the input
             bool on = Active;
             if (on != root.ClassListContains("lounge-open")) OnViewChanged();
             if (built && tagItems.Count != level.VisitorAgentCount) Build();   // remake multiplayer: event missions' visitors joined

@@ -576,7 +576,7 @@ namespace GoF2Remake.Flight
         /// then the EMP; a disabled ship costs standing (Standing::applyDisable, not for asteroids / Wanted criminals).</summary>
         static void ApplyEmp(Target target, int emp)
         {
-            if (emp <= 0 || target.playerProof) return;
+            if (emp <= 0 || target.playerProof || target.phased) return;   // phased: a phase cloak
             if (target.RemoteEmp != null) { if (target.Alive) target.RemoteEmp(emp); return; }   // multiplayer: its owner's game
             if (target.hitpoints == null || !target.isShip || !target.Alive) return;
             if (target.hitpoints.emp <= 0 || target.hitpoints.hull <= 0) return;   // already disabled

@@ -16,7 +16,8 @@
 // Hits, EMP, shots, blasts and jump effects go through the server, which checks and limits them (HitUpRpc, ShotUpRpc...:
 // NetGuard, NetRateLimit) before passing them on; only the server may send the passed-on ones (InvokePermission.Server).
 // The ship looks and sounds like the owner's: its engine glow and exhaust (ShipExhaust) while their engine shows, bigger
-// with their boost, the engine loop (3D), their cloak (NpcCloak's look, off the radar from 25 %, NPCs don't fire at it),
+// with their boost, the engine loop (3D), their cloak (NpcCloak's look, off the radar from 25 %, NPCs don't fire at it;
+// a phase cloak: shots, blasts and the local ship pass through, Target.phased),
 // and an EMP's lightning. Their jumps too: the Khador Drive's charge sound and khador_jump fx, a jumpgate's jump animation and
 // sound (SystemJump's events, JumpFxRpc), the ship gone when theirs vanishes (and an explosion when it was destroyed). EMP on a player (the remake's pick: players have no EMP pool) drains that much shield and
 // shows the lightning for 1.5 s. The owner also shares their standings (Standing.*With), so the NPCs of an orbit another
@@ -70,6 +71,7 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<bool> engine = new NetworkVariable<bool>(true, Read, Write);   // the engine glow shows
         readonly NetworkVariable<float> boost = new NetworkVariable<float>(0f, Read, Write);    // 0..1 (FlightModel.BoostVisualPercent)
         readonly NetworkVariable<float> cloak = new NetworkVariable<float>(0f, Read, Write);    // 0..100
+        readonly NetworkVariable<bool> phase = new NetworkVariable<bool>(false, Read, Write);   // a phase cloak is up (PlayerCloak.Phasing)
         readonly NetworkVariable<bool> empShock = new NetworkVariable<bool>(false, Read, Write);
         readonly NetworkVariable<bool> visible = new NetworkVariable<bool>(true, Read, Write);   // the ship's model shows (gone in a jump, exploded)
         readonly NetworkVariable<int> standing0 = new NetworkVariable<int>(0, Read, Write);    // Session.Standing, the signature
@@ -470,7 +472,9 @@ namespace GoF2Remake.Multiplayer
                 // like the original's Player+0x5e; the auto turrets and sentries ignore it too.
                 target.untargetable = cloaked;
                 target.boosting = boost.Value > 0f;   // remake: a boost (or the cloak) shakes off the missiles homing on them (Gun)
+                target.phased = phase.Value;          // remake: a phase cloak: shots and blasts pass through
             }
+            if (obstacle != null) obstacle.enabled = !phase.Value;   // and the local ship flies through it
             if (engineLoop != null)
             {
                 bool run = engine.Value && !hidden;
@@ -504,7 +508,7 @@ namespace GoF2Remake.Multiplayer
             var from = NetSquad.Find(shooter);
             if (from == null || from.Station != Station || !PvpWith(from)) return;   // only where players may fight
             var hp = level != null && level.Health != null && level.Health.Target != null ? level.Health.Target.hitpoints : null;
-            if (hp == null || !hp.Alive) return;
+            if (hp == null || !hp.Alive || level.Health.Target.phased) return;   // a phase cloak: it passes through
             NetAggression.Hit(shooter, emp);
             hp.shield = Mathf.Max(0f, hp.shield - emp);
             empShockMs = 1500f;
@@ -699,6 +703,8 @@ namespace GoF2Remake.Multiplayer
             if (Mathf.Abs(boost.Value - b) > 0.02f || (b == 0f && boost.Value != 0f)) boost.Value = b;
             float c = level.Cloak != null && level.Cloak.Rules != null ? level.Cloak.Rules.Percentage : 0f;
             if (Mathf.Abs(cloak.Value - c) > 0.5f || (c == 0f && cloak.Value != 0f)) cloak.Value = c;
+            bool ph = level.Cloak != null && level.Cloak.Phasing;
+            if (phase.Value != ph) phase.Value = ph;
             // The EMP lightning on the own ship too.
             if (shock && ownSparks == null) ownSparks = new EmpSparks(localShip);
             ownSparks?.SetEmitting(shock);

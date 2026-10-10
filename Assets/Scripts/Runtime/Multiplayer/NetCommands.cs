@@ -296,6 +296,9 @@ namespace GoF2Remake.Multiplayer
                 description = () => X("mpCmdAssist", "flies to a squadmate calling for help") },
             new Command { name = "squad", usage = "[invite <player> | accept | decline | leave]", arg = Arg.Text, optional = true, available = Everyone,
                 local = Squad, description = () => X("mpCmdSquad", "your squad; invite a pilot docked at your station, answer an invitation, leave") },
+            // Trades between players (NetTradeClient / NetTrade): asked and answered by this game, the server checks them.
+            new Command { name = "trade", usage = "[<player> | accept | decline | cancel]", arg = Arg.Text, optional = true, available = Everyone,
+                local = Trade, description = () => X("mpCmdTrade", "trades credits and cargo with a pilot docked at your station") },
         };
 
         static bool ProfilesOn => NetState.Instance != null && NetState.Instance.ProfilesOn;
@@ -444,6 +447,45 @@ namespace GoF2Remake.Multiplayer
                     NetChat.Notice("/squad [invite <player> | accept | decline | leave]");
                     return;
             }
+        }
+
+        /// <summary>/trade: ask a pilot docked here, answer a request, cancel the open trade (the Multiplayer window's Trade tab).</summary>
+        static void Trade(string args)
+        {
+            args = (args ?? "").Trim();
+            string sub = args.ToLowerInvariant();
+            var waiting = NetTradeClient.Requests;
+            switch (sub)
+            {
+                case "":
+                    if (NetTradeClient.Current != null) { UI.MultiplayerWindow.OpenTradeAny(); return; }
+                    NetChat.Notice(waiting.Count > 0
+                        ? string.Format(X("mpTradeWaitingCmd", "{0} wants to trade with you: /trade accept or /trade decline."), waiting[waiting.Count - 1].name)
+                        : "/trade [<player> | accept | decline | cancel]");
+                    return;
+                case "accept":
+                    if (waiting.Count == 0) { NetChat.Notice(X("mpTradeNoRequest", "No trade request is waiting.")); return; }
+                    NetTradeClient.Accept(waiting[waiting.Count - 1]);
+                    return;
+                case "decline":
+                    if (waiting.Count == 0) { NetChat.Notice(X("mpTradeNoRequest", "No trade request is waiting.")); return; }
+                    NetTradeClient.Decline(waiting[waiting.Count - 1]);
+                    return;
+                case "cancel":
+                    if (NetTradeClient.Current == null) { NetChat.Notice(X("mpTradeNone", "You aren't trading.")); return; }
+                    NetTradeClient.Cancel();
+                    return;
+            }
+            var p = MatchPlayer(args, out _) as NetPlayer;
+            if (p == null) { NetChat.Notice(string.Format(X("mpSquadNoPilot", "No pilot called \"{0}\" online."), args)); return; }
+            if (p.IsOwner) { NetChat.Notice(X("mpTradeSelf", "You can't trade with yourself.")); return; }
+            var me = NetPlayer.Local;
+            if (me == null || !me.InHangar || !p.InHangar || me.Station != p.Station)
+            {
+                NetChat.Notice(X("mpTradeHangarOnly", "Trades are only possible while docked in the same hangar."));
+                return;
+            }
+            NetTradeClient.Ask(p);   // the server answers (sent, or why not)
         }
 
         /// <summary>/assist: help a squadmate calling (NetDistress).</summary>

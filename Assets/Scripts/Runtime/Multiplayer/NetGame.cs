@@ -125,8 +125,11 @@ namespace GoF2Remake.Multiplayer
 
         /// <summary>Testing, development builds only: -mpdock docks this player once, a few seconds into their first flight;
         /// -mpaccept accepts squad invitations while docked (NetPlayer), so the real squad flow runs without a hand on it;
-        /// -mphost hosts from the main menu (a phone: adb shell am start ... -e unity "-mphost").</summary>
-        public static readonly bool TestDock = TestFlag("-mpdock"), TestAccept = TestFlag("-mpaccept"), TestHost = TestFlag("-mphost");
+        /// -mphost hosts from the main menu (a phone: adb shell am start ... -e unity "-mphost");
+        /// -mptrade answers trades (NetTradeClient): accepts a request while docked, offers 500 credits, accepts once the other
+        /// side has.</summary>
+        public static readonly bool TestDock = TestFlag("-mpdock"), TestAccept = TestFlag("-mpaccept"), TestHost = TestFlag("-mphost"),
+                                    TestTrade = TestFlag("-mptrade");
 
         static bool TestFlag(string flag) =>
             Debug.isDebugBuild && Array.Exists(Environment.GetCommandLineArgs(), a => string.Equals(a, flag, StringComparison.OrdinalIgnoreCase));
@@ -502,6 +505,7 @@ namespace GoF2Remake.Multiplayer
             if (manager != null && manager.IsHost && PersistentHost && worldEntered && !closing) NetProfileClient.SaveHostNow();
             NetChat.Clear();
             NetSquad.Clear();
+            NetTradeClient.Clear();
             worldEntered = false;
             if (manager == null || closing) return;
             if (manager.IsServer && manager.IsListening && OthersConnected > 0 && NetState.Instance != null && NetState.Instance.IsSpawned)
@@ -939,6 +943,7 @@ namespace GoF2Remake.Multiplayer
                 playersSpawned.Remove(clientId);
                 NetProfiles.OnDisconnect(clientId);   // its profile's control goes to its next device online
                 NetArena.OnDisconnect(clientId);      // out of their queue or match
+                NetTrade.OnDisconnect(clientId);      // their trade ends (whoever paid gets it back)
                 NetRateLimit.Forget(clientId);
                 // (Netcode has usually despawned the player object already: its mission cargo is handed over in
                 // NetPlayer.OnNetworkDespawn.)

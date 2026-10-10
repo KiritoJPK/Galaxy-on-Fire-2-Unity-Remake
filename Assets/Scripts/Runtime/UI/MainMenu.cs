@@ -506,7 +506,25 @@ namespace GoF2Remake.UI
                 && !dialog.ClassListContains("dialog-backdrop--shown"))
                 modBrowser.ToggleSelected();
             if (lastScreen != ScreenSize() || lastSafeArea != Screen.safeArea) UpdateLayout();
+            KeepControllerFocus();
         }
+
+        /// <summary>#74: the panel only sends a controller's navigation to a focused element, and nothing focuses one when the
+        /// controller takes over from touch (Android starts in touch mode) or a closed panel took the focus with it: the
+        /// D-pad then did nothing until a touch. With the controller in use and nothing focused, the open dialog's Yes, the
+        /// open panel's first item or the main column's.</summary>
+        void KeepControllerFocus()
+        {
+            if (screen != MenuState.Menu || InputMode.Current != InputKind.Gamepad || root.focusController == null
+                || root.focusController.focusedElement != null) return;
+            if ((focusRetry -= Time.unscaledDeltaTime) > 0f) return;   // a page with nothing to focus: not every frame
+            focusRetry = 0.25f;
+            SetTouchMode(false);
+            if (dialog.ClassListContains("dialog-backdrop--shown")) Select(root.Q<Button>("dialogYes"));
+            else FocusFirst(openPanel ?? mainButtons);
+        }
+
+        float focusRetry;
 
         static int FingersDown()
         {
@@ -783,7 +801,9 @@ namespace GoF2Remake.UI
             var p = logo.parent.layout;
             var el = logo.layout;
             if (el.width <= 0f || el.height <= 0f || p.width <= 0f) return;
-            const float aspect = 449f / 155f;                           // logo_gof2_remake.png (the remake's title logo)
+            // logo_gof2_remake.png's own proportions (the remake's title logo; #67 redrew it at 953 x 360)
+            var logoTex = logo.resolvedStyle.backgroundImage.texture;
+            float aspect = logoTex != null && logoTex.height > 0 ? (float)logoTex.width / logoTex.height : 953f / 360f;
             float imgW = Mathf.Min(el.width, el.height * aspect);     // scale-to-fit, left aligned
             var imgCenter = new Vector2(el.x + imgW * 0.5f, el.y + el.height * 0.5f);
             float targetW = Mathf.Min(p.width * 0.56f, p.height * 0.34f * aspect);

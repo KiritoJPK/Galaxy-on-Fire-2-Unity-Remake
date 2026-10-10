@@ -8,6 +8,10 @@
 //   Squad (NetSquad, client-side, rebuilt when it changes): invitations (Accept / Decline), the members with where they
 //     are and a distress call (Help), Leave, the pilots docked here to Invite; distress calls themselves are made in space
 //     (the flight squad window, the E menu, /sos), which the tab says;
+//   Trade (NetTradeClient, client-side like Squad): the trade requests (Accept / Decline); without a trade the pilots
+//     docked here to Trade with; in one, this player's offer (credits, the goods with -1 / remove) beside the other's,
+//     the tradeable cargo to add (+1 / +10 / All), who accepted, Accept trade / Cancel trade. It opens by itself when a
+//     trade starts (NetTradeClient.Opened);
 //   Faction: invitations (Join), without a faction a Create form and the factions; in one: the bank (Deposit / Withdraw), the
 //     members (Promote / Demote / Make leader / Kick by rank), the pilots online to Invite, the territory (the claims,
 //     and for the station docked at: Claim / Make home / Unclaim / Siege), the sieges, Leave / Disband (asked twice);
@@ -37,7 +41,7 @@ namespace GoF2Remake.UI
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public sealed class MultiplayerWindow : MonoBehaviour
     {
-        enum Tab { Chat, Squad, Faction, Arena, Profile, Admin }
+        enum Tab { Chat, Squad, Trade, Faction, Arena, Profile, Admin }
 
         static MultiplayerWindow current;
 
@@ -92,6 +96,7 @@ namespace GoF2Remake.UI
             current = this;
             NetPanel.Changed += OnChanged;
             NetChat.Added += OnChat;
+            NetTradeClient.Opened += OnTradeOpened;
         }
 
         void OnDisable()
@@ -99,6 +104,22 @@ namespace GoF2Remake.UI
             if (current == this) current = null;
             NetPanel.Changed -= OnChanged;
             NetChat.Added -= OnChat;
+            NetTradeClient.Opened -= OnTradeOpened;
+        }
+
+        /// <summary>The Trade tab opened (the pilot list's Trade, a trade request's Accept).</summary>
+        public static void OpenTradeAny() { if (current != null && !current.flight) current.OpenTab(Tab.Trade); }
+
+        /// <summary>A trade started: its tab (docked: the station's window).</summary>
+        void OnTradeOpened() { if (!flight) OpenTab(Tab.Trade); }
+
+        void OpenTab(Tab t)
+        {
+            tab = t;
+            confirmLeave = false;
+            BuildTabs();
+            if (isOpen) { ShowPane(); Rebuild(); }
+            else Open();
         }
 
         void OnDestroy()
@@ -241,6 +262,7 @@ namespace GoF2Remake.UI
                          : t == Tab.Profile ? Localization.Extra("mpTabProfile", "Profile") : Localization.Extra("mpTabAdmin", "Admin");
                 if (t == Tab.Chat) name = Localization.Extra("mpChat", "Chat");
                 if (t == Tab.Squad) name = Localization.Extra("mpTabSquad", "Squad");
+                if (t == Tab.Trade) name = Localization.Extra("mpTabTrade", "Trade");
                 var b = Btn(name, () => { tab = t; confirmLeave = false; BuildTabs(); ShowPane(); Rebuild(); }, t == tab ? "squad-button--accept" : null);
                 b.style.marginRight = 8;
                 tabs.Add(b);
@@ -288,11 +310,13 @@ namespace GoF2Remake.UI
                 menuButton.style.marginLeft = session ? new StyleLength(0f) : new StyleLength(StyleKeyword.Null);
             if (!session) { if (isOpen) Close(); return; }
             var s = NetPanel.Latest;
-            bool waiting = s != null && (s.factionInvites.Count > 0 || s.duelFrom.Length > 0);
+            bool waiting = (s != null && (s.factionInvites.Count > 0 || s.duelFrom.Length > 0))
+                           || NetTradeClient.Requests.Count > 0 || (NetTradeClient.Current != null && !(isOpen && tab == Tab.Trade));
             bool unread = unreadChat && !(isOpen && tab == Tab.Chat);
             string label = plate == plateButton ? Localization.Extra("mpMultiplayer", "Multiplayer") : Localization.Extra("mpFactionArena", "Faction · Arena");
             plateButton.text = (label + (waiting || unread ? "  •" : "")).ToUpperInvariant();
             if (isOpen && tab == Tab.Squad && SquadKey() != squadKey) Rebuild();
+            if (isOpen && tab == Tab.Trade && TradeKey() != tradeKey && !Busy) Rebuild();
             // The plate's dot needs a snapshot now and then even while the window is closed.
             if ((refresh -= Time.unscaledDeltaTime) <= 0f) { refresh = isOpen ? NetPanel.RefreshSeconds : NetPanel.RefreshSeconds * 3f; NetPanel.Request(); }
         }
@@ -300,7 +324,7 @@ namespace GoF2Remake.UI
         void OnChanged()
         {
             if (NetPanel.Latest != null && NetPanel.Latest.role != shownRole && tabs != null) BuildTabs();   // made an op / admin, or no longer
-            if (!isOpen || tab == Tab.Squad) return;   // the Squad tab follows the players, not the snapshot
+            if (!isOpen || tab == Tab.Squad || tab == Tab.Trade) return;   // they follow the players, not the snapshot
             // Not under a finger or a text field being typed into (a rebuild made new fields: the focus and Android's keyboard
             // went, and a pressed button was gone before its release): once they are done (Update).
             if (Busy) pendingRebuild = true;
@@ -364,6 +388,7 @@ namespace GoF2Remake.UI
             body.Clear();
             if (tab == Tab.Chat) return;   // the chat pane is built once (its line keeps the focus and the draft)
             if (tab == Tab.Squad) { BuildSquad(); scroll.scrollOffset = new Vector2(0f, y); return; }   // no snapshot needed
+            if (tab == Tab.Trade) { BuildTrade(); scroll.scrollOffset = new Vector2(0f, y); return; }
             var s = NetPanel.Latest;
             if (s == null) { body.Add(Text(Localization.Extra("mpPanelLoading", "Asking the server..."), 16, Dim)); return; }
             switch (tab)
@@ -817,6 +842,182 @@ namespace GoF2Remake.UI
                                                        : Localization.Extra("mpSquadDockFirst", "Squads form while docked: dock at the same station as the other pilot."), 15, Dim));
         }
 
+        // ---- the Trade tab --------------------------------------------------------------------------------------
+
+        string tradeKey = "";
+
+        /// <summary>What the Trade tab shows: the trade, the requests, the hold and the wallet, the pilots docked here, and
+        /// whether Accept waits out the other side's last change.</summary>
+        static string TradeKey()
+        {
+            var sb = new System.Text.StringBuilder();
+            var me = NetPlayer.Local;
+            sb.Append(NetTradeClient.Revision).Append('|').Append(Session.Credits).Append('|').Append(Shop.CargoLoad());
+            sb.Append(me != null ? $"|{me.Station}|{me.InHangar}" : "|-");
+            foreach (var c in Session.Cargo) sb.Append('|').Append(c.item).Append(':').Append(c.amount);
+            foreach (var r in NetTradeClient.Requests) sb.Append("|r").Append(r.from);
+            var v = NetTradeClient.Current;
+            if (v != null) sb.Append("|h").Append(Time.unscaledTime - v.theirChangedAt < NetTradeClient.ChangedHoldSeconds);
+            else if (me != null)
+                foreach (var p in NetPlayer.All)
+                    if (p != null && p.IsSpawned && !p.IsOwner && p.InHangar && p.Station == me.Station)
+                        sb.Append("|p").Append(p.OwnerClientId).Append(p.DisplayName).Append(NetTradeClient.WasAsked(p));
+            return sb.ToString();
+        }
+
+        void BuildTrade()
+        {
+            tradeKey = TradeKey();
+            var me = NetPlayer.Local;
+            bool docked = me != null && me.InHangar;
+            foreach (var r in new List<NetTradeClient.Request>(NetTradeClient.Requests))
+            {
+                var row = Line(string.Format(Localization.Extra("mpTradeRequested", "{0} wants to trade with you."), r.name), Good);
+                var request = r;
+                if (docked) row.Add(Btn(Localization.Extra("mpAccept", "Accept"), () => { NetTradeClient.Accept(request); tradeKey = ""; }, "squad-button--accept"));
+                row.Add(Btn(Localization.Extra("mpDecline", "Decline"), () => { NetTradeClient.Decline(request); tradeKey = ""; }, null));
+                body.Add(row);
+            }
+            var v = NetTradeClient.Current;
+            if (v == null) { BuildTradePilots(me, docked); return; }
+
+            var title = Text(string.Format(Localization.Extra("mpTradeWith", "Trading with {0}"), v.partnerName), 22, Accent);
+            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            body.Add(title);
+            body.Add(Text(Localization.Extra("mpTradeHint", "Put credits and goods from your hold into your offer. Any change takes back both accepts; the trade happens once you both accept the same offers."), 14, Dim));
+
+            bool open = v.phase == NetTrade.Phase.Open;
+            var cols = Row();
+            cols.style.alignItems = Align.FlexStart;
+            cols.style.flexWrap = Wrap.NoWrap;
+            var left = Column(cols);
+            var right = Column(cols);
+            body.Add(cols);
+
+            // This player's offer: the credits (a field) and the goods (-1 / remove).
+            var draft = NetTradeClient.Draft;
+            left.Add(Heading(Localization.Extra("mpTradeYourOffer", "Your offer") + (v.myAccepted ? "  ✓" : "")));
+            var credits = Row();
+            credits.Add(Text(Localization.Extra("mpTradeCredits", "Credits"), 16, Color.white));
+            var field = Field(Localization.Extra("mpPanelAmount", "Amount"), draft.credits > 0 ? draft.credits.ToString() : "", 10, 150, value =>
+            {
+                long n = 0;
+                foreach (char c in value) if (c >= '0' && c <= '9' && n < int.MaxValue) n = n * 10 + (c - '0');
+                NetTradeClient.SetCredits((int)Math.Min(int.MaxValue, n));
+            }, TouchScreenKeyboardType.NumberPad);
+            field.SetEnabled(open);
+            credits.Add(field);
+            credits.Add(Text(string.Format(Localization.Extra("mpTradeOfCredits", "of {0:N0}"), Session.Credits), 14, Dim));
+            left.Add(credits);
+            if (draft.items.Count == 0) left.Add(Text(Localization.Extra("mpTradeNoGoods", "No goods."), 14, Dim));
+            foreach (var s in draft.items)
+            {
+                var row = Line($"{s.amount} t {GameNames.Item(s.item)}", Color.white);
+                int item = s.item, amount = s.amount;
+                if (open)
+                {
+                    row.Add(Btn("−1", () => NetTradeClient.AddItem(item, -1), null));
+                    row.Add(Btn("×", () => NetTradeClient.AddItem(item, -amount), "squad-button--leave"));
+                }
+                left.Add(row);
+            }
+
+            // The other side's offer, as the server last sent it.
+            right.Add(Heading(string.Format(Localization.Extra("mpTradeTheirOffer", "{0}'s offer"), v.partnerName) + (v.theirAccepted ? "  ✓" : "")));
+            right.Add(Text(v.theirs.credits > 0 ? $"{v.theirs.credits:N0} " + Localization.Extra("mpCredits", "credits")
+                                                : Localization.Extra("mpTradeNoCredits", "No credits."), 16, v.theirs.credits > 0 ? Color.white : Dim));
+            if (v.theirs.items.Count == 0) right.Add(Text(Localization.Extra("mpTradeNoGoods", "No goods."), 14, Dim));
+            foreach (var s in v.theirs.items) right.Add(Text($"{s.amount} t {GameNames.Item(s.item)}", 16, Color.white));
+
+            // Where it stands, and the buttons.
+            bool held = Time.unscaledTime - v.theirChangedAt < NetTradeClient.ChangedHoldSeconds;
+            string state; Color colour = Dim;
+            if (!open) { state = Localization.Extra("mpTradeExchanging", "Exchanging..."); colour = Accent; }
+            else if (held) { state = string.Format(Localization.Extra("mpTradeTheyChanged", "{0} changed their offer."), v.partnerName); colour = Bad; }
+            else if (NetTradeClient.Sending) state = Localization.Extra("mpTradeSending", "Sending your offer...");
+            else if (v.myAccepted) state = string.Format(Localization.Extra("mpTradeWaiting", "You accepted. Waiting for {0}."), v.partnerName);
+            else if (v.theirAccepted) { state = string.Format(Localization.Extra("mpTradeTheyAccepted", "{0} accepted this trade."), v.partnerName); colour = Good; }
+            else state = Localization.Extra("mpTradeNobodyAccepted", "Nobody has accepted yet.");
+            var stateLine = Text(state, 16, colour);
+            stateLine.style.marginTop = 12;
+            body.Add(stateLine);
+            // What comes in may not fit the hold (the shop doesn't check either: launching does).
+            int incoming = 0, outgoing = 0;
+            foreach (var s in v.theirs.items) incoming += s.amount;
+            foreach (var s in draft.items) outgoing += s.amount;
+            int over = Shop.CargoLoad() - outgoing + incoming - Shop.MaxLoad(NetGame.Db);
+            if (incoming > 0 && over > 0)
+                body.Add(Text(string.Format(Localization.Extra("mpTradeOverload", "This puts {0} t more in your hold than it carries: sell or store some before you launch."), over), 14, Bad));
+            var buttons = Row();
+            if (open)
+            {
+                bool empty = draft.Empty && v.theirs.Empty;
+                var accept = Btn(Localization.Extra("mpTradeAccept", "Accept trade"), () => { NetTradeClient.Confirm(); tradeKey = ""; }, "squad-button--accept");
+                accept.SetEnabled(!v.myAccepted && !held && !NetTradeClient.Sending && !empty);
+                buttons.Add(accept);
+                buttons.Add(Btn(Localization.Extra("mpTradeCancel", "Cancel trade"), () => { NetTradeClient.Cancel(); tradeKey = ""; }, "squad-button--leave"));
+            }
+            buttons.style.marginTop = 6;
+            body.Add(buttons);
+
+            // The hold: what can go into the offer.
+            if (!open) return;
+            Section(Localization.Extra("mpTradeYourCargo", "Your cargo"));
+            int shown = 0;
+            var seen = new HashSet<int>();
+            foreach (var c in Session.Cargo)
+            {
+                if (c.amount <= 0 || !seen.Add(c.item) || !NetTradeClient.Tradeable(c.item)) continue;
+                int have = Shop.CargoOf(c.item), offered = NetTradeClient.OfferedOf(c.item), item = c.item;
+                shown++;
+                var row = Line($"{GameNames.Item(item)}  ·  {have} t" + (offered > 0 ? "  " + string.Format(Localization.Extra("mpTradeOffered", "({0} offered)"), offered) : ""), Color.white);
+                if (offered < have)
+                {
+                    row.Add(Btn("+1", () => NetTradeClient.AddItem(item, 1), null));
+                    if (have - offered > 1) row.Add(Btn("+10", () => NetTradeClient.AddItem(item, 10), null));
+                    row.Add(Btn(Localization.Extra("mpTradeAll", "All"), () => NetTradeClient.AddItem(item, have), "squad-button--accept"));
+                }
+                body.Add(row);
+            }
+            if (shown == 0) body.Add(Text(Localization.Extra("mpTradeEmptyHold", "Nothing in your hold can be traded. Demount equipment in the hangar to trade it."), 15, Dim));
+        }
+
+        /// <summary>No trade open: the pilots docked here to trade with.</summary>
+        void BuildTradePilots(NetPlayer me, bool docked)
+        {
+            Section(Localization.Extra("mpTradePilots", "Trade with a pilot docked here"));
+            if (!docked)
+            {
+                body.Add(Text(Localization.Extra("mpTradeDockFirst", "Trades happen in a hangar: dock at the same station as the other pilot."), 15, Dim));
+                return;
+            }
+            int shown = 0;
+            foreach (var p in NetPlayer.All)
+            {
+                if (p == null || !p.IsSpawned || p.IsOwner || !p.InHangar || p.Station != me.Station) continue;
+                shown++;
+                var row = Line(p.DisplayName, Color.white);
+                var target = p;
+                if (NetTradeClient.WasAsked(p)) row.Add(Text(Localization.Extra("mpTradeAsked", "Asked"), 14, Dim));
+                else row.Add(Btn(Localization.Extra("mpTradeButton", "Trade"), () => { NetTradeClient.Ask(target); tradeKey = ""; }, "squad-button--accept"));
+                body.Add(row);
+            }
+            if (shown == 0) body.Add(Text(Localization.Extra("mpTradeNobodyHere", "No other pilot is docked here. Trades happen in a hangar: meet at a station."), 15, Dim));
+            body.Add(Text(Localization.Extra("mpTradeWhat", "You trade credits and the goods in your hold (equipment too, once demounted). Ships and story items can't be traded."), 14, Dim));
+        }
+
+        /// <summary>A column of the Trade tab's two (the offers side by side).</summary>
+        static VisualElement Column(VisualElement row)
+        {
+            var c = new VisualElement();
+            c.style.flexGrow = 1;
+            c.style.flexBasis = 0;
+            c.style.marginRight = 16;
+            c.style.minWidth = 0;
+            row.Add(c);
+            return c;
+        }
+
         // ---- the Chat tab ---------------------------------------------------------------------------------------
 
         bool unreadChat;
@@ -971,7 +1172,10 @@ namespace GoF2Remake.UI
 
         static string StationName(int station) => NetGame.Db.Stations.Find(x => x.index == station)?.name ?? station.ToString();
 
-        void Section(string title)
+        void Section(string title) => body.Add(Heading(title));
+
+        /// <summary>A section's title (Section adds it to the tab; the Trade tab's columns take their own).</summary>
+        static Label Heading(string title)
         {
             var l = Text(title.ToUpperInvariant(), 15, Accent);
             l.style.marginTop = 16;
@@ -979,7 +1183,7 @@ namespace GoF2Remake.UI
             l.style.letterSpacing = 1;
             l.style.borderBottomWidth = 1;
             l.style.borderBottomColor = new Color(Accent.r, Accent.g, Accent.b, 0.3f);
-            body.Add(l);
+            return l;
         }
 
         static VisualElement Row()

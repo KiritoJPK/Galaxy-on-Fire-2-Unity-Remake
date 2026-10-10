@@ -97,7 +97,9 @@ namespace GoF2Remake.EditorTools
             mi.importLights = false;
             mi.importNormals = ModelImporterNormals.Import;
             mi.importTangents = ModelImporterTangents.CalculateMikk;
-            mi.isReadable = true;
+            // Read/Write only where runtime code reads the mesh: Valkyrie 80 splits the deep science station's damaged
+            // thruster flames per engine (ValkyrieLevels.MakeFlamePieces80, #70).
+            mi.isReadable = assetPath.EndsWith("/v_station_deep_science_damaged_emitters_anim_add.fbx");
         }
 
         void OnPreprocessAudio()

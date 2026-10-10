@@ -70,7 +70,9 @@ namespace GoF2Remake.EditorTools
             Directory.CreateDirectory(ImageDir);
             var logos = Load($"{ImportSettings.Root}/Textures/textures/gof2_logos_1440.png");
             // Rects from _texture_manifest.json (x, y, w, h, top-left origin).
-            Save(Crop(logos, 269, 71, 670, 207), "logo_gof2");
+            // The original's logo cut from the atlas, only while there is none: logo_gof2.png is a redrawn, sharper version
+            // now (#67), which a rebuild mustn't overwrite with the crop.
+            if (!File.Exists($"{ImageDir}/logo_gof2.png")) Save(Crop(logos, 269, 71, 670, 207), "logo_gof2");
             Save(Crop(logos, 1, 71, 266, 303), "logo_fishlabs");   // ABYSS ENGINE (7000) is replaced by the Unity logo
 
             // 2048 cards sheet: 3 x 2 grid of cards (blue = normal, orange = selected).

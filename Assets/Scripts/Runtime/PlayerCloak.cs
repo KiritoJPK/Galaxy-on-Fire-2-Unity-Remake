@@ -8,6 +8,10 @@
 //   Look (BumpShaderCloak, shader type 0xe): the hull renderers switch to GoF2/Cloak (dissolve by cloak_map.png into the
 //     refracted screen behind, light-blue edge); the lights keep glowing and animating, the engine glow hides from 25 %
 //     (CloakGlow). Drawn by CloakPass from a copy of the frame after the transparents, so the hull refracts its own lights.
+//   Remake (for mods): a cloak item with attribute 104 = 1 ("phaseCloak") also phases the ship out while cloaked, fades
+//     included: PlayerCollision skips the landmarks, the freighters, other players' ships and the asteroids (the wormhole
+//     still pulls), and Target.phased lets shots fly through and blasts pass (no damage at all; NetPlayer tells the other
+//     players' games). Ending inside something collides as usual: pushed out of a volume, an asteroid destroyed for 20.
 
 using System;
 using System.Collections.Generic;
@@ -20,10 +24,16 @@ namespace GoF2Remake.Flight
     public class PlayerCloak : MonoBehaviour
     {
         const int IntegratedCloakItem = 95;
+        /// <summary>Remake-only item attribute (Modding.ItemStats "phaseCloak").</summary>
+        public const int PhaseAttr = 104;
         static readonly int AnimValueId = Shader.PropertyToID("_AnimValue"), CloakRateId = Shader.PropertyToID("_CloakRate");
 
         public Cloak Rules { get; private set; }
         public string ItemName { get; private set; }
+        /// <summary>Remake: the item phases the ship through objects while cloaked (attribute 104).</summary>
+        public bool Phases { get; private set; }
+        /// <summary>Phased out now: PlayerCollision lets the ship pass through everything solid.</summary>
+        public bool Phasing => Phases && Rules != null && Rules.Cloaked;
         /// <summary>A HUD message ("-2t Energy Cells", "Cloak ready", 583).</summary>
         public event Action<string> Message;
 
@@ -46,6 +56,7 @@ namespace GoF2Remake.Flight
             var c = player.AddComponent<PlayerCloak>();
             c.Rules = new Cloak(item.index, item.Attr(35, 10000), item.Attr(36, 2000), item.Attr(38, 1), Session.Difficulty);
             c.ItemName = GameNames.Item(item.index);
+            c.Phases = item.Attr(PhaseAttr) > 0;
             c.target = target;
             c.Setup(model);
             return c;
@@ -84,7 +95,7 @@ namespace GoF2Remake.Flight
 
         void OnDestroy()
         {
-            if (target != null) target.cloaked = false;
+            if (target != null) { target.cloaked = false; target.phased = false; }
             GoF2Remake.Visuals.CloakPass.Request(this, false);
             foreach (var h in hull) foreach (var m in h.cloak) Destroy(m);
         }
@@ -114,11 +125,13 @@ namespace GoF2Remake.Flight
             {
                 case Cloak.Event.Engaged:
                     target.cloaked = true;
+                    target.phased = Phases;
                     Play();
                     Swap(true);
                     break;
                 case Cloak.Event.Ended:
                     target.cloaked = false;
+                    target.phased = false;
                     Play();
                     Swap(false);
                     break;

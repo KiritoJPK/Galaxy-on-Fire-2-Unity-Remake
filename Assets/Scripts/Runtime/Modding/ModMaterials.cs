@@ -79,12 +79,17 @@ namespace GoF2Remake.Modding
 
         /// <summary>A decoded (readable) texture converted for its use: NormalToAlpha above, or a glTF metallic-roughness map
         /// (B metallic, G roughness) as URP Lit's metallic / smoothness map (R metallic, A smoothness = 1 - roughness), like
-        /// Hidden/GoF2/MetallicRoughnessToGloss but before compression (the shader's render texture stayed uncompressed).</summary>
-        static Texture2D Convert(Texture2D t, Remap remap)
+        /// Hidden/GoF2/MetallicRoughnessToGloss but before compression (the shader's render texture stayed uncompressed).
+        /// The material's factors are baked in (glTF: metallic = metallicFactor x B, roughness = roughnessFactor x G): URP Lit
+        /// has no metallic multiplier for its map, and the GoF3 ships' maps are all metal in B with metallicFactor 0, which
+        /// taken as 1 made every hull a mirror, black against space.</summary>
+        static Texture2D Convert(Texture2D t, Remap remap, float metal = 1f, float rough = 1f)
         {
             var px = t.GetPixels32();
             if (remap == Remap.NormalToAlpha) for (int i = 0; i < px.Length; i++) px[i].a = px[i].r;
-            else for (int i = 0; i < px.Length; i++) px[i] = new Color32(px[i].b, 0, 0, (byte)(255 - px[i].g));
+            else
+                for (int i = 0; i < px.Length; i++)
+                    px[i] = new Color32((byte)(px[i].b * metal + 0.5f), 0, 0, (byte)(255 - (int)(px[i].g * rough + 0.5f)));
             bool mips = t.mipmapCount > 1;
             var o = t;
             if (t.format != TextureFormat.RGBA32 && t.format != TextureFormat.ARGB32)
@@ -161,27 +166,37 @@ namespace GoF2Remake.Modding
             return Once(key, () => Decode(key, mod.Id + ":" + path, mod.Id, path, null, () => mod.LocalFile(path), linear, readable, remap));
         }
 
-        static string ImageKey(ModInfo mod, string hash, ModGlbImages.Role role) =>
-            mod.Id + "|#image:" + hash + "|" + role + (role == ModGlbImages.Role.Normal && NormalsInAlpha ? "|n" : "");
+        /// <summary>A role's key part: "MetallicRoughness" alone for the factors (1, 1), so textures cached before the factors
+        /// counted stay valid for them; else the factors too.</summary>
+        static string RoleKey(ModGlbImages.Role role, float metal, float rough) =>
+            role != ModGlbImages.Role.MetallicRoughness || (metal >= 1f && rough >= 1f) ? role.ToString()
+            : role + "@" + metal.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                   + "," + rough.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+        static string ImageKey(ModInfo mod, string hash, ModGlbImages.Role role, float metal, float rough) =>
+            mod.Id + "|#image:" + hash + "|" + RoleKey(role, metal, rough) + (role == ModGlbImages.Role.Normal && NormalsInAlpha ? "|n" : "");
 
         /// <summary>A GLB's embedded image (ModGltf, ModGlbImages) as a texture for one role, made in the background once per
-        /// mod and image content: base colour / emission sRGB, normal and metallic-roughness maps linear and converted.</summary>
-        public static Task PreloadImage(ModInfo mod, string hash, string ext, byte[] bytes, ModGlbImages.Role role)
+        /// mod and image content: base colour / emission sRGB, normal and metallic-roughness maps linear and converted (a
+        /// metallic-roughness map once per pair of its materials' metallic / roughness factors).</summary>
+        public static Task PreloadImage(ModInfo mod, string hash, string ext, byte[] bytes, ModGlbImages.Role role,
+            float metal = 1f, float rough = 1f)
         {
             Check();
-            string key = ImageKey(mod, hash, role);
+            string key = ImageKey(mod, hash, role, metal, rough);
+            string roleKey = RoleKey(role, metal, rough);
             bool linear = role != ModGlbImages.Role.Color;
             var remap = role == ModGlbImages.Role.MetallicRoughness ? Remap.MetallicRoughness
                       : role == ModGlbImages.Role.Normal && NormalsInAlpha ? Remap.NormalToAlpha : Remap.None;
-            return Once(key, () => Decode(key, $"{mod.Id}:{hash.Substring(0, 8)} {role}", mod.Id, null, hash + "|" + role,
-                () => mod.LocalImage(hash + "_" + role, ext, bytes), linear, false, remap));
+            return Once(key, () => Decode(key, $"{mod.Id}:{hash.Substring(0, 8)} {roleKey}", mod.Id, null, hash + "|" + roleKey,
+                () => mod.LocalImage(hash + "_" + role, ext, bytes), linear, false, remap, metal, rough));
         }
 
         /// <summary>A texture PreloadImage made (null: none, or it couldn't be read).</summary>
-        public static Texture2D Image(ModInfo mod, string hash, ModGlbImages.Role role)
+        public static Texture2D Image(ModInfo mod, string hash, ModGlbImages.Role role, float metal = 1f, float rough = 1f)
         {
             Check();
-            return textures.TryGetValue(ImageKey(mod, hash, role), out var t) ? t : null;
+            return textures.TryGetValue(ImageKey(mod, hash, role, metal, rough), out var t) ? t : null;
         }
 
         /// <summary>One load per key: a key already made or being made isn't made again (many models share images).</summary>
@@ -214,7 +229,7 @@ namespace GoF2Remake.Modding
         /// <summary>Reads a texture back from the disk cache or decodes, converts and compresses it. The cache file is named
         /// by the mod file's path, size and date ('path'), or by the content ('content', a GLB's image).</summary>
         static async Task Decode(string key, string name, string modId, string path, string content, System.Func<string> localFile,
-            bool linear, bool readable, Remap remap)
+            bool linear, bool readable, Remap remap, float metal = 1f, float rough = 1f)
         {
             int rev = revision;
             // Desktop GPUs read DXT: the worker thread compresses it with its own mipmaps (ModTextureEncoder).
@@ -254,7 +269,7 @@ namespace GoF2Remake.Modding
                 var t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
                 if (t == null) return;
                 t.name = name;
-                if (remap != Remap.None) t = Convert(t, remap);
+                if (remap != Remap.None) t = Convert(t, remap, metal, rough);
                 var work = encode ? ModTextureEncoder.Start(t, linear) : null;
                 if (encode && work == null && loggedFormats.Add(t.format + (t.width % 4 == 0 && t.height % 4 == 0 ? "" : " (size)")))
                     Debug.Log($"Mods: {name}: {t.format} {t.width}x{t.height} is compressed on the main thread (the background encoder takes RGBA32 / ARGB32 / RGB24, sizes in multiples of 4)");
@@ -379,20 +394,21 @@ namespace GoF2Remake.Modding
         /// when the mods' loader made it (ModGltf: compressed, metallic-roughness and normal maps already converted); else
         /// glTFast's own texture, converted here on the GPU.</summary>
         public static Material FromGltf(GLTFast.Schema.MaterialBase g, GLTFast.IGltfReadable gltf,
-            System.Func<int, ModGlbImages.Role, Texture2D> images = null)
+            System.Func<int, ModGlbImages.Role, float, float, Texture2D> images = null)
         {
             var a = ModAssets.Get();
             if (a == null) return null;
             var mode = g.GetAlphaMode();
             bool clip = mode == GLTFast.Schema.MaterialBase.AlphaMode.Mask, glass = mode == GLTFast.Schema.MaterialBase.AlphaMode.Blend;
             var m = Copy(a.Lit(clip, glass, false), string.IsNullOrEmpty(g.name) ? "glTF material" : g.name);
-            var pbr = g.PbrMetallicRoughness;
             bool ours = false;   // the last Tex came from 'images'
+            var pbr = g.PbrMetallicRoughness;
+            float metal = pbr != null ? Mathf.Clamp01(pbr.metallicFactor) : 0f, rough = pbr != null ? Mathf.Clamp01(pbr.roughnessFactor) : 1f;
             Texture2D Tex(GLTFast.Schema.TextureInfoBase info, string property, ModGlbImages.Role role = ModGlbImages.Role.Color)
             {
                 ours = false;
                 if (info == null || info.index < 0) return null;
-                var t = images?.Invoke(info.index, role);
+                var t = images?.Invoke(info.index, role, metal, rough);
                 ours = t != null;
                 if (t == null) t = gltf.GetTexture(info.index);
                 if (t != null && gltf.IsTextureYFlipped(info.index))
@@ -407,7 +423,6 @@ namespace GoF2Remake.Modding
             var baseMap = pbr != null ? Tex(pbr.BaseColorTexture, "_BaseMap") : null;
             m.SetTexture("_BaseMap", baseMap);
             m.SetTexture("_MainTex", baseMap);
-            float metal = pbr != null ? pbr.metallicFactor : 0f, rough = pbr != null ? pbr.roughnessFactor : 1f;
             var mr = pbr != null ? Tex(pbr.MetallicRoughnessTexture, "_MetallicGlossMap", ModGlbImages.Role.MetallicRoughness) : null;
             if (mr != null && ours)
             {
@@ -416,11 +431,14 @@ namespace GoF2Remake.Modding
             }
             else if (mr != null && a.metallicRoughness != null)
             {
-                // B metal, G roughness -> R metal, A smoothness (the map's values; URP multiplies the smoothness by _Smoothness,
-                // glTF's factors are taken as 1, the usual export).
+                // B metal, G roughness -> R metal, A smoothness, the glTF factors applied (metallic = factor x B, roughness =
+                // factor x G; URP Lit has no metallic multiplier for its map). A copy of the template, so the asset isn't changed.
                 var rt = new RenderTexture(mr.width, mr.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear)
                     { name = m.name + " metallic", useMipMap = true, autoGenerateMips = true, wrapMode = mr.wrapMode };
-                Graphics.Blit(mr, rt, a.metallicRoughness);
+                if (mrBlit == null) mrBlit = new Material(a.metallicRoughness);
+                mrBlit.SetFloat("_MetallicFactor", metal);
+                mrBlit.SetFloat("_RoughnessFactor", rough);
+                Graphics.Blit(mr, rt, mrBlit);
                 made.Add(rt);
                 m.SetTexture("_MetallicGlossMap", rt);
                 m.SetFloat("_Smoothness", 1f);
@@ -446,6 +464,8 @@ namespace GoF2Remake.Modding
             if (g.doubleSided) m.SetFloat("_Cull", (float)CullMode.Off);
             return m;
         }
+
+        static Material mrBlit;
 
         /// <summary>Material for renderers without one.</summary>
         public static Material Default()
