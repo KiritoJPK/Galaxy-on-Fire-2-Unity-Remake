@@ -175,6 +175,7 @@ namespace GoF2Remake.World
             // Remake: no hit cube of its own (the +-1000 turret cube would soak up the shots at its host) and no lock.
             t.Target.radius = 0f;
             t.Target.untargetable = true;
+            HullCollision.Detach(t.Target);   // nor a mesh hull (it stopped the shots at the Rhino under it)
             t.SetGun(22, 0.5f);
             host.AttachedTurret = t;
         }

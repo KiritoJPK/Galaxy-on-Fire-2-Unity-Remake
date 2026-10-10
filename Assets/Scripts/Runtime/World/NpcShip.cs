@@ -620,6 +620,7 @@ namespace GoF2Remake.World
         public void DestroyAsTurret()
         {
             if (!IsTurret || !Target.Alive) return;
+            Target.invulnerable = false;   // a fighter's turret is invulnerable: it stayed in space after its host died
             Target.Damage(9999999f, true);
         }
 

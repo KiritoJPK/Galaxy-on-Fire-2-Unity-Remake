@@ -176,7 +176,7 @@ namespace GoF2Remake.UI
                             if (Settings.DyingCargoMarkers) DrawCrate(Get(s), s.transform.position, s.Race == Standing.Void, cam, origin, centre);
                             continue;
                         }
-                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.DockingType > 0) continue;
+                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.DockingType > 0 || s.Target.untargetable) continue;
                         int f = s.Target.hostileToPlayer ? 0 : s.Target.friendToPlayer ? 1 : 2;
                         DrawShip(Get(s), s.transform.position, f, s.Target.HullFraction, radar.Locked == s.Target, cam, origin, centre);
                         DrawEmp(Get(s), s.Hp != null ? s.Hp.EmpFraction : 1f);

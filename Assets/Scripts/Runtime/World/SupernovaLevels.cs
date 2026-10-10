@@ -1156,7 +1156,12 @@ namespace GoF2Remake.World
                     if (specterWake > 0f && T - specterWake >= 2000f)
                     {
                         LeaveCutscene();
-                        c.PlayMusic(sn?.mission102Loop, true);
+                        // Radar::draw 0x157c6c takes the music from here: the calm track at the target is this loop (2241,
+                        // Traffic.CalmClip), and when the Specters attack 149 / 150 replace it (the loop isn't in the battle
+                        // set); the level kept the loop through the attacks.
+                        c.PlayMusic(null, false);
+                        c.MusicOwned = false;
+                        level.Traffic.MusicMuted = false;
                         Step = 2;
                     }
                     break;

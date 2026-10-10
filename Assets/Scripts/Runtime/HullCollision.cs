@@ -100,6 +100,18 @@ namespace GoF2Remake.Flight
 
         internal static void Forget(Collider c) => bodies.Remove(c);
 
+        /// <summary>No hull for 'target' any more (its colliders gone): what the original never hits (a fighter's turret,
+        /// radius 0).</summary>
+        public static void Detach(Target target)
+        {
+            var b = target != null ? target.hull : null;
+            if (b == null) return;
+            foreach (var c in b.colliders) if (c != null) { bodies.Remove(c); UnityEngine.Object.Destroy(c.gameObject); }
+            b.colliders.Clear();
+            target.hull = null;
+            if (b.obstacle != null && b.obstacle.hull == b) b.obstacle.hull = null;
+        }
+
         public static HullBody BodyOf(Collider c) => c != null && bodies.TryGetValue(c, out var b) ? b : null;
 
         /// <summary>The queries read the transforms as of this frame's first query (the hulls moved since the last physics

@@ -355,20 +355,25 @@ namespace GoF2Remake.Flight
             var probe = b.position - b.velocity;
             // Remake (HullCollision): ships, stations' objects and turrets are hit on their real shape: the first hull along
             // this frame's path whose target this gun may hit. Scatter guns keep their proximity cube.
-            bool hulls = kind != Kind.ScatterGun && HullCollision.Any;
+            // Scatter guns keep their proximity cube for fighters but burst on a big object's (hit boxes: the carrier, a
+            // station's object) real hull: its boxes, grown by the fuse's x1.5-x3, filled the sky around the 102 carrier.
+            bool scatter = kind == Kind.ScatterGun;
+            bool hulls = HullCollision.Any;
             castTargets = targets;
             mayHitFn ??= t => MayHit(t, castTargets);   // one delegate per gun, not one per shot and frame
-            if (hulls && HullCollision.Cast(from, b.position, HullShotRadius, mayHitFn, out var hullTarget, out var hullPoint))
+            mayHitBigFn ??= t => BigTarget(t) && MayHit(t, castTargets);
+            if (hulls && HullCollision.Cast(from, b.position, HullShotRadius, scatter ? mayHitBigFn : mayHitFn, out var hullTarget, out var hullPoint))
             {
                 if (IsBomb) { Ignite(targets); return; }   // contact: area damage, no direct hit
                 b.timer = -1e9f;   // gone
                 Hit?.Invoke(i, hullTarget, hullPoint);
+                if (scatter) { AreaDamage(hullPoint, targets, false); Ignited?.Invoke(hullPoint); }   // + the burst around
                 return;
             }
             for (int t = 0; t < targets.Count; t++)
             {
                 var target = targets[t];
-                if (hulls && (object)target != null && target != null && target.HasHull) continue;   // tested above
+                if (hulls && (object)target != null && target != null && target.HasHull && (!scatter || BigTarget(target))) continue;   // tested above
                 // The cheap sphere test first (Target.MayContain): most targets are nowhere near the bullet. Scatter guns'
                 // cube grows with the distance, so they keep the full test.
                 if ((object)target == null || (kind != Kind.ScatterGun && !target.MayContain(probe, frame))) continue;
@@ -399,7 +404,10 @@ namespace GoF2Remake.Flight
         /// original's cube around a ship was +-1000 units, 50 m, whatever its shape).</summary>
         const float HullShotRadius = 3f;
         IReadOnlyList<Target> castTargets;
-        System.Func<Target, bool> mayHitFn;
+        System.Func<Target, bool> mayHitFn, mayHitBigFn;
+        /// <summary>A big object with a mesh hull: hit boxes (capital ships, freighters) or a hit radius past 2000 units (the
+        /// story's static objects: 102's carrier is +-6000, its fuse cube up to 900 m across).</summary>
+        static bool BigTarget(Target t) => t.HasHull && ((t.boxes != null && t.boxes.Length > 0) || t.radius > 2000f * MetersPerUnit);
 
         /// <summary>A hull's target this gun's shots may hit: in its list, alive, not its own ship, not phased or ignored.</summary>
         bool MayHit(Target t, IReadOnlyList<Target> targets)
