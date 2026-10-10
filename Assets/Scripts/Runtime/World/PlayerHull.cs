@@ -49,6 +49,9 @@ namespace GoF2Remake.World
             public float turretScale = 1f;
             public int turretGun = -1;    // a gun item for the turrets (the fighter turret's 22), -1 = the turret's own
             public float turretDamage = 1f;
+            /// <summary>Remake: the fire button's missile salvo (PlayerCapitalMissiles), -1 = none: these hulls fly with the
+            /// battleship's stats and have no weapon slots.</summary>
+            public int missileItem = -1;
             public (Vector3 pos, Vector3 rot)[] scenery;   // the Valkyrie's shield generators (no gun)
             /// <summary>The turrets' and scenery's poses are Unity offsets (metres) and Euler degrees relative to the hull
             /// placed unrotated in a level (OrbitLayout.RotationToUnity(0)), not game units and radians: the Valkyrie's,
@@ -142,14 +145,17 @@ namespace GoF2Remake.World
                 // Every ship with a model is the player's somewhere (dealers, the story's loaners, Kaamo) but the freighter 13 and
                 // the battleship 14 (and 15 above).
                 var h = new Hull { key = "ship_" + i, assembly = a.name, stats = i, label = $"{i} · {name}", own = i != 13, playerShip = i != 13 && i != 14 };
-                if (i == 14) { h.turrets = TrafficPlan.BattleshipTurrets; h.turretAssembly = "turret_002_static"; h.turretScale = 6f; }
+                // The turrets fire the item their model is (WeaponBuilder: turret_002 = the Hammerhead D2A2 48, turret_003 = the
+                // L'ksaar 49); the NPCs' fire the race's blaster (NpcShip.SetupTurret, item 20 / 15).
+                if (i == 14) { h.turrets = TrafficPlan.BattleshipTurrets; h.turretAssembly = "turret_002_static"; h.turretScale = 6f; h.turretGun = 48; h.missileItem = World.CapitalShips.TerranMissile; }
                 hulls.Add(h);
             }
             hulls.Add(new Hull
             {
                 key = "sn_carrier_terran_1", assembly = "sn_carrier_terran_1", stats = CapitalStats,
                 label = X("debugHullCarrier", "Terran carrier"),
-                turrets = TrafficPlan.CarrierTurrets, turretAssembly = "turret_002_static", turretScale = 6f,
+                turrets = TrafficPlan.CarrierTurrets, turretAssembly = "turret_002_static", turretScale = 6f, turretGun = 48,
+                missileItem = World.CapitalShips.TerranMissile,
                 cameraHeight = 0.4f,   // the 3.6 km deck seen from just above it, not from high over it
             });
             var vossk = new List<(Vector3, Vector3)>();
@@ -158,7 +164,8 @@ namespace GoF2Remake.World
             {
                 key = "sn_battleship_vossk", assembly = "sn_battleship_vossk", stats = CapitalStats,
                 label = X("debugHullVosskBattleship", "Vossk battleship"),
-                turrets = vossk.ToArray(), turretAssembly = "turret_003_static", turretScale = 6f,
+                turrets = vossk.ToArray(), turretAssembly = "turret_003_static", turretScale = 6f, turretGun = 49,
+                missileItem = World.CapitalShips.VosskMissile,
             });
             // Level 80 (ValkyrieLevels.Build80): the same poses (StationTurretPose: the measured ones, else the table's).
             var guns = new List<(Vector3, Vector3)>();
@@ -174,6 +181,7 @@ namespace GoF2Remake.World
                 label = X("debugHullValkyrie", "Valkyrie (battlestation)"),
                 turrets = guns.ToArray(), turretAssembly = "v_station_battlestation_turret",
                 scenery = shields.ToArray(), sceneryAssembly = "v_station_battlestation_shield", unityPoses = true,
+                missileItem = World.CapitalShips.TerranMissile,
             });
             hulls.Add(new Hull
             {
@@ -403,6 +411,7 @@ namespace GoF2Remake.World
             }
             foreach (var s in level.Player.GetComponentsInChildren<Transform>(true))
                 if (s != null && s.name.StartsWith(SceneryPrefix)) Object.Destroy(s.gameObject);
+            foreach (var m in level.Player.GetComponents<PlayerCapitalMissiles>()) Object.Destroy(m);
         }
 
         const string SceneryPrefix = "Hull scenery ";
@@ -484,6 +493,7 @@ namespace GoF2Remake.World
                     t.localRotation = turn;
                 }
             }
+            var launchers = new List<Transform>();
             if (hull.turrets != null)
                 foreach (var (pos, rot) in hull.turrets)
                 {
@@ -502,6 +512,7 @@ namespace GoF2Remake.World
                     t.Target.untargetable = true;
                     if (hull.turretGun >= 0) t.SetGun(hull.turretGun, hull.turretDamage);
                     t.MakePlayerTurret();
+                    launchers.Add(t.transform);
                 }
             if (hull.scenery != null)
             {
@@ -516,6 +527,7 @@ namespace GoF2Remake.World
                     }
             }
             level.Traffic.ConnectPlayers();   // the turrets' target lists (every other race's ship)
+            if (hull.missileItem >= 0) PlayerCapitalMissiles.Attach(level, hull.missileItem, launchers);
         }
     }
 }
