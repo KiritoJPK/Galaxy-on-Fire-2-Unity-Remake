@@ -218,7 +218,9 @@ namespace GoF2Remake.Flight
             foreach (var a in anims) a.speed = 0f;   // still until the first shot
             if (IsCollector)
                 foreach (Transform t in model.GetComponentsInChildren<Transform>(true))
-                    if (t.name.Contains("plasma_stream")) { stream = t.gameObject; stream.SetActive(false); }
+                    // The stream node itself, not its mesh parts (their names contain it too): hiding every match and keeping
+                    // the last one switched only "_part1" back on in the turret view, under a parent still hidden.
+                    if (stream == null && t.name.Contains("plasma_stream")) { stream = t.gameObject; stream.SetActive(false); }
             var pivot = model.transform.Find("pivot");
             Transform gunNode = null;
             if (pivot != null) foreach (Transform c in pivot) if (c.name.Contains("_gun")) gunNode = c;

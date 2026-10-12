@@ -7,6 +7,12 @@
 //    ::update, Globals::mouseCursorActivated), where they depend on handling h (setShipHandling):
 //      position  0.01h * 0.011 + 0.001        look-at  (1 - 0.01h) * 0.015 + 0.003
 //    The exact damping curve (aproximateCooefficients..., a polynomial in dt) is approximated with exponentials.
+//  * The camera looks at a point, not along a rotation: +0x14, eased toward the ship's matrix x the target offset (+0x2c),
+//    and MatrixGetLookAt(position, that point, the ship's up) from where the camera really is. translateNoUpdate moves
+//    both. The dodge (PlayerEgo::updateManeuver) shifts the target offset sideways by -3 x the yaw rate: with the look
+//    point only ~34 m ahead of the camera (offsets (0, 600, -1338) / (0, 600, -650) units) the camera turns ~40 deg and
+//    keeps the sliding ship in view. (The remake used to put that offset on the camera's position and ease a rotation
+//    aimed from where the camera should be: the ship slid out of the frame.)
 //  * Boost (MGame::OnUpdate): the vertical FOV grows by 0.35 rad x the boost percentage, and
 //    TargetFollowCamera::setBoostPercentage(pct, clamp(boost speed, 2, 8)) jitters the look-at point by
 //    pct x n units per axis each frame. The radial blur on top (post effect 0x1400002) isn't reproduced.
@@ -30,8 +36,8 @@ namespace GoF2Remake.Flight
 
         [Header("Turn offset: camera slides sideways while turning")]
         public float turnSlideMeters = 1.5f;
-        [Tooltip("Share of the original's dodge target offset (-3 x the yaw rate) the camera takes; 1 = as decoded (too wide at this scale).")]
-        public float dodgeOffsetScale = 0.25f;
+        [Tooltip("Share of the original's dodge target offset (-3 x the yaw rate, on the look-at point) the camera takes; 1 = as decoded.")]
+        public float dodgeLookScale = 1f;
         [Tooltip("Share of the dodge's sideways move the camera takes back each frame (translateNoUpdate(-0.9 x the slide)).")]
         public float dodgeLag = 0.9f;
 
@@ -42,6 +48,9 @@ namespace GoF2Remake.Flight
 
         Camera cam;
         Vector3 slide;
+        // TargetFollowCamera+0x14: the eased look-at point (world); invalid = start from where it should be.
+        Vector3 lookPoint;
+        bool lookValid;
         float shakeMs, shakeUnits, rumble;
         bool wasBoosting;
 
@@ -69,6 +78,7 @@ namespace GoF2Remake.Flight
         [System.NonSerialized] public bool scriptCamera;
 
         void Awake() => cam = GetComponent<Camera>();
+        void OnEnable() => lookValid = false;
 
         void LateUpdate()
         {
@@ -107,6 +117,7 @@ namespace GoF2Remake.Flight
                     rumble = 0f;
                 }
                 if (cam != null) cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov, cam.aspect);
+                lookValid = false;
                 return;
             }
 
@@ -117,6 +128,7 @@ namespace GoF2Remake.Flight
                 rumble = 0f;
                 shakeMs = 0f;
                 if (cam != null) cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov, cam.aspect);
+                lookValid = false;
                 return;
             }
 
@@ -134,21 +146,36 @@ namespace GoF2Remake.Flight
             Vector3 targetSlide = new Vector3(-model.YawRate / maxRate * turnSlideMeters,
                                               model.PitchRate / maxRate * turnSlideMeters * 0.5f, 0f);
             // PlayerEgo::updateManeuver: during a dodge the target offset's x is -3 x the yaw rate (game units; the game's
-            // +x is the ship's left, the remake's -x), y and z kept. Taken literally that swings the camera ~45 m (about
-            // 30 deg) at the peak here, far more than the dodge looks like: scaled by dodgeOffsetScale (tuned by eye).
-            if (target.Maneuver.Active) targetSlide = new Vector3(3f * dodgeOffsetScale * model.YawRate * target.metersPerUnit, 0f, 0f);
+            // +x is the ship's left, the remake's -x), y and z kept: the look-at point leads the slide. The camera's own
+            // offset stays (no turn slide meanwhile); LevelScript::resetCamera puts the target offset back at the end.
+            Vector3 lookShift = Vector3.zero;
+            if (target.Maneuver.Active)
+            {
+                targetSlide = Vector3.zero;
+                lookShift = new Vector3(3f * dodgeLookScale * model.YawRate * target.metersPerUnit, 0f, 0f);
+            }
             slide = Vector3.Lerp(slide, targetSlide, 1f - Mathf.Exp(-posK * dtMs));
 
             Vector3 desiredPos = ship.TransformPoint(offset + slide);
-            Quaternion desiredRot = Quaternion.LookRotation(
-                ship.TransformPoint(lookOffset) - desiredPos, ship.up);
+            Vector3 desiredLook = ship.TransformPoint(lookOffset + lookShift);
+            // A new start (the chase taking over from a fly-in or another camera) or a jump: the look point starts where the
+            // camera looks now, at the ship's distance, and eases onto the ship from there (no turn in one frame).
+            if (!lookValid || (desiredLook - lookPoint).sqrMagnitude > 1000f * 1000f)
+            {
+                lookPoint = transform.position + transform.forward * (desiredLook - transform.position).magnitude;
+                lookValid = true;
+            }
 
             transform.position = Vector3.Lerp(transform.position, desiredPos, 1f - Mathf.Exp(-posK * dtMs));
-            // ... and translateNoUpdate(-0.9 x the slide) every frame: the camera takes back most of the sideways move,
-            // so the ship visibly slides across the view and the camera catches up afterwards.
-            transform.position -= dodgeLag * target.ManeuverSlide;
-            transform.position += target.StrafeSlide;   // handleShip: translateNoUpdate by the strafe, the camera keeps its place
-            transform.rotation = Quaternion.Slerp(transform.rotation, desiredRot, 1f - Mathf.Exp(-rotK * dtMs));
+            lookPoint = Vector3.Lerp(lookPoint, desiredLook, 1f - Mathf.Exp(-rotK * dtMs));
+            // ... and translateNoUpdate(-0.9 x the slide) every frame, the position and the look-at point alike: the camera
+            // takes back most of the sideways move, so the ship slides across the view and the camera turns after it.
+            var noUpdate = -dodgeLag * target.ManeuverSlide + target.StrafeSlide;   // handleShip: the strafe too
+            transform.position += noUpdate;
+            lookPoint += noUpdate;
+            // MatrixGetLookAt(position, look-at point, the ship's up), from where the camera is.
+            var toLook = lookPoint - transform.position;
+            if (toLook.sqrMagnitude > 1e-6f) transform.rotation = Quaternion.LookRotation(toLook, ship.up);
 
             if (shakeMs > 0f)
             {
@@ -161,7 +188,7 @@ namespace GoF2Remake.Flight
             if (rumble > 0f)
             {
                 // 50 units at the look-at point (about 690 units away) = about 4 degrees.
-                var look = ship.TransformPoint(lookOffset);
+                var look = lookPoint;
                 float j = rumble * 50f * target.metersPerUnit;
                 look += new Vector3(Random.Range(-j, j), Random.Range(-j, j), Random.Range(-j, j));
                 transform.rotation = Quaternion.LookRotation(look - transform.position, transform.up);
@@ -179,6 +206,8 @@ namespace GoF2Remake.Flight
             var ship = target.transform;
             transform.position = ship.TransformPoint(offset);
             transform.rotation = Quaternion.LookRotation(ship.TransformPoint(lookOffset) - transform.position, ship.up);
+            lookPoint = ship.TransformPoint(lookOffset);
+            lookValid = true;
             if (GoF2Remake.Vr.VrMode.Enabled) transform.SetPositionAndRotation(ship.TransformPoint(GoF2Remake.Vr.VrCockpit.Seat), ship.rotation);
             slide = Vector3.zero;
         }

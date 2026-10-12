@@ -6,7 +6,7 @@
 //        flare intensity 64 * (1 - d / (H / 2)) (d = sun distance from the screen centre in pixels).
 //   Streak: the sun texture stretched horizontally by e (invisible when the sun is off-centre).
 //   The supernova system (StarSystem+0xc, OrbitLayout.supernovaSun): the sun faces the camera with game +x as its up (no
-//        roll with the camera) and never swells; the streak layer (sn_sun_011) is drawn twice: right after the sun as a
+//        roll with the camera; also in Tadram's / Naneroh's orbits, whose sun lies 0.02 deg off game x) and never swells; the streak layer (sn_sun_011) is drawn twice: right after the sun as a
 //        glow of 0.3 s + e facing the camera with the camera's up, then as the streak (that glow scaled again). After the
 //        explosion the ring takes the sun's part and the core mesh the streak layer's (both drawings).
 //   Planets: fixed orientation (not billboards), alpha blended, mirrored so the lit rim faces the sun; the orbit
@@ -323,7 +323,7 @@ namespace GoF2Remake.World
                 // StarSystem::render with +0xc: the sun (or the explosion ring) looks at the camera with up = game (1, 0, 0)
                 // at its own scale; the streak layer at v = 0.3 x that scale with the camera's up, (v + e, v + e) as the
                 // glow, then scaled again by (e (v + e + 1), v / ((1 - e) 6 + 6)) as the streak.
-                var fixedRot = Mathf.Abs(Vector3.Dot(sun.dir, Vector3.right)) < 0.999f ? Quaternion.LookRotation(sun.dir, Vector3.right) : sunRot;
+                var fixedRot = SupernovaSunRotation(sun.dir, sunRot);
                 float baseScale = supernova.Count > 0 ? supernovaRing : s;
                 float v = 0.3f * baseScale;
                 var glowScale = new Vector3(v + e, v + e, v);
@@ -374,6 +374,23 @@ namespace GoF2Remake.World
                 }
             }
             foreach (var r in rings) Place(r, c, r.rot, Vector3.one * r.scale);
+        }
+
+        /// <summary>The supernova sun's world-fixed rotation: facing 'dir' with game +x (Unity +x) as its up, as
+        /// MatrixGetLookAt builds it (up = normalize(cross(cross(x, f), f))). Sun slot 6 (Tadram 113, Naneroh 109) lies at
+        /// yaw 0x3FFC, 0.02 deg off the x axis: the original's cross product is tiny but well defined there, so the up is
+        /// x projected onto the sun's plane, in double precision (a float threshold took it as parallel and used the
+        /// camera's up: the sun rolled with the view in those orbits). Only an exactly parallel direction keeps 'fallback'.</summary>
+        static Quaternion SupernovaSunRotation(Vector3 dir, Quaternion fallback)
+        {
+            double fx = dir.x, fy = dir.y, fz = dir.z;
+            double len = System.Math.Sqrt(fx * fx + fy * fy + fz * fz);
+            if (len < 1e-12) return fallback;
+            fx /= len; fy /= len; fz /= len;
+            double ux = fy * fy + fz * fz, uy = -fx * fy, uz = -fx * fz;   // x - (x . f) f (1 - fx^2 written without the cancellation)
+            double ul = System.Math.Sqrt(ux * ux + uy * uy + uz * uz);
+            if (ul < 1e-9) return fallback;
+            return Quaternion.LookRotation(dir, new Vector3((float)(ux / ul), (float)(uy / ul), (float)(uz / ul)));
         }
 
         static void Place(Body b, Vector3 camPos, Quaternion rot, Vector3 scale)

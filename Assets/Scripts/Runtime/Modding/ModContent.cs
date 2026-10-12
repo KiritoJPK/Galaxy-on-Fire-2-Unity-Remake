@@ -388,6 +388,21 @@ namespace GoF2Remake.Modding
         /// <summary>The assembly of a mod's model for an original ship (ModelOverrides).</summary>
         public static string ModelOverrideAssembly(int ship) => $"ship_{ship:000}_mod";
 
+        /// <summary>Some active mod brings a ship model (a new ship, or an override's model; ActiveShips / ModelOverrides not
+        /// empty), without building their entries: ModShips.Ready asks every frame while the loading screen shows, and
+        /// ActiveShips parses every ship's entry again (~200 KB of garbage and 2 ms for a mod of 79 ships, three times a frame).</summary>
+        public static bool AnyShipModels()
+        {
+            EnsureMapping();
+            if (shipDefAt.Count > 0) return true;
+            if (originalShips < 0) return false;
+            foreach (var mod in ModManager.Active)
+                foreach (var d in Parse(mod).ships)
+                    if (d.overrideRef != null && ModJson.Has(d.json, "model") && TryResolveShip(d.overrideRef, out int t) && t < originalShips)
+                        return true;
+            return false;
+        }
+
         /// <summary>The active mods' new ships with their numbers (ModShips builds their models, CustomShips serves them).</summary>
         public static List<(ModInfo mod, CustomShipData ship)> ActiveShips()
         {
@@ -448,6 +463,9 @@ namespace GoF2Remake.Modding
         {
             index = -1;
             if (string.IsNullOrEmpty(reference)) return false;
+            // The table's size and the mod numbers first (ModWeapons reads the overrides' fx on the loading screen, before
+            // anything else loaded the database: originalItems was still -1 and every override's fx was dropped).
+            EnsureMapping();
             if (int.TryParse(reference, out index)) return index >= 0 && (index < originalItems || itemDefAt.ContainsKey(index));
             return itemIndex.TryGetValue(reference, out index);
         }

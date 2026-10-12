@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using Unity.Collections;
 using UnityEngine;
 
 namespace GoF2Remake.Modding
@@ -22,13 +23,16 @@ namespace GoF2Remake.Modding
         const int Magic = 0x31545847;   // "GXT1"
         const int Version = 1;          // a change to the format or to the encoder: every texture is made again
 
-        /// <summary>A cached texture, read on a worker thread.</summary>
-        public sealed class Entry
+        /// <summary>A cached texture, read on a worker thread. Its data is native memory (a mod's hundreds of 1-5 MB arrays on the
+        /// managed heap brought a garbage collection every few frames): Make frees it, else Dispose.</summary>
+        public sealed class Entry : IDisposable
         {
             public int width, height, mips;
             public TextureFormat format;
             public bool linear;
-            public byte[] data;
+            public NativeArray<byte> data;
+
+            public void Dispose() { if (data.IsCreated) data.Dispose(); }
         }
 
         static string root;
@@ -67,24 +71,33 @@ namespace GoF2Remake.Modding
         /// <summary>The cached texture, or null (none, or unreadable: it is made again). Any thread.</summary>
         public static Entry Read(string file)
         {
+            Entry e = null;
             try
             {
                 if (!File.Exists(file)) return null;
-                using var r = new BinaryReader(File.OpenRead(file));
+                using var s = File.OpenRead(file);
+                using var r = new BinaryReader(s);
                 if (r.ReadInt32() != Magic || r.ReadInt32() != Version) return null;
-                var e = new Entry { width = r.ReadInt32(), height = r.ReadInt32(), format = (TextureFormat)r.ReadInt32(), mips = r.ReadInt32(), linear = r.ReadInt32() != 0 };
+                e = new Entry { width = r.ReadInt32(), height = r.ReadInt32(), format = (TextureFormat)r.ReadInt32(), mips = r.ReadInt32(), linear = r.ReadInt32() != 0 };
                 int length = r.ReadInt32();
                 if (e.width <= 0 || e.height <= 0 || e.mips <= 0 || length <= 0 || length > 256 << 20) return null;
-                e.data = r.ReadBytes(length);
-                return e.data.Length == length ? e : null;
+                e.data = new NativeArray<byte>(length, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                var span = e.data.AsSpan();
+                for (int got = 0, n; got < length; got += n)
+                    if ((n = s.Read(span.Slice(got))) <= 0) { e.Dispose(); return null; }
+                return e;
             }
-            catch (Exception) { return null; }
+            catch (Exception) { e?.Dispose(); return null; }
         }
 
         /// <summary>Stores a texture's GPU data (any thread; written to a temporary file first, so a crash leaves no half file).</summary>
-        public static void Write(string file, int width, int height, TextureFormat format, int mips, bool linear, byte[] data)
+        public static void Write(string file, int width, int height, TextureFormat format, int mips, bool linear, byte[] data) =>
+            Write(file, width, height, format, mips, linear, data != null ? new ReadOnlySpan<byte>(data) : default);
+
+        /// <summary>Write from any memory: the encoder's native output (ModMaterials), written without a managed copy.</summary>
+        public static void Write(string file, int width, int height, TextureFormat format, int mips, bool linear, ReadOnlySpan<byte> data)
         {
-            if (string.IsNullOrEmpty(file) || data == null || data.Length == 0) return;
+            if (string.IsNullOrEmpty(file) || data.Length == 0) return;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file));
@@ -102,13 +115,14 @@ namespace GoF2Remake.Modding
             catch (Exception e) { Debug.LogWarning($"Mods: texture cache: {e.Message}"); }
         }
 
-        /// <summary>The texture from a cached entry (main thread), or null when this GPU can't take it.</summary>
+        /// <summary>The texture from a cached entry (main thread), or null when this GPU can't take it. Frees the entry's data.</summary>
         public static Texture2D Make(Entry e, string name)
         {
-            if (e == null || !SystemInfo.SupportsTextureFormat(e.format)) return null;
+            if (e == null) return null;
             Texture2D t = null;
             try
             {
+                if (!SystemInfo.SupportsTextureFormat(e.format)) return null;
                 t = new Texture2D(e.width, e.height, e.format, e.mips, e.linear) { name = name };
                 t.LoadRawTextureData(e.data);
                 t.Apply(false, true);
@@ -120,6 +134,7 @@ namespace GoF2Remake.Modding
                 Debug.LogWarning($"Mods: texture cache: {name}: {ex.Message}");
                 return null;
             }
+            finally { e.Dispose(); }
         }
 
         /// <summary>Deletes the cached textures of the mods no longer installed (ModManager.Scan: every mod id found, on or off).</summary>

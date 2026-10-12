@@ -63,6 +63,7 @@ namespace GoF2Remake.Flight
         int levelSide;        // PlayerEgo+0x2a9: the sign of up.x last frame (1 negative, 2 positive, 0 none)
         bool levelFine;       // PlayerEgo+0x324: the lean changed sides once, the last part goes slow
         bool rollLevelled;    // the roll part of a level-out is done
+        bool levelSteerArmed; // the stick was neutral since the level-out began: steering now ends it (remake)
         /// <summary>Remake (#37, Settings.LevelPitch): a level-out also brings the nose to the horizon (world up, the
         /// orbit's and the station's up, like the autopilot's moveToPosition), not only the roll (the original).</summary>
         public bool LevelPitch;
@@ -239,7 +240,7 @@ namespace GoF2Remake.Flight
             }
         }
 
-        public void AlignToHorizon() { IsLeveling = true; levelSide = 0; levelFine = false; rollLevelled = false; }
+        public void AlignToHorizon() { IsLeveling = true; levelSide = 0; levelFine = false; rollLevelled = false; levelSteerArmed = false; }
         /// <summary>A manual roll (remake) cancels the auto-level.</summary>
         public void StopLeveling() => IsLeveling = false;
 
@@ -271,6 +272,16 @@ namespace GoF2Remake.Flight
             if (pitchInput)
                 PitchRate = RampToward(PitchRate, steer.y, he, dtMs,
                     !TiltMode ? 1f : steer.y > 0 ? PitchDownSensitivityScale : PitchUpSensitivityScale);
+
+            // Remake: steering ends a level-out (PlayerEgo::roll keeps rolling under the stick until level). With the nose
+            // levelled too (LevelPitch) it pulled the nose back to the horizon whenever pitch was let go, and with the nose
+            // steep it never finished, so it fought the player's flying. Only steering that starts after the stick was
+            // neutral counts: the touch double tap's second tap lands on the stick, and keys may still be held.
+            if (IsLeveling)
+            {
+                if (!yawInput && !pitchInput) levelSteerArmed = true;
+                else if (levelSteerArmed) IsLeveling = false;
+            }
 
             // ---- rotation for this frame --------------------------------------------------------
             float pitchRad = dtMs * PitchRate * RateToRadiansPerMs;

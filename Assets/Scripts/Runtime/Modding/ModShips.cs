@@ -70,7 +70,7 @@ namespace GoF2Remake.Modding
             get
             {
                 if (loadedRevision == ModManager.Revision) return true;
-                if (ModContent.ActiveShips().Count == 0 && ModContent.ModelOverrides().Count == 0 && templates.Count == 0) return true;
+                if (!ModContent.AnyShipModels() && templates.Count == 0) return true;
                 Preload();
                 return false;
             }

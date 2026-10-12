@@ -252,6 +252,7 @@ namespace GoF2Remake.World
         Explosion explosion;
         int explosionSerial;   // the explosions are pooled: this one's Spawn (Explosion.Done)
         GameObject wreck;
+        float wreckDamageMs;   // until the wreck takes its damaged material (CombatAssets.ApplyWreckDamage)
         WreckBurn wreckBurn;
         Crate crate;
         readonly List<Crate> moreCrates = new List<Crate>();   // remake: a crate per kind of loot (DropCrate)
@@ -1719,6 +1720,7 @@ namespace GoF2Remake.World
                 if (Spec.wreckPrefab != null && modelGo != null)
                 {
                     wreck = Instantiate(Spec.wreckPrefab, transform, false);
+                    wreckDamageMs = 140f;
                     float len = PartAnimation.PlayOnce(wreck);
                     if (len > 0f) dyingMs = len;
                     modelGo.SetActive(false);
@@ -1738,6 +1740,7 @@ namespace GoF2Remake.World
                     // (CollisionVolume.ForWreck).
                     wreck.transform.localRotation = model.localRotation;
                     wreck.transform.localScale = model.localScale;
+                    wreckDamageMs = 140f;
                     float len = PartAnimation.PlayOnce(wreck);
                     if (len > 0f) dyingMs = len;
                     modelGo.SetActive(false);
@@ -1794,7 +1797,12 @@ namespace GoF2Remake.World
         {
             float frames = dtMs / 33.3f;
             if (IsTurret) { dyingMs -= dtMs; if (dyingMs <= 0f) SetDead(); return; }
-            if (IsFixed || IsFreighter) { }   // PlayerFixedObject: the dying clears the moving flag (0x17f6b4), the wreck stays put
+            if (IsFixed || IsFreighter)
+            {
+                // PlayerFixedObject: the dying clears the moving flag (0x17f6b4), the wreck stays put; 140 ms in (+0x18c > 0x8c)
+                // the wreck mesh takes its damaged material (the remake left the intact textures on it).
+                if (wreckDamageMs > 0f && (wreckDamageMs -= dtMs) <= 0f) CombatAssets.ApplyWreckDamage(wreck);
+            }
             else
             {
                 transform.Rotate(spinAxis, 0.05f * frames * Mathf.Rad2Deg, Space.World);

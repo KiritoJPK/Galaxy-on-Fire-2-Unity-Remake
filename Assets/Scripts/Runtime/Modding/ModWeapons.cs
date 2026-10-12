@@ -2,7 +2,8 @@
 // Remake mods: a weapon's own look and sound (items.json "fx" on a new item or an override). The projectile, the muzzle
 // flash and the impact are each the base item's (the item's Look), a mod sprite (a PNG on a camera-facing quad, or
 // stretched along the flight), a mod model (glTF / GLB, with the fx shader when it names a texture, else its own
-// materials), or false (none). "shot" / "explosionSound" are the mod's audio files (one at random per shot), "shotLoops"
+// materials), the base item's recoloured (only "color" / "glow": its textures made grey and tinted, FxRecolor), or
+// false (none). "shot" / "explosionSound" are the mod's audio files (one at random per shot), "shotLoops"
 // whether the shot sound loops while the trigger is held. What the weapon does stays the base item's (a beam stays a
 // beam, a mine a mine): only what it looks and sounds like changes.
 // Each item gets a WeaponFx of its own (a copy of the base item's, the parts and clips replaced), which WeaponFx.Load hands
@@ -25,10 +26,10 @@ namespace GoF2Remake.Modding
         const float M = 0.05f;
         const string File = ModContent.ItemsFile;
 
-        /// <summary>One part of an "fx": a sprite or a model (or removed).</summary>
+        /// <summary>One part of an "fx": a sprite or a model, the base item's recoloured, or removed.</summary>
         public class Part
         {
-            public bool remove;
+            public bool remove, recolor;
             public string sprite, model, texture;
             public float size = 200f, glow = -1f, lifetimeMs, grow = 1f, spin;
             public Color color = Color.white;
@@ -58,7 +59,7 @@ namespace GoF2Remake.Modding
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()
         {
-            made.Clear(); owned.Clear(); imports.Clear();
+            made.Clear(); owned.Clear(); imports.Clear(); greyed.Clear(); recolorBlit = null;
             holder = null; agent = null; quad = null; loadingRevision = loadedRevision = -1; Count = Done = 0;
         }
 
@@ -176,8 +177,19 @@ namespace GoF2Remake.Modding
                 alongFlight = ModJson.Bool(o, "alongFlight", false, File),
                 stretch = ModJson.Float(o, "stretch", 1f, File),
             };
-            if ((part.sprite == null) == (part.model == null))
-                throw new ModJsonException($"{where}: \"{name}\" needs either \"sprite\" (a PNG) or \"model\" (a glTF / GLB)");
+            if (part.sprite != null && part.model != null)
+                throw new ModJsonException($"{where}: \"{name}\" has both \"sprite\" and \"model\"; give one of them");
+            if (part.sprite == null && part.model == null)
+            {
+                // Neither: the base item's own part, recoloured. Only "color" and "glow" mean something then.
+                if (!ModJson.Has(o, "color") && !ModJson.Has(o, "glow"))
+                    throw new ModJsonException($"{where}: \"{name}\" needs \"sprite\" (a PNG) or \"model\" (a glTF / GLB), or \"color\" to recolour the original's");
+                part.recolor = true;
+                foreach (var p in o.Properties())
+                    if (PartFields.Contains(p.Name) && !string.Equals(p.Name, "color", System.StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(p.Name, "glow", System.StringComparison.OrdinalIgnoreCase))
+                        mod.Warnings.Add($"{ModJson.Where(p, File)}: \"{p.Name}\" in \"{name}\" only applies with a sprite or model; recolouring the original's takes \"color\" and \"glow\" (ignored)");
+            }
             if (part.size <= 0f) throw new ModJsonException($"{where}: \"{name}\": \"size\" must be above 0");
             if (ModJson.Get(o, "color") is JToken c) part.color = ParseColor(c);
             if (ModJson.Get(o, "rotate") is JArray r && r.Count == 3) part.rotate = new Vector3((float)r[0], (float)r[1], (float)r[2]);
@@ -186,13 +198,28 @@ namespace GoF2Remake.Modding
             return part;
         }
 
-        /// <summary>[r, g, b] / [r, g, b, a] from 0 to 1, or "#rrggbb" / "#rrggbbaa".</summary>
+        /// <summary>[r, g, b] / [r, g, b, a] from 0 to 1, or from 0 to 255 when any value is above 1 (what colour pickers
+        /// give: [134, 59, 135]), or "#rrggbb" / "#rrggbbaa".</summary>
         static Color ParseColor(JToken t)
         {
             if (t.Type == JTokenType.String && ColorUtility.TryParseHtmlString((string)t, out var hc)) return hc;
             if (t is JArray a && (a.Count == 3 || a.Count == 4))
-                return new Color((float)a[0], (float)a[1], (float)a[2], a.Count == 4 ? (float)a[3] : 1f);
-            throw new ModJsonException($"{ModJson.Where(t, File)}: a color is [r, g, b] (0 to 1) or \"#rrggbb\"");
+            {
+                var v = new float[4] { 0f, 0f, 0f, 1f };
+                bool bytes = false;
+                for (int i = 0; i < a.Count; i++)
+                {
+                    if (a[i].Type != JTokenType.Integer && a[i].Type != JTokenType.Float)
+                        throw new ModJsonException($"{ModJson.Where(t, File)}: a color's values are numbers");
+                    v[i] = (float)a[i];
+                    if (v[i] < 0f) throw new ModJsonException($"{ModJson.Where(t, File)}: a color's values can't be negative");
+                    if (v[i] > 1f) bytes = true;
+                }
+                if (bytes)
+                    for (int i = 0; i < a.Count; i++) v[i] = Mathf.Min(v[i], 255f) / 255f;
+                return new Color(v[0], v[1], v[2], v[3]);
+            }
+            throw new ModJsonException($"{ModJson.Where(t, File)}: a color is [r, g, b] (0 to 1, or 0 to 255) or \"#rrggbb\"");
         }
 
         // ---- loading -------------------------------------------------------------------------------------------------
@@ -201,6 +228,7 @@ namespace GoF2Remake.Modding
         {
             foreach (var o in owned) if (o != null) Object.Destroy(o);
             owned.Clear();
+            greyed.Clear();
             made.Clear();
             foreach (var i in imports) i.Dispose();
             imports.Clear();
@@ -239,7 +267,7 @@ namespace GoF2Remake.Modding
                 // Everything of the item at once: textures, models and sounds.
                 var parts = new[] { d.projectile, d.muzzle, d.impact };
                 var built = new Task<GameObject>[3];
-                for (int i = 0; i < 3; i++) built[i] = parts[i] == null || parts[i].remove ? Task.FromResult<GameObject>(null) : BuildPart(rev, d, parts[i], i);
+                for (int i = 0; i < 3; i++) built[i] = parts[i] == null || parts[i].remove || parts[i].recolor ? Task.FromResult<GameObject>(null) : BuildPart(rev, d, parts[i], i);
                 var shots = LoadClips(d.mod, d.shots);
                 var booms = LoadClips(d.mod, d.explosionSounds);
                 await Task.WhenAll(built[0], built[1], built[2], shots, booms);
@@ -249,9 +277,9 @@ namespace GoF2Remake.Modding
                 var fx = baseFx != null ? Object.Instantiate(baseFx) : ScriptableObject.CreateInstance<WeaponFx>();
                 fx.name = $"mod fx {d.mod.Id}:{d.label}";
                 fx.item = d.item;
-                if (d.projectile != null) fx.projectile = built[0].Result;
-                if (d.muzzle != null) fx.muzzleFlash = built[1].Result;
-                if (d.impact != null) fx.impact = built[2].Result;
+                if (d.projectile != null) fx.projectile = d.projectile.recolor ? Recolor(d, d.projectile, fx.projectile, 0) : built[0].Result;
+                if (d.muzzle != null) fx.muzzleFlash = d.muzzle.recolor ? Recolor(d, d.muzzle, fx.muzzleFlash, 1) : built[1].Result;
+                if (d.impact != null) fx.impact = d.impact.recolor ? Recolor(d, d.impact, fx.impact, 2) : built[2].Result;
                 if (shots.Result != null && shots.Result.Length > 0) { fx.shots = shots.Result; fx.shot = shots.Result[0]; }
                 if (booms.Result != null && booms.Result.Length > 0) { fx.explosionSounds = booms.Result; fx.explosionSound = booms.Result[0]; }
                 if (d.shotLoops.HasValue) fx.shotLoops = d.shotLoops.Value;
@@ -371,6 +399,71 @@ namespace GoF2Remake.Modding
             fxPart.faceCamera = p.sprite != null && !p.alongFlight;
             fxPart.alongFlight = p.sprite != null && p.alongFlight;
             return root;
+        }
+
+        // The base items' effect textures made grey (FxRecolor), one per texture whatever the colours asked of it.
+        static readonly Dictionary<Texture, Texture> greyed = new Dictionary<Texture, Texture>();
+        static Material recolorBlit;
+
+        /// <summary>The base item's part (null: it has none) with its effect materials recoloured: their texture the grey
+        /// copy (each texel's brightest channel, so the bright core and soft edges stay), _Color the part's colour, _Glow
+        /// its glow. Other materials (a missile's hull) keep theirs. PartAnimation's fades start from the copy's _Color.</summary>
+        static GameObject Recolor(Def d, Part p, GameObject source, int kind)
+        {
+            if (source == null)
+            {
+                Warn(d.mod, $"{d.where}: the base item has no {PartNames[kind]} to recolour (give a sprite or model)");
+                return null;
+            }
+            var copy = Object.Instantiate(source, holder.transform, false);
+            copy.name = $"{d.mod.Id}:{d.label} {PartNames[kind]} (recoloured)";
+            owned.Add(copy);
+            var done = new Dictionary<Material, Material>();
+            foreach (var r in copy.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || !IsEffect(m)) continue;
+                    if (!done.TryGetValue(m, out var tinted))
+                    {
+                        tinted = new Material(m) { name = m.name + " (recoloured)" };
+                        if (m.mainTexture != null) tinted.mainTexture = Grey(m.mainTexture);
+                        var baseColor = m.GetColor("_Color");
+                        tinted.SetColor("_Color", new Color(p.color.r, p.color.g, p.color.b, baseColor.a * p.color.a));
+                        if (p.glow >= 0f && tinted.HasProperty("_Glow")) tinted.SetFloat("_Glow", p.glow);
+                        owned.Add(tinted);
+                        done[m] = tinted;
+                    }
+                    mats[i] = tinted;
+                }
+                r.sharedMaterials = mats;
+            }
+            return copy;
+        }
+
+        static bool IsEffect(Material m) =>
+            m.HasProperty("_Color") && (m.shader.name == "GoF2/Additive" || m.shader.name == "GoF2/AlphaBlend");
+
+        static Texture Grey(Texture src)
+        {
+            if (greyed.TryGetValue(src, out var grey)) return grey;
+            if (recolorBlit == null)
+            {
+                var shader = Resources.Load<Shader>("GoF2Mods/FxRecolor");
+                if (shader == null) return src;
+                recolorBlit = new Material(shader);
+            }
+            var rt = new RenderTexture(src.width, src.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB)
+            {
+                name = src.name + " (grey)", useMipMap = true, autoGenerateMips = true,
+                wrapMode = src.wrapMode, filterMode = src.filterMode, anisoLevel = src.anisoLevel,
+            };
+            Graphics.Blit(src, rt, recolorBlit);
+            owned.Add(rt);
+            greyed[src] = rt;
+            return rt;
         }
 
         /// <summary>A 1 x 1 quad facing -Z, both sides drawn (the GoF2 Shader Graphs cull back faces).</summary>

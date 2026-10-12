@@ -263,7 +263,7 @@ namespace GoF2Remake.Data
         /// <summary>Remake: the frame rate at the top centre (FpsCounter).</summary>
         public static bool ShowFps { get => GetBool("showFps", false); set => SetBool("showFps", value); }
         /// <summary>Remake (#40): the story step at the bottom right (StoryStepLabel), for bug reports; off by default.</summary>
-        public static bool ShowStoryStep { get => GetBool("showStoryStep", false); set => SetBool("showStoryStep", value); }
+        public static bool ShowStoryStep { get => GetBool("showStoryStep", true); set => SetBool("showStoryStep", value); }
 
         /// <summary>Language code of Localization/text_{code}.json.</summary>
         public static string Language

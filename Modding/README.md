@@ -273,6 +273,17 @@ stays its base item's. What the weapon *does* never changes: a beam stays a beam
 }
 ```
 
+The PNGs and sounds in this example are the mod's own files, in its `fx` folder (see `Modding/Examples/plasma_arsenal`):
+the game's effects aren't PNGs you can copy. To keep the original effect and only change its colour, leave out `sprite` /
+`model` and give just `color` (and `glow` if you like):
+
+```json
+{ "override": 0, "fx": { "projectile": { "color": [134, 59, 135] }, "impact": { "color": "#ff4020", "glow": 4 } } }
+```
+
+That recolours the base item's own projectile, muzzle flash or impact: its shape, animation and brightness stay, the
+original's hue is replaced by yours (the Nirai Impulse's orange bolt turns purple). Any colour picker's values work.
+
 | Field | |
 |---|---|
 | `projectile` | What flies. For a beam weapon the beam itself (stretched from the gun to what it hits along its length), for a missile the missile. |
@@ -282,14 +293,15 @@ stays its base item's. What the weapon *does* never changes: a beam stays a beam
 | `shotLoops` | `true`: the shot sound loops while the trigger is held (like the auto-cannons); `false`: one per shot. Default: the base item's. |
 | `explosionSound` | Bombs, mines and blast weapons: the sound of the blast (a file or a list). |
 
-Each of `projectile`, `muzzle` and `impact` is either `false` (none at all) or an object:
+Each of `projectile`, `muzzle` and `impact` is either `false` (none at all), an object with only `color` / `glow` (the
+original's, recoloured, above), or an object with a `sprite` or `model`:
 
 | Field | |
 |---|---|
 | `sprite` | A PNG drawn on a flat square that always faces the camera. Draw it white on black (or transparent): bright = visible, and `color` tints it. |
 | `model` | Or a glTF / GLB model. With `texture` it is drawn glowing like a sprite with that PNG; without, with the model's own materials (lit by the sun). |
 | `size` | Its size in game units (20 units = 1 m): the sprite's width, or the model's largest extent. Default 200. The game's own effects are big: a blaster bolt is about 1600 units across, an impact glow several thousand. |
-| `color` | A tint, `[r, g, b]` or `[r, g, b, a]` from 0 to 1, or `"#rrggbb"`. Default white. |
+| `color` | A tint: `[r, g, b]` or `[r, g, b, a]` from 0 to 1, or from 0 to 255 (`[134, 59, 135]`: any value above 1 means the 0-255 scale), or `"#rrggbb"`. Default white. Without a sprite or model: the colour the original effect is recoloured to. |
 | `glow` | How much it blooms; above 1 glows under the bloom option (the game's effects use 2.5). Default: as the game's effects. |
 | `additive` | `true` (default): light added to what is behind it, like fire, plasma and lasers. `false`: drawn over it, using the PNG's transparency (smoke, solid shells). |
 | `lifetime` | Milliseconds it lasts, for `muzzle` (default 100) and `impact` (default 300). A projectile lasts as long as it flies. |

@@ -153,7 +153,12 @@ namespace GoF2Remake.Modding
 
         /// <summary>Decodes at once at most: each decoded texture is uncompressed (a 1024 px one 4-5.6 MB) until it is
         /// compressed, and a mod of many models asks for hundreds at the same time.</summary>
-        static SemaphoreSlim DecodeSlots => decodeSlots ??= new SemaphoreSlim(Application.isMobilePlatform ? 2 : 6);
+        static SemaphoreSlim DecodeSlots => decodeSlots ??= new SemaphoreSlim(Application.isMobilePlatform ? 2 : Mathf.Clamp(SystemInfo.processorCount / 2, 4, 12));
+
+        static SemaphoreSlim cacheSlots;
+
+        /// <summary>Cached textures read at once (their compressed data held until uploaded).</summary>
+        static SemaphoreSlim CacheSlots => cacheSlots ??= new SemaphoreSlim(Application.isMobilePlatform ? 4 : 16);
 
         /// <summary>Decodes a texture in the background into the cache Texture reads (nothing when it is there already, or
         /// when the background way fails: Texture then loads it the plain way).</summary>
@@ -227,37 +232,57 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>Reads a texture back from the disk cache or decodes, converts and compresses it. The cache file is named
-        /// by the mod file's path, size and date ('path'), or by the content ('content', a GLB's image).</summary>
+        /// by the mod file's path, size and date ('path'), or by the content ('content', a GLB's image). A cached texture
+        /// needs no decode slot (its data is compressed already): many are read at once (CacheSlots), only the decodes wait
+        /// for DecodeSlots.</summary>
         static async Task Decode(string key, string name, string modId, string path, string content, System.Func<string> localFile,
             bool linear, bool readable, Remap remap, float metal = 1f, float rough = 1f)
         {
             int rev = revision;
-            // Desktop GPUs read DXT: the worker thread compresses it with its own mipmaps (ModTextureEncoder).
-            bool encode = !readable && SystemInfo.SupportsTextureFormat(TextureFormat.DXT1) && SystemInfo.SupportsTextureFormat(TextureFormat.DXT5);
-            string kind = (encode ? "dxt" : "gpu") + (remap == Remap.NormalToAlpha ? "-nrm" : remap == Remap.MetallicRoughness ? "-mr" : "");
+            // Desktop GPUs read DXT, phones ETC2: the worker threads compress it with its own mipmaps (ModTextureEncoder);
+            // Texture2D.Compress on the main thread only for a GPU that reads neither.
+            bool dxt = !readable && SystemInfo.SupportsTextureFormat(TextureFormat.DXT1) && SystemInfo.SupportsTextureFormat(TextureFormat.DXT5);
+            bool etc = !readable && !dxt && SystemInfo.SupportsTextureFormat(TextureFormat.ETC2_RGB) && SystemInfo.SupportsTextureFormat(TextureFormat.ETC2_RGBA8);
+            bool encode = dxt || etc;
+            var target = etc ? ModTextureEncoder.Target.Etc2 : ModTextureEncoder.Target.Dxt;
+            string kind = (dxt ? "dxt" : etc ? "etc2" : "gpu") + (remap == Remap.NormalToAlpha ? "-nrm" : remap == Remap.MetallicRoughness ? "-mr" : "");
             string cacheRoot = ModTextureCache.Root;   // persistentDataPath: main thread only
-            var slots = DecodeSlots;
-            await slots.WaitAsync();
-            string file = null;
-            try
+            string file = null, cacheFile = null;
+            if (!readable)
             {
-                string cacheFile = null;
+                // Made before (ModTextureCache): read back off the main thread.
                 ModTextureCache.Entry cached = null;
-                file = await Task.Run(() =>
+                var cacheSlots = CacheSlots;
+                await cacheSlots.WaitAsync();
+                try
                 {
-                    string f = null;
-                    if (!readable)
+                    file = await Task.Run(() =>
                     {
-                        // Made before (ModTextureCache): read back here, off the main thread.
+                        string f = null;
                         if (content != null) cacheFile = ModTextureCache.FileForContent(cacheRoot, modId, content, linear, kind);
                         else if ((f = localFile()) != null) cacheFile = ModTextureCache.FileFor(cacheRoot, modId, path, f, linear, kind);
                         if (cacheFile != null) cached = ModTextureCache.Read(cacheFile);
-                    }
-                    return cached != null ? null : f ?? localFile();
-                });
-                if (rev != revision || textures.ContainsKey(key)) return;
-                if (cached != null && ModTextureCache.Make(cached, name) is Texture2D fromCache) { Store(key, fromCache, rev); return; }
-                if (file == null) return;
+                        return f;
+                    });
+                }
+                finally { cacheSlots.Release(); }
+                if (rev != revision || textures.ContainsKey(key)) { cached?.Dispose(); return; }
+                if (cached != null)
+                {
+                    await UploadTurn();
+                    if (rev != revision || textures.ContainsKey(key)) { cached.Dispose(); return; }
+                    long upload = System.Diagnostics.Stopwatch.GetTimestamp();
+                    var fromCache = ModTextureCache.Make(cached, name);
+                    Uploaded(upload);
+                    if (fromCache != null) { Store(key, fromCache, rev); return; }
+                }
+            }
+            var slots = DecodeSlots;
+            await slots.WaitAsync();
+            try
+            {
+                if (file == null) file = await Task.Run(localFile);   // a GLB image's file: only now that it is decoded
+                if (rev != revision || textures.ContainsKey(key) || file == null) return;
                 var p = UnityEngine.Networking.DownloadedTextureParams.Default;
                 p.mipmapChain = !encode;
                 p.linearColorSpace = linear;
@@ -269,19 +294,29 @@ namespace GoF2Remake.Modding
                 var t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
                 if (t == null) return;
                 t.name = name;
-                if (remap != Remap.None) t = Convert(t, remap, metal, rough);
-                var work = encode ? ModTextureEncoder.Start(t, linear) : null;
+                // The encoder converts it for its role on the worker threads too; the main thread only when it can't take it.
+                var work = encode ? ModTextureEncoder.Start(t, linear, (ModTextureEncoder.Remap)remap, metal, rough, target) : null;
+                if (work == null && remap != Remap.None)
+                {
+                    t = Convert(t, remap, metal, rough);
+                    if (encode) work = ModTextureEncoder.Start(t, linear, target: target);
+                }
                 if (encode && work == null && loggedFormats.Add(t.format + (t.width % 4 == 0 && t.height % 4 == 0 ? "" : " (size)")))
                     Debug.Log($"Mods: {name}: {t.format} {t.width}x{t.height} is compressed on the main thread (the background encoder takes RGBA32 / ARGB32 / RGB24, sizes in multiples of 4)");
                 if (work != null)
                 {
-                    // A Burst job compresses it with its mipmaps (ModTextureEncoder); the decoded copy goes now.
+                    // Burst jobs compress it with its mipmaps (ModTextureEncoder); the decoded copy goes now.
                     Object.Destroy(t);
                     while (!work.Done) await Awaitable.NextFrameAsync();
                     if (rev != revision || textures.ContainsKey(key)) { work.Dispose(); return; }
-                    byte[] raw = cacheFile != null ? work.Raw() : null;
-                    var c = work.Take(name);
-                    if (raw != null) WriteCache(cacheFile, c, linear, raw);
+                    await UploadTurn();
+                    if (rev != revision || textures.ContainsKey(key)) { work.Dispose(); return; }
+                    long upload = System.Diagnostics.Stopwatch.GetTimestamp();
+                    var c = work.Upload(name);
+                    Uploaded(upload);
+                    // The cache file written straight from the encoder's buffer, which goes once it is written.
+                    if (cacheFile != null) _ = WriteCache(cacheFile, c, linear, work);
+                    else work.Dispose();
                     Store(key, c, rev);
                     return;
                 }
@@ -304,6 +339,32 @@ namespace GoF2Remake.Modding
                 // A GLB image's file was only the way into the decoder (ModInfo.LocalImage).
                 if (content != null && file != null) _ = Task.Run(() => { try { System.IO.File.Delete(file); } catch (System.Exception) { } });
             }
+        }
+
+        static int uploadFrame = -1;
+        static long uploadTicks;
+        const double UploadBudgetMs = 4.0;
+
+        /// <summary>Waits for a frame whose texture uploads so far stay under UploadBudgetMs: many finishing at once (cached
+        /// textures read many at a time) would make one long frame.</summary>
+        static async Task UploadTurn()
+        {
+            while (Time.frameCount == uploadFrame && uploadTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency >= UploadBudgetMs)
+                await Awaitable.NextFrameAsync();
+            if (Time.frameCount != uploadFrame) { uploadFrame = Time.frameCount; uploadTicks = 0; }
+        }
+
+        /// <summary>An upload since 'start' (Stopwatch.GetTimestamp) counted against this frame's budget.</summary>
+        static void Uploaded(long start) => uploadTicks += System.Diagnostics.Stopwatch.GetTimestamp() - start;
+
+        /// <summary>Writes the encoder's output on a worker thread, then frees it (back on the main thread).</summary>
+        static async Task WriteCache(string cacheFile, Texture2D t, bool linear, ModTextureEncoder.Work work)
+        {
+            int w = t.width, h = t.height, mips = t.mipmapCount;
+            var format = t.format;
+            var data = work.Data;
+            try { await Task.Run(() => ModTextureCache.Write(cacheFile, w, h, format, mips, linear, data.AsReadOnlySpan())); }
+            finally { work.Dispose(); }
         }
 
         static void WriteCache(string cacheFile, Texture2D t, bool linear, byte[] raw)

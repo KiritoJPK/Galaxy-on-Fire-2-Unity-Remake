@@ -105,6 +105,20 @@ MonoBehaviour:
   valkyrieMusic: {fileID: 8300000, guid: 454e6f08a454c9a41897b7c65062cc25, type: 3}
   deepScienceMusic: {fileID: 8300000, guid: fab8051ad83d88a4fbb060e0cd967c8b, type: 3}
   outpostWreck: {fileID: 2553691981631646173, guid: 4ea973f77c7f9e2489e65a5f4fe9d9b5, type: 3}
+  wreckIntact:
+  - {fileID: 2100000, guid: 5a21921e3ba93e04ca3154ea8d3c1993, type: 2}
+  - {fileID: 2100000, guid: 5a76c5e138256344fb292c0ccd59f5c1, type: 2}
+  - {fileID: 2100000, guid: 4772ae9a5c198b74e993e8eba51e5ec5, type: 2}
+  - {fileID: 2100000, guid: 332450fb44f48aa4f84c134795ae4ebd, type: 2}
+  - {fileID: 2100000, guid: e77fdda7c3682e347b5f347d263cf220, type: 2}
+  - {fileID: 2100000, guid: 0f51f2fa47c0fc1428e5040fc263b8de, type: 2}
+  wreckDamaged:
+  - {fileID: 2100000, guid: 2ddc37abedd6d164ca902041e2558b78, type: 2}
+  - {fileID: 2100000, guid: 47b5102b6ed2d90498d609b53d43c048, type: 2}
+  - {fileID: 2100000, guid: abb713505fbb82f4899509dd08e51c37, type: 2}
+  - {fileID: 2100000, guid: 7468e73eba59b2c43928966c88259b01, type: 2}
+  - {fileID: 2100000, guid: 4b586e4ec41863e4eb9e2c3babdb587b, type: 2}
+  - {fileID: 2100000, guid: 92cbe097cebb1e345a8abc1d8bc1b545, type: 2}
   explosionEmp: {fileID: 8404218890661094357, guid: 7cd18410a9f2fd64fa8d55e70de2bdf4, type: 3}
   explosionScatter: {fileID: 414524297884949190, guid: ef38d1e79f972014d8beb8c62591324a, type: 3}
   shockGlow: {fileID: 5011795013501720976, guid: 496c333f2d10bae498b6b6804e369da9, type: 3}

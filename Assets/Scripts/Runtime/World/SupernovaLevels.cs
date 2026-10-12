@@ -823,7 +823,10 @@ namespace GoF2Remake.World
         {
             stepMs += dtMs;
             timerMs += dtMs;
-            if (Ship.externalControl && !level.Health.Dead && playerSpeed > 0f)
+            // Only while the level's own cutscene holds the ship: the mining approach and object docking set externalControl
+            // too, and this push (at the speed from the last cutscene, a boost's if the player was boosting) flew the ship
+            // through the asteroid it was landing on (step 29's Void crystals, a player's report).
+            if (c.Cutscene && Ship.externalControl && !level.Health.Dead && playerSpeed > 0f)
             {
                 Player.position += Player.forward * playerSpeed * dtMs * M;
                 Ship.ExternalSpeedMetersPerSecond = playerSpeed * 1000f * M;

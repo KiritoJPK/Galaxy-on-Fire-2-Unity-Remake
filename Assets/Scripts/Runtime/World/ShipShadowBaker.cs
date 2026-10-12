@@ -145,13 +145,19 @@ namespace GoF2Remake.World
             foreach (var (_, name, template) in Modding.ModShips.Built) prebake.Add((template.name, name, template));
         }
 
+        const double PrebakeReadMs = 3.0;
+
         static void TickPrebake()
         {
-            // The hull read (main thread) one ship per frame; the bakes run on worker threads meanwhile.
-            if (prebakeNext < prebake.Count)
+            // The hull reads (main thread) for up to PrebakeReadMs of the frame, at least one; the bakes run on worker threads
+            // meanwhile. One ship per frame left a mod of 79 ships most of a second after its models were built (a read takes
+            // under a millisecond on average).
+            long readStart = System.Diagnostics.Stopwatch.GetTimestamp();
+            while (prebakeNext < prebake.Count)
             {
                 var next = prebake[prebakeNext++];
                 if (next.template != null) Request(next.assembly, next.template, out _);
+                if ((System.Diagnostics.Stopwatch.GetTimestamp() - readStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency >= PrebakeReadMs) break;
             }
             int done = 0;
             string current = null;

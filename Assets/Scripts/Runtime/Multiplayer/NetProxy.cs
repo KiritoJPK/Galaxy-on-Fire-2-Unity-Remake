@@ -433,6 +433,8 @@ namespace GoF2Remake.Multiplayer
         }
 
         /// <summary>The model arrives after the spawn when the owner is a client (its first values follow as a delta).</summary>
+        bool wreckDamaged;
+
         void BuildVisual()
         {
             if (visual != null || (IsJunk ? junkKind.Value < 0 : model.Value.Length == 0)) return;   // the owner's values first
@@ -522,6 +524,9 @@ namespace GoF2Remake.Multiplayer
                 shownLife = life.Value;
             }
             bool show = !hidden.Value && (life.Value != Dead || leavesWreck.Value);
+            // A fixed object's or freighter's copy keeps its hull through the death (no wreck animation here): it takes the
+            // wreck's damaged material like the owner's wreck (CombatAssets.ApplyWreckDamage).
+            if (life.Value != Flying && leavesWreck.Value && !wreckDamaged && visual != null) { CombatAssets.ApplyWreckDamage(visual); wreckDamaged = true; }
             if (visual != null && visual.activeSelf != show) visual.SetActive(show);
         }
 

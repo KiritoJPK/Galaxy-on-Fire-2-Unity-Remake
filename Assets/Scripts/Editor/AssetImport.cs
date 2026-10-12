@@ -60,6 +60,16 @@ namespace GoF2Remake.EditorTools
                 ti.anisoLevel = 8;
                 ti.wrapMode = FxRepeats(name) ? TextureWrapMode.Repeat : TextureWrapMode.Clamp;
             }
+            else if (name == "skybox_asteroid_belt_diffuse")
+            {
+                // The asteroid belt sky layer (systems 24-26, SkyLayers): uncompressed on UWP like the space skies (#20,
+                // SkyboxBaker.ApplyUwpOverride): the Xbox drew its compressed blocks as a checkerboard of squares.
+                var uwp = ti.GetPlatformTextureSettings("WindowsStoreApps");
+                uwp.overridden = true;
+                uwp.maxTextureSize = 2048;
+                uwp.format = TextureImporterFormat.RGBA32;
+                ti.SetPlatformTextureSettings(uwp);
+            }
             else if (assetPath.Contains("/Textures/textures/"))
             {
                 // 2D UI/HUD art (fonts, icons, portraits). Imported as sprites.

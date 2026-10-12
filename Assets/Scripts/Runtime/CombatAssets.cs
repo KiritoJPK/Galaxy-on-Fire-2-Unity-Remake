@@ -64,6 +64,33 @@ namespace GoF2Remake.Flight
         public AudioClip valkyrieMusic, deepScienceMusic;
         [Tooltip("Mesh 14246 station_pirates_explosion_anim: a Pirate Outpost's wreck animation (20 s).")]
         public GameObject outpostWreck;
+        [Tooltip("The hull materials a wreck is drawn with (Terran, Vossk, Nivelian, Midorian freighter, the battleship, the pirate " +
+                 "outpost: 34708 / 34712 / 34704 / 34700 / 34716 / 20104) and, at the same index, their damaged ones " +
+                 "(PlayerFixedObject::update: MaterialCreate(0x8248 + kind) 140 ms into the death; 33354 / 33355 / 33353 / 33352 / " +
+                 "33356 / 33357, the *_dmg textures).")]
+        public Material[] wreckIntact, wreckDamaged;
+
+        /// <summary>PlayerFixedObject::update 0x17f6b4: 140 ms into a fixed object's or freighter's death the wreck mesh takes
+        /// its damaged material (MeshChangeMaterial: 0x8248..0x824d by wreck kind, the charred *_dmg textures on the same UVs).
+        /// Swaps every intact wreck material on 'go' for its damaged one; other materials (lights, glows) stay.</summary>
+        public static void ApplyWreckDamage(GameObject go)
+        {
+            var a = Load();
+            if (go == null || a == null || a.wreckIntact == null || a.wreckDamaged == null) return;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    int k = mats[i] != null ? System.Array.IndexOf(a.wreckIntact, mats[i]) : -1;
+                    if (k < 0 || k >= a.wreckDamaged.Length || a.wreckDamaged[k] == null) continue;
+                    mats[i] = a.wreckDamaged[k];
+                    changed = true;
+                }
+                if (changed) r.sharedMaterials = mats;
+            }
+        }
         [Tooltip("Explosion types 7 (EMP), 8-10 (scatter), 11 (shock blast glow + sphere), 13 (fireworks).")]
         public GameObject explosionEmp, explosionScatter, shockGlow, shockSphere, fireworksBurst;
         [Tooltip("Materials 20151 / 20152 / 20153 (v_scattergun_000 / 001 / 002_explosion.png): the scatter bursts of types 8 / 9 / 10 " +

@@ -235,7 +235,7 @@ namespace GoF2Remake.Flight
             projectilesDone(dtMs, cam);
         }
 
-        /// <summary>The beam: at the mount, re-aimed every frame, scaled to its length (units).</summary>
+        /// <summary>The beam: at the mount, along its fire-time direction, scaled to its length (units).</summary>
         void UpdateBeam(float dtMs)
         {
             var t = projectiles.Length > 0 ? projectiles[0] : null;
@@ -246,18 +246,12 @@ namespace GoF2Remake.Flight
             var from = ship != null ? ship.TransformPoint(gun.mountLocal == Vector3.zero ? Vector3.zero
                                                           : gun.mountLocal + new Vector3(0f, 0f, -100f * Gun.MetersPerUnit))
                                     : gun.bullets[0].position;
-            // Remake: re-aimed every frame, at the locked target while it lives, else straight ahead. The original keeps the
-            // fire-time direction and length (Gun::shootAt writes +0x8c / +0x90 once; BeamGun::update only reads them), so
-            // its beam trailed off the nose through a turn for the second it shows.
+            // The fire-time direction and length (Gun::shootAt writes +0x8c / +0x90 once; BeamGun::update only reads them):
+            // the beam stays where it was shot while the ship turns, only its start rides on the mount. (A remake change of
+            // 2026-10-01 re-aimed it every frame, at the target or the nose, so it swung with the ship; players compared it
+            // with the original's M6 A4 "Raccoon" and asked for it back.)
             var dir = gun.BeamDir.sqrMagnitude > 1e-9f ? gun.BeamDir : Vector3.forward;
             float length = gun.BeamLengthUnits;
-            var target = gun.BeamTarget;
-            if (target != null && target.gameObject.activeInHierarchy)
-            {
-                var d = target.position - from;
-                if (d.sqrMagnitude > 1e-6f) { dir = d.normalized; length = d.magnitude / Gun.MetersPerUnit; }
-            }
-            else if (ship != null) { dir = ship.forward; length = Gun.BeamRangeUnits; }
             // setDirection(beamDir, up (0, 1, 0)), world up (the crossed planes don't roll with the ship); a beam fired
             // straight up / down takes the ship's up instead.
             var up = Mathf.Abs(Vector3.Dot(dir, Vector3.up)) > 0.999f && ship != null ? ship.up : Vector3.up;

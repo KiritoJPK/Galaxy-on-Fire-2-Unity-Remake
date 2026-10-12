@@ -134,9 +134,11 @@ items.json's own names (`loadingTimeMs`, `range`, `projectileSpeed`...) work too
 }
 ```
 
-Each of projectile / muzzle / impact is `false` (none) or an object: `sprite` (PNG, white on black or transparent; `color`
-tints it) or `model` (GLB; with `texture` drawn glowing), `size` (game units; a blaster bolt is ~1600, an impact glow
-several thousand), `color` (`[r,g,b]` 0-1 or `"#rrggbb"`), `glow` (>1 blooms; game effects ~2.5), `additive` (default true),
+Each of projectile / muzzle / impact is `false` (none), `{ "color": ..., "glow": ... }` alone (the base item's own effect
+recoloured: shape, animation and brightness kept, hue replaced; the easy way to recolour an original weapon), or an object
+with the mod's own `sprite` (PNG in the mod, white on black or transparent; `color` tints it) or `model` (GLB; with
+`texture` drawn glowing), `size` (game units; a blaster bolt is ~1600, an impact glow several thousand), `color`
+(`[r,g,b]` 0-1, or 0-255 when a value is above 1, or `"#rrggbb"`), `glow` (>1 blooms; game effects ~2.5), `additive` (default true),
 `lifetime` ms (muzzle 100, impact 300), `grow`, `fade`, `spin` (deg/s), `alongFlight` + `stretch` (laser bolts), `rotate`
 (models). Sounds: `.ogg` / `.wav` / `.mp3`. Behaviour never changes (a beam stays a beam).
 

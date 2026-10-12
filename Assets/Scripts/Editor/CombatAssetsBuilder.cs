@@ -65,6 +65,14 @@ namespace GoF2Remake.EditorTools
             a.valkyrieMusic = Clip("MUSIC/Space_NoCombat_Valkyrie.ogg");
             a.deepScienceMusic = Clip("DLC2_MUSIC/GOF2_DeepScience_Space.ogg");
             a.outpostWreck = Prefab("Prefabs/main/stations/station_pirates_explosion_anim.prefab");
+            // PlayerFixedObject::update: the wrecks' damaged materials (0x8248..0x824d), each beside the hull material it replaces.
+            a.wreckIntact = new[] { "mat_34708_cargo_terran_diffuse", "mat_34712_cargo_vossk_diffuse", "mat_34704_cargo_nivelian_diffuse",
+                                    "mat_34700_cargo_midorian_diffuse", "mat_34716_battleship_terran_diffuse", "mat_20104_stations_pirates_diffuse" }
+                .Select(n => AssetDatabase.LoadAssetAtPath<Material>($"{Root}/Materials/{n}.mat")).ToArray();
+            a.wreckDamaged = new[] { "mat_33354_cargo_terran_dmg_diffuse", "mat_33355_cargo_vossk_dmg_diffuse", "mat_33353_cargo_nivelian_dmg_diffuse",
+                                     "mat_33352_cargo_midorian_dmg_diffuse", "mat_33356_battleship_terran_dmg_diffuse", "mat_33357_stations_pirates_dmg_diffuse" }
+                .Select(n => AssetDatabase.LoadAssetAtPath<Material>($"{Root}/Materials/{n}.mat")).ToArray();
+            if (a.wreckIntact.Contains(null) || a.wreckDamaged.Contains(null)) Debug.LogWarning("GoF2: missing wreck materials");
             a.explosionEmp = Prefab("Prefabs/main/fx/explosion_emp_anim_lookat_add.prefab");
             a.explosionScatter = Prefab("Prefabs/valkyrie/fx/v_scattergun_000_explosion_lookat_anim_add.prefab");
             a.scatterMaterials = new[] { "mat_20151_v_scattergun_000_explosion", "mat_20152_v_scattergun_001_explosion", "mat_20153_v_scattergun_002_explosion" }
