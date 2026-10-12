@@ -192,6 +192,18 @@ namespace GoF2Remake.Visuals
             if (enabled) Update();
         }
 
+        /// <summary>Remake: 'part' rests at 'localPosition' (its animated offset added to it, like the model's own place): a
+        /// part placed again after the model was built (OrbitBuilder: the Kaamo Club's lights). False when no track of this
+        /// animation moves it (it is then only placed).</summary>
+        public bool SetBasePosition(Transform part, Vector3 localPosition)
+        {
+            if (part == null) return false;
+            part.localPosition = localPosition;
+            foreach (var tk in tracks)
+                if (tk.tr == part) { tk.basePos = localPosition; return true; }
+            return false;
+        }
+
         /// <summary>Shows the pose at 'atMs' and stops there (an object whose animation the original never advances);
         /// without a time the load pose (LoadPoseMs), where the original holds a mesh it never updates.</summary>
         public void Hold(float atMs = -1f)

@@ -197,7 +197,42 @@ namespace GoF2Remake.World
             if (name == "station_void") PartAnimation.HoldAllAfterOneOff(go);
             else if ((layout.stationIndex == 101 && Session.CampaignMission >= 0x50) || (layout.alienOrbit && Story.Dlc1Won)) PartAnimation.HoldAllAtEnd(go);
             else if (layout.stationIndex == 101 || layout.alienOrbit) PartAnimation.HoldAll(go);
+            if (name == KaamoClub) PlaceKaamoClubLights(go);   // Remake: its ring of blinking lights on the hull
             return go;
+        }
+
+        // Remake: the Kaamo Club's blinking lights (station_kaamo_club_fx_anim_add's parts) moved onto its hull: in the converted
+        // model they float off it. Local positions as the Inspector shows them; parts sharing a place are the light's two layers.
+        const string KaamoClub = "station_kaamo_club";
+        static readonly Dictionary<string, Vector3> KaamoClubLights = new Dictionary<string, Vector3>
+        {
+            { "station_kaamo_club_fx_anim_add_part27", new Vector3(4.5f, 1f, 3f) },
+            { "station_kaamo_club_fx_anim_add_part28", new Vector3(4.5f, 1f, 3f) },
+            { "station_kaamo_club_fx_anim_add_part29", new Vector3(5.7f, 2f, 4.7f) },
+            { "station_kaamo_club_fx_anim_add_part30", new Vector3(0f, 1f, 6f) },
+            { "station_kaamo_club_fx_anim_add_part31", new Vector3(-1f, 1f, 6f) },
+            { "station_kaamo_club_fx_anim_add_part32", new Vector3(-6.4f, 0.4f, 0f) },
+            { "station_kaamo_club_fx_anim_add_part33", new Vector3(-6.4f, 0.4f, 0f) },
+            { "station_kaamo_club_fx_anim_add_part34", new Vector3(-7.6f, 2f, 2.5f) },
+            { "station_kaamo_club_fx_anim_add_part35", new Vector3(-5.8f, 0f, 2.8f) },
+            { "station_kaamo_club_fx_anim_add_part36", new Vector3(-5.8f, 0f, 2.8f) },
+            { "station_kaamo_club_fx_anim_add_part37", new Vector3(-3.7f, -1f, 6.5f) },
+            { "station_kaamo_club_fx_anim_add_part38", new Vector3(1f, 0f, 6.4f) },
+            { "station_kaamo_club_fx_anim_add_part39", new Vector3(2.8f, 0f, 6.4f) },
+            { "station_kaamo_club_fx_anim_add_part40", new Vector3(7.5f, -1f, 2f) },
+            { "station_kaamo_club_fx_anim_add_part41", new Vector3(4.8f, 0f, 0f) },
+            { "station_kaamo_club_fx_anim_add_part42", new Vector3(4.8f, 0f, 0f) },
+        };
+
+        static void PlaceKaamoClubLights(GameObject station)
+        {
+            foreach (var t in station.GetComponentsInChildren<Transform>(true))
+            {
+                if (!KaamoClubLights.TryGetValue(t.name, out var pos)) continue;
+                var anim = t.GetComponentInParent<PartAnimation>(true);
+                if (anim != null) anim.SetBasePosition(t, pos);   // its blinking keeps the new place
+                else t.localPosition = pos;
+            }
         }
 
         /// <summary>The station's volumes (collision.json) and the visible jumpgate's sphere (Obstacle): the player slides
