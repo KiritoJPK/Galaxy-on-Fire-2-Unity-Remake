@@ -302,7 +302,8 @@ namespace GoF2Remake.World
                 {
                     a.play = true;
                     a.pingPongRotation = true;
-                    if (a.gameObject.name.Contains("_anim")) a.applyMaterialChannels = true;
+                    // Remake: and the Nivelian hangar's flashing light (hangar_nivelian_add, PartAnimation.HasSignedExtra).
+                    if (a.gameObject.name.Contains("_anim") || a.HasSignedExtra) a.applyMaterialChannels = true;
                 }
             CollectRoomHighlights(roomGo);
 

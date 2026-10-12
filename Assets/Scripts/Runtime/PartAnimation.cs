@@ -93,7 +93,7 @@ namespace GoF2Remake.Visuals
             return m;
         }
 
-        class Track { public Transform tr; public AnimationKey[][] pos = new AnimationKey[3][]; public AnimationKey[][] rot = new AnimationKey[3][]; public AnimationKey[][] scl = new AnimationKey[3][]; public float[] rotTimes; public Vector3 basePos; public Quaternion baseRot; public Vector3 baseScale; public AnimationKey[] extra, uv, uvY; public Renderer renderer; public MaterialPropertyBlock block; public int fadeMode; public int fadeProperty = ColorId; public Color baseColor; public int uvMode; public Vector4 baseST; public bool initialised; }
+        class Track { public Transform tr; public AnimationKey[][] pos = new AnimationKey[3][]; public AnimationKey[][] rot = new AnimationKey[3][]; public AnimationKey[][] scl = new AnimationKey[3][]; public float[] rotTimes; public Vector3 basePos; public Quaternion baseRot; public Vector3 baseScale; public AnimationKey[] extra, uv, uvY; public bool signedExtra; public Renderer renderer; public MaterialPropertyBlock block; public int fadeMode; public int fadeProperty = ColorId; public Color baseColor; public int uvMode; public Vector4 baseST; public bool initialised; }
         readonly List<Track> tracks = new List<Track>();
         float timeMs, lengthMs, extraMs;
 
@@ -118,7 +118,7 @@ namespace GoF2Remake.Visuals
                 {
                     if (c.keys == null || c.keys.Length == 0 || string.IsNullOrEmpty(c.target) || c.target.Length < 4) continue;
                     foreach (var key in c.keys) if (key.t > 0f) loadPoseMs = Mathf.Min(loadPoseMs, key.t);
-                    if (c.target == "extra") { tk.extra = c.keys; extraMs = Mathf.Max(extraMs, c.keys[c.keys.Length - 1].t); continue; }   // not in the length: the transform channels set it
+                    if (c.target == "extra") { tk.extra = c.keys; extraMs = Mathf.Max(extraMs, c.keys[c.keys.Length - 1].t); tk.signedExtra = IsSignedExtra(c.keys); continue; }   // not in the length: the transform channels set it
                     // The UV scrolls set the length too: the burning stations' fire and smoke have no other keys.
                     if (c.target == "v5_0" || c.target == "v5_1")
                     {
@@ -164,6 +164,29 @@ namespace GoF2Remake.Visuals
             // 1 = _UVOffset (GoF2/SkyLayer), 2 = _MainTex_ST (the Shader Graphs' main texture tiling and offset), 0 = none
             tk.uvMode = mat == null ? 0 : mat.HasProperty("_UVOffset") ? 1 : mat.HasProperty("_MainTex_ST") ? 2 : 0;
             if (tk.uvMode == 2) { var sc = mat.mainTextureScale; var of = mat.mainTextureOffset; tk.baseST = new Vector4(sc.x, sc.y, of.x, of.y); }
+        }
+
+        /// <summary>Remake: an `extra` channel keyed in -100..0 instead of 0..100 (only hangar_nivelian_add's light, every
+        /// 2 s: -100 -> 0 -> 0 -> -100). Transform::InternUpdate 0x6ea7c turns the key into a colour through v * 255: on iOS
+        /// (fcvtzs, signed) a negative key wraps into the colour byte (-100 -> 1, -50 -> 129, just under 0 -> 254, 0 -> 0): the
+        /// light fades up, goes dark at 0, comes back bright and fades down. On Android (vcvt.u32.f32) every key saturates
+        /// to 0 and the light never changed. The remake shows it the iOS way.</summary>
+        static bool IsSignedExtra(AnimationKey[] keys)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            foreach (var k in keys) { min = Mathf.Min(min, k.v); max = Mathf.Max(max, k.v); }
+            return min < 0f && max <= 0f;
+        }
+
+        /// <summary>Remake: some part's `extra` channel is keyed in -100..0 (IsSignedExtra): a light the original's
+        /// Android build never faded, to be applied (applyMaterialChannels) where the room's other layers aren't.</summary>
+        public bool HasSignedExtra
+        {
+            get
+            {
+                if (tracks != null) foreach (var tk in tracks) if (tk.extra != null && tk.signedExtra) return true;
+                return false;
+            }
         }
 
         /// <summary>How often the looping animation has wrapped (the storm sky re-rolls its rotation on each).</summary>
@@ -391,7 +414,10 @@ namespace GoF2Remake.Visuals
                     tk.renderer.GetPropertyBlock(tk.block);
                     if (tk.extra != null && applyMaterialChannels)
                     {
-                        float f = Mathf.Clamp01(Eval(tk.extra, timeMs, 100f) / 100f);
+                        float e = Eval(tk.extra, timeMs, 100f);
+                        // A signed channel (IsSignedExtra) as the iOS build shows it: the colour byte wraps, so -100 is
+                        // almost dark, it brightens toward 0 and is dark again at 0 exactly.
+                        float f = tk.signedExtra && e < 0f ? Mathf.Clamp01((256f + e * 2.55f) / 255f) : Mathf.Clamp01(e / 100f);
                         if (tk.fadeMode == 0) tk.block.SetFloat(FadeId, f);
                         else if (tk.fadeMode == 1) tk.block.SetColor(tk.fadeProperty, new Color(tk.baseColor.r * f, tk.baseColor.g * f, tk.baseColor.b * f, tk.baseColor.a));
                         else if (tk.fadeMode == 2) tk.block.SetColor(tk.fadeProperty, new Color(tk.baseColor.r, tk.baseColor.g, tk.baseColor.b, tk.baseColor.a * f));
