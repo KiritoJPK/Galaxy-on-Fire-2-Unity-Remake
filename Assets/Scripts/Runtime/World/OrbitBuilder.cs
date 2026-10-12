@@ -276,7 +276,28 @@ namespace GoF2Remake.World
         public static GameObject SpawnJumpgate(Database db, OrbitLayout layout, Transform parent = null)
         {
             if (!layout.hasJumpgate) return null;
-            return Spawn(db, layout.JumpgateAssembly, layout.jumpgate, OrbitLayout.RotationToUnity(new Vector3(0f, Mathf.PI, 0f)), "Jumpgate", parent);
+            var go = Spawn(db, layout.JumpgateAssembly, layout.jumpgate, OrbitLayout.RotationToUnity(new Vector3(0f, Mathf.PI, 0f)), "Jumpgate", parent);
+            if (go != null && layout.JumpgateAssembly == TerranGate) PlayTerranGateRing(go);
+            return go;
+        }
+
+        const string TerranGate = "jumpgate_terran";
+
+        /// <summary>Remake: the Terran gate. Its inner ring (jumpgate_terran_part1, and its LODs) has its own keys, a turn opposite
+        /// to the light ring's (jumpgate_terran_anim_add_part1: rotY +0.39 vs -0.77 rad per loop), but the import only plays the
+        /// "_anim" models, so it stood still; both rings now turn steadily at their keys' rate (SpinContinuously: no wobble or
+        /// snap back on each loop). The light ring's lamps fade with their `extra` keys like the stations' (they only shrank
+        /// and stayed lit, seen jumping between their two places).</summary>
+        static void PlayTerranGateRing(GameObject gate)
+        {
+            foreach (var anim in gate.GetComponentsInChildren<PartAnimation>(true))
+            {
+                string n = anim.gameObject.name;
+                if (n == TerranGate + "_anim_add") anim.applyMaterialChannels = true;
+                if (n != TerranGate && !n.StartsWith(TerranGate + "_lod") && n != TerranGate + "_anim_add") continue;
+                foreach (var t in anim.GetComponentsInChildren<Transform>(true))
+                    if (t.name == n + "_part1") anim.SpinContinuously(t);
+            }
         }
 
         /// <summary>

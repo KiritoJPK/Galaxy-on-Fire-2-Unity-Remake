@@ -204,6 +204,33 @@ namespace GoF2Remake.Visuals
             return false;
         }
 
+        /// <summary>Remake: 'part's keyed turn becomes a steady spin (Spin) at the same average rate: the keys' blend
+        /// (a normalized lerp) isn't even, and a turn that isn't a whole step of the part's symmetry snaps back a little
+        /// when the loop wraps (the Terran gate's light ring: 44 deg per loop on a 45 deg pattern). False when no track of
+        /// this animation turns it.</summary>
+        public bool SpinContinuously(Transform part)
+        {
+            if (part == null || tracks == null) return false;
+            foreach (var tk in tracks)
+            {
+                if (tk.tr != part || tk.rotTimes == null) continue;
+                float start = Mathf.Clamp(loopStartMs, 0f, lengthMs), span = lengthMs - start;
+                if (span <= 0f) return false;
+                var a = new Vector3(Eval(tk.rot[0], start, 0), Eval(tk.rot[1], start, 0), Eval(tk.rot[2], start, 0));
+                var b = new Vector3(Eval(tk.rot[0], lengthMs, 0), Eval(tk.rot[1], lengthMs, 0), Eval(tk.rot[2], lengthMs, 0));
+                var perSecond = Map(b - a, rotationMap) * ((rotationInRadians ? Mathf.Rad2Deg : 1f) * 1000f * speed / span);
+                part.localRotation = tk.baseRot * RotationAt(tk, Mathf.Clamp(timeMs, start, lengthMs));
+                tk.rot[0] = tk.rot[1] = tk.rot[2] = null;   // the keys no longer set it
+                tk.rotTimes = null;
+                var spin = part.GetComponent<Spin>();
+                if (spin == null) spin = part.gameObject.AddComponent<Spin>();
+                // Spin turns about x, y, z in that order; a one-axis turn (the rings) is the same either way.
+                spin.degreesPerSecond = new Vector3(perSecond.x, perSecond.y, perSecond.z);
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>Shows the pose at 'atMs' and stops there (an object whose animation the original never advances);
         /// without a time the load pose (LoadPoseMs), where the original holds a mesh it never updates.</summary>
         public void Hold(float atMs = -1f)
