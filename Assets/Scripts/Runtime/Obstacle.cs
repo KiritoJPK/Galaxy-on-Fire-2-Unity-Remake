@@ -85,6 +85,9 @@ namespace GoF2Remake.Flight
         {
             Gizmos.color = new Color(1f, 0.5f, 0f, 0.8f);
             if (volumes == null) return;
+            // Remake: an object with its real hull (HullCollision) shows that (its MeshColliders) instead; the volumes still
+            // steer the NPC fighters round it, but the player and the shots no longer touch them.
+            if (GetComponentInChildren<HullBody>(true) != null) return;
             foreach (var v in volumes)
             {
                 if (v.sphere) Gizmos.DrawWireSphere(transform.position + v.centre, v.radius);
