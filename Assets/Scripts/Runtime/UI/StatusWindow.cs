@@ -94,10 +94,15 @@ namespace GoF2Remake.UI
             var icon = new VisualElement { pickingMode = PickingMode.Ignore };
             icon.AddToClassList("status-ship-icon");
             icon.style.backgroundImage = new StyleBackground(ItemInfo.ShipIcon(Session.ShipIndex));
+            // Remake: the ship's name and stats to the right of its icon.
+            shipBox.AddToClassList("status-ship-box");
             shipBox.Add(icon);
-            Line(shipBox, ItemInfo.ShipName(Session.ShipIndex), true);
-            StatLine(shipBox, T(569), ((int)Shop.FirePower(db)).ToString());
-            StatLine(shipBox, T(570), Shop.CombinedHp(db).ToString());
+            var shipLines = new VisualElement { pickingMode = PickingMode.Ignore };
+            shipLines.AddToClassList("status-ship-lines");
+            shipBox.Add(shipLines);
+            Line(shipLines, ItemInfo.ShipName(Session.ShipIndex), true);
+            StatLine(shipLines, T(569), ((int)Shop.FirePower(db)).ToString());
+            StatLine(shipLines, T(570), Shop.CombinedHp(db).ToString());
 
             // Reputation.
             Plate(left, T(576));
@@ -280,12 +285,14 @@ namespace GoF2Remake.UI
         /// <summary>A reputation bar: rate = standing / 100 toward the first race (+) or the second (-).</summary>
         static void Reputation(VisualElement box, int raceA, int raceB, int standing)
         {
+            float rate = Mathf.Clamp(standing / 100f, -1f, 1f);
+            var bar = Resources.Load<Texture2D>("GoF2Races/race_status_bar");
+            if (bar != null) { ReputationBar(box, raceA, raceB, rate, bar); return; }
             var row = new VisualElement { pickingMode = PickingMode.Ignore };
             row.AddToClassList("rep-row");
             row.Add(Emblem(raceA));
             var track = new VisualElement { pickingMode = PickingMode.Ignore };
             track.AddToClassList("rep-track");
-            float rate = Mathf.Clamp(standing / 100f, -1f, 1f);
             var fill = new VisualElement { pickingMode = PickingMode.Ignore };
             fill.AddToClassList("rep-fill");
             // Drawn from the centre toward the favoured side (the left race when positive).
@@ -310,13 +317,85 @@ namespace GoF2Remake.UI
             box.Add(names);
         }
 
+        /// <summary>Remake: the bar width in panel units (the image's 164 x 28 at x1.5).</summary>
+        const float RepBarWidth = 246f;
+
+        /// <summary>Remake: the race status bar image (GoF2Races/race_status_bar). Its whole width is -100..+100, the centre
+        /// neutral, the dividers before the end caps at 71 (Standing: hostile past them). The empty bar
+        /// (GoF2Races/race_status_bar_empty) underneath; the lit image over it from the centre to the marker (brighter toward
+        /// it, the image's own gradient). Each race's emblem against its end of
+        /// the bar, its name centred under it.</summary>
+        static void ReputationBar(VisualElement box, int raceA, int raceB, float rate, Texture2D bar)
+        {
+            var row = new VisualElement { pickingMode = PickingMode.Ignore };
+            row.AddToClassList("rep-row");
+            row.AddToClassList("rep-row--bar");
+            row.Add(RaceSide(raceA));
+            var track = new VisualElement { pickingMode = PickingMode.Ignore };
+            track.AddToClassList("rep-bar");
+            var empty = Resources.Load<Texture2D>("GoF2Races/race_status_bar_empty");
+            track.style.backgroundImage = new StyleBackground(empty != null ? empty : bar);
+            track.EnableInClassList("rep-bar--dimmed", empty == null);   // no empty bar: the lit one dimmed
+            float markerPct = 50f - rate * 50f;   // toward the left race when positive
+            float from = Mathf.Min(50f, markerPct), to = Mathf.Max(50f, markerPct);
+            var lit = new VisualElement { pickingMode = PickingMode.Ignore };
+            lit.AddToClassList("rep-bar-lit");
+            lit.style.left = Length.Percent(from);
+            lit.style.width = Length.Percent(to - from);
+            var litImage = new VisualElement { pickingMode = PickingMode.Ignore };
+            litImage.AddToClassList("rep-bar-lit-image");
+            litImage.style.backgroundImage = new StyleBackground(bar);
+            litImage.style.left = -RepBarWidth * from / 100f;   // the image stays put, the window over it moves
+            lit.Add(litImage);
+            track.Add(lit);
+            var marker = new VisualElement { pickingMode = PickingMode.Ignore };
+            marker.AddToClassList("rep-bar-marker");
+            marker.style.left = Length.Percent(markerPct);
+            track.Add(marker);
+            row.Add(track);
+            row.Add(RaceSide(raceB));
+            box.Add(row);
+        }
+
+        /// <summary>Remake: a race's emblem with its name centred under it.</summary>
+        static VisualElement RaceSide(int race)
+        {
+            var side = new VisualElement { pickingMode = PickingMode.Ignore };
+            side.AddToClassList("rep-side");
+            side.Add(Emblem(race));
+            var name = new Label(T(406 + race)) { pickingMode = PickingMode.Ignore };
+            name.AddToClassList("rep-name");
+            name.AddToClassList("rep-side-name");
+            side.Add(name);
+            return side;
+        }
+
+        /// <summary>Remake: a race's name in the GoF2Races images (terran_icon, vossk_allied ...).</summary>
+        public static string RaceFile(int race) => race switch { 0 => "terran", 1 => "vossk", 2 => "nivelian", _ => "midorian" };
+
+        /// <summary>Remake: GoF2Races/<race>_allied, _neutral or _enemy for the player's current standing with that race
+        /// (shared by the status window and the star map); null when the image is missing or the race isn't one of the four.</summary>
+        public static Texture2D StandingIcon(int race)
+        {
+            if (race < 0 || race > 3) return null;
+            string state = Standing.IsEnemy(race) ? "enemy" : Standing.IsFriend(race) ? "allied" : "neutral";
+            return Resources.Load<Texture2D>($"GoF2Races/{RaceFile(race)}_{state}");
+        }
+
+        /// <summary>Remake: the race's emblem in its standing's colours: GoF2Races/<race>_allied (green, a friend), _enemy (red,
+        /// hostile) or _neutral (blue); the radar's emblem tinted red while hostile if those images are missing.</summary>
         static VisualElement Emblem(int race)
         {
             var e = new VisualElement { pickingMode = PickingMode.Ignore };
             e.AddToClassList("rep-emblem");
-            var tex = Resources.Load<Texture2D>($"GoF2Hud/race_{race}");
+            var tex = StandingIcon(race);
             if (tex != null) e.style.backgroundImage = new StyleBackground(tex);
-            e.EnableInClassList("rep-emblem--hostile", Standing.IsEnemy(race));
+            else
+            {
+                tex = Resources.Load<Texture2D>($"GoF2Hud/race_{race}");
+                if (tex != null) e.style.backgroundImage = new StyleBackground(tex);
+                e.EnableInClassList("rep-emblem--hostile", Standing.IsEnemy(race));
+            }
             return e;
         }
 

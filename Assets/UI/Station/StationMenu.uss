@@ -123,6 +123,25 @@
     color: var(--gof-text-dim);
 }
 
+/* Remake: the system's race emblem at the left of the info box (StationMenu.ShowRaceIcon). */
+.station-info--emblem {
+    flex-direction: row;
+    align-items: center;
+}
+
+.info-lines {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.info-race-icon {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    margin-right: 14px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
 .station-buttons {
     flex-grow: 1;
     justify-content: flex-end;

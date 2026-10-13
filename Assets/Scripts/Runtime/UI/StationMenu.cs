@@ -206,6 +206,7 @@ namespace GoF2Remake.UI
             var raceLabel = root.Q<Label>("raceName");
             raceLabel.text = race >= 0 && race < 4 ? T(406 + race) : "";
             raceLabel.style.display = raceLabel.text.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            ShowRaceIcon(raceLabel.parent, race, st != null ? st.index : -1);
             hangarButton.text = T(167).ToUpperInvariant();
             loungeButton.text = T(398).ToUpperInvariant();
             mapButton.text = T(177).ToUpperInvariant();
@@ -2406,6 +2407,34 @@ namespace GoF2Remake.UI
                 safeArea.style.top = (h - sa.yMax) * k;
                 safeArea.style.bottom = sa.yMin * k;
             }).ExecuteLater(1);
+        }
+
+        /// <summary>Remake: the system's race emblem (GoF2Hud/race_N, the star map's and radar's) at the left of the station
+        /// info box (system, tech level, race); none outside the four races, the pirates and the Void.</summary>
+        static void ShowRaceIcon(VisualElement info, int race, int station = -1)
+        {
+            if (info == null) return;
+            var icon = info.Q("raceIcon");
+            if (icon == null)
+            {
+                // The box's lines into a column of their own, the emblem beside it.
+                var lines = new VisualElement { pickingMode = PickingMode.Ignore };
+                lines.AddToClassList("info-lines");
+                while (info.childCount > 0) lines.Add(info[0]);
+                info.Add(lines);
+                icon = new VisualElement { name = "raceIcon", pickingMode = PickingMode.Ignore };
+                icon.AddToClassList("info-race-icon");
+                info.Insert(0, icon);
+                info.AddToClassList("station-info--emblem");
+            }
+            // The four races' large emblems (GoF2Races/<race>_icon); the pirates and the Void keep the radar's; the Kaamo
+            // Club a house (GoF2Races/kaamo_club_icon).
+            // Remake: the Kaamo Club shows a skull until it is bought (or owned from the start), then the orange house.
+            var tex = station == KaamoClub.Station ? Resources.Load<Texture2D>(KaamoClub.Owned ? "GoF2Races/kaamo_club_icon" : "GoF2Races/kaamo_club_locked_icon") : null;
+            if (tex == null) tex = race >= 0 && race <= 3 ? Resources.Load<Texture2D>($"GoF2Races/{StatusWindow.RaceFile(race)}_icon")
+                    : race == 8 || race == 9 ? Resources.Load<Texture2D>("GoF2Hud/race_" + race) : null;
+            icon.style.backgroundImage = tex != null ? new StyleBackground(tex) : new StyleBackground(StyleKeyword.None);
+            icon.style.display = tex != null ? DisplayStyle.Flex : DisplayStyle.None;
         }
     }
 }

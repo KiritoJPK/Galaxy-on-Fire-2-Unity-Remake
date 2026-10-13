@@ -751,13 +751,20 @@ namespace GoF2Remake.UI
                 if (faction != null) it.name.text += $" [{faction}]";
                 it.name.text += SquadMark(s.index, -1);   // multiplayer: squadmates here
                 bool owned = GalaxyMap.HasOwner(s.index) && s.raceId >= 0 && s.raceId <= 3;
-                if (owned) it.raceIcon.style.backgroundImage = new StyleBackground(Tex($"race_{s.raceId}"));
+                // Remake: the owner's emblem in the player's standing colours (allied / neutral / enemy), the old radar icon as fallback.
+                if (owned) it.raceIcon.style.backgroundImage = new StyleBackground(StatusWindow.StandingIcon(s.raceId) ?? Tex($"race_{s.raceId}"));
                 it.raceIcon.style.display = owned ? DisplayStyle.Flex : DisplayStyle.None;
                 if (s.index == KaamoClub.SystemIndex && KaamoClub.Owned)
                 {
                     // 0x545, the orange house of the owned Kaamo Club, where an owner's race icon would be.
                     it.raceIcon.style.backgroundImage = new StyleBackground(Tex("map_home"));
                     it.raceIcon.AddToClassList("map-race-icon--home");
+                    it.raceIcon.style.display = DisplayStyle.Flex;
+                }
+                else if (s.index == KaamoClub.SystemIndex)
+                {
+                    // Remake: the pirate skull (race_8) on the Kaamo Club's system until the club is bought.
+                    it.raceIcon.style.backgroundImage = new StyleBackground(Tex("race_8"));
                     it.raceIcon.style.display = DisplayStyle.Flex;
                 }
                 bool fully = s.stations.Count > 0 && s.stations.TrueForAll(st => Session.VisitedStations.Contains(st));

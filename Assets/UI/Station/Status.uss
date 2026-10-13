@@ -96,7 +96,20 @@
 .status-ship-icon {
     width: 178px;
     height: 86px;
+    flex-shrink: 0;
     -unity-background-scale-mode: scale-to-fit;
+}
+
+/* Remake: the ship's icon with its name and stats beside it (right). */
+.status-ship-box {
+    flex-direction: row;
+    align-items: center;
+}
+
+.status-ship-lines {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 16px;
 }
 
 /* Reputation: emblem, bar from the centre toward the liked side, emblem. */
@@ -106,8 +119,8 @@
 }
 
 .rep-emblem {
-    width: 44px;
-    height: 44px;
+    width: 52px;
+    height: 52px;
     -unity-background-scale-mode: scale-to-fit;
 }
 
@@ -129,6 +142,67 @@
     bottom: 0;
     background-color: var(--gof-cyan);
     border-radius: 6px;
+}
+
+/* Remake: the race status bar (StatusWindow.ReputationBar): the empty bar whole at x1.5, the lit image over it from the
+   centre to the marker; the emblems against its ends, each race's name centred under its emblem. */
+.rep-row--bar {
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.rep-side {
+    align-items: center;
+    width: 120px;
+}
+
+.rep-row--bar .rep-emblem {
+    margin: 0;
+}
+
+.rep-side-name {
+    margin-top: 2px;
+    -unity-text-align: upper-center;
+    white-space: normal;
+}
+
+.rep-bar {
+    flex-shrink: 0;
+    width: 246px;
+    height: 42px;
+    margin-top: 5px;   /* centred on the 52px emblems */
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.rep-bar--dimmed {
+    -unity-background-image-tint-color: rgba(120, 140, 160, 0.45);
+}
+
+.rep-bar-lit {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+
+.rep-bar-lit-image {
+    position: absolute;
+    top: 0;
+    width: 246px;
+    height: 42px;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.rep-bar-marker {
+    position: absolute;
+    top: -3px;
+    width: 9px;
+    height: 48px;
+    margin-left: -4px;
+    background-color: #FFE6B8;
+    border-width: 1px;
+    border-color: #D9A15A;
+    border-radius: 2px;
 }
 
 .rep-marker {
