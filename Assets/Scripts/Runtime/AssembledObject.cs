@@ -36,6 +36,7 @@ namespace GoF2Remake.Visuals
         {
             ModScope = name.EndsWith("(Clone)") ? name.Substring(0, name.Length - "(Clone)".Length).Trim() : name;
             Modding.ModTextures.Apply(gameObject, ModScope);
+            EmissiveReflection.Apply(gameObject);   // Remake: the emissive layers reflect the cubemap like the hull
         }
 
         [Tooltip("Resource id of the root (LOD 0) mesh.")]

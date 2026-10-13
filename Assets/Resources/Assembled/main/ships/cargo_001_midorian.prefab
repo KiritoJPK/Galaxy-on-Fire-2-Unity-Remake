@@ -105,6 +105,7 @@ LODGroup:
     - renderer: {fileID: 7886017547562490051}
     - renderer: {fileID: 5389920742720331734}
     - renderer: {fileID: 8440996681759996571}
+    - renderer: {fileID: 8506287122221767623}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
 --- !u!1001 &1731250819176859430

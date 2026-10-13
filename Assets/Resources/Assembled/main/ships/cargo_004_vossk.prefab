@@ -87,11 +87,13 @@ LODGroup:
     renderers:
     - renderer: {fileID: 3281578252193271438}
     - renderer: {fileID: 2673664789549332179}
+    - renderer: {fileID: 2509038174758837043}
   - screenRelativeHeight: 0
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 3281578252193271438}
     - renderer: {fileID: 457727206350005810}
+    - renderer: {fileID: 2509038174758837043}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
 --- !u!1001 &637445929775434845

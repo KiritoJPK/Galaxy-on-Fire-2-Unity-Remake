@@ -47,7 +47,18 @@ namespace GoF2Remake.World
             int mission = Session.WorldIndex;
             bool supernova = layout.systemIndex == 27;
 
-            if (InPlanetRingOrbit(layout.stationIndex)) Add(a.ringSky, a.ringSkyMaterial, RingQueue, 1f);
+            if (InPlanetRingOrbit(layout.stationIndex))
+            {
+                // Remake: the ring is a thin slab (its top and bottom faces 4.3 units apart, 76 under the camera): both faces
+                // drawn, the two copies of the bands sat a little apart and their alpha blend changed with the triangles'
+                // order (top first in some of the 64 segments, bottom first in others), short bright dashes along the
+                // rings at the segments' edges. Only the face toward the camera is drawn now.
+                var ring = Add(a.ringSky, a.ringSkyMaterial, RingQueue, 1f);
+                if (ring != null)
+                    foreach (var r in ring.GetComponentsInChildren<Renderer>(true))
+                        if (r.sharedMaterial != null) r.sharedMaterial.SetFloat("_Cull", (float)CullMode.Back);
+                PolarRing(ring);
+            }
             if (supernova && mission != 89 && mission < 158)
             {
                 var mat = mission < 106 ? a.flaresMaterial : a.flaresNastyMaterial;
@@ -115,6 +126,28 @@ namespace GoF2Remake.World
                 anim.applyMaterialChannels = true;
             }
             return go.transform;
+        }
+
+        /// <summary>Remake: the planet ring sky (sn_skybox_planet_ring_alpha) maps its bands by the distance to the ring's centre
+        /// (GoF2/SkyLayer's _Polar): the mesh's two radii, 142 and 461.34 in the file (the inner 4/13 of the outer), the
+        /// texture's quarter rings around its (1, 0) corner from 0.1757 to 1.0024 (the vertices' UVs). The centre and the outer
+        /// radius come from the mesh's bounds (the ring is flat: its widest extent is the outer radius). The ring's inner and
+        /// outer edges are transparent in the texture, so the 64-sided outline doesn't show.</summary>
+        static void PolarRing(Transform ring)
+        {
+            if (ring == null) return;
+            foreach (var r in ring.GetComponentsInChildren<Renderer>(true))
+            {
+                var mf = r.GetComponent<MeshFilter>();
+                var m = r.sharedMaterial;
+                if (mf == null || mf.sharedMesh == null || m == null || !m.HasProperty("_Polar")) continue;
+                var b = mf.sharedMesh.bounds;
+                float outer = Mathf.Max(b.extents.x, Mathf.Max(b.extents.y, b.extents.z));
+                m.SetFloat("_Polar", 1f);
+                m.SetVector("_PolarCenter", b.center);
+                m.SetVector("_PolarRadii", new Vector4(outer * 4f / 13f, outer, 0.1757f, 1.0024f));
+                m.SetVector("_PolarUV", new Vector4(1f, 0f, 0f, 0f));
+            }
         }
 
         /// <summary>The storm layer's re-roll: three random Euler angles (the decompiler lost the arguments).</summary>

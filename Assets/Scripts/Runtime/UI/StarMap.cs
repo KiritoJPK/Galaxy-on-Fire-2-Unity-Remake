@@ -585,6 +585,7 @@ namespace GoF2Remake.UI
             foreach (var p in planets)
             {
                 var planet = Spawn($"galaxymap_planet_{p.textureIndex:000}", systemRoot.transform) ?? Spawn("galaxymap_planet_000", systemRoot.transform);
+                if (planet != null && World.SkyLayers.InPlanetRingOrbit(p.station)) AddPlanetRing(planet);
                 if (planet != null) LightBySun(planet);
                 planetObjects.Add(planet != null ? planet.transform : null);
                 planetScales.Add(planet != null ? planet.transform.localScale / 128f : Vector3.zero);
@@ -601,6 +602,25 @@ namespace GoF2Remake.UI
             autoRotate = false;
             BuildPlanetItems();
             UpdateSystemTransforms();
+        }
+
+        /// <summary>Remake: StarMap::initStarSystem's ring (map_planet_ring 16853, on the planet's matrix) for the stations whose
+        /// orbit has the planet ring sky (Status::orbitHasPlanetRing: 120, 126, 130, 132). The planets with texture 9, 16
+        /// or 21 have it in their prefab; for these stations it was left out, so their planet showed no ring on the map.
+        /// A copy of the ring in galaxymap_planet_009 (its local transform: the planet's own).</summary>
+        void AddPlanetRing(GameObject planet)
+        {
+            foreach (var t in planet.GetComponentsInChildren<Transform>(true))
+                if (t.name.StartsWith("map_planet_ring")) return;   // already in the prefab
+            var donor = AssembledObject.LoadPrefab(db.AssemblyByName("galaxymap_planet_009"));
+            if (donor == null) return;
+            Transform ring = null;
+            foreach (var t in donor.GetComponentsInChildren<Transform>(true))
+                if (t.name.StartsWith("map_planet_ring")) { ring = t; break; }
+            if (ring == null) return;
+            var go = Instantiate(ring.gameObject, planet.transform, false);
+            go.name = ring.name;
+            SetLayer(go);
         }
 
         /// <summary>StarMap::initStarSystem's light at the sun: the planet's materials swapped for GoF2/MapPlanet copies (its

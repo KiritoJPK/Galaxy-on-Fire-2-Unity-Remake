@@ -4,6 +4,12 @@
 // like GoF2/Backdrop, so painter's order comes from the render queue and every object stays in front.
 // _Fade is the part animation's `extra` channel (0..1: RGB for additive layers, alpha otherwise), _UVOffset its `v5_0`
 // UV scroll. _Lit (the belt) lights the texture by _LightDir / _LightColor plus _Ambient.
+// Remake: _Cull (default Off): the planet ring sky culls its back faces (SkyLayers).
+// Remake: _Polar (the planet ring sky, SkyLayers.PolarRing): its mesh is 64 long segments over a quarter-circle texture
+// of concentric bands; interpolated straight across each triangle the bands came out as chords (the rings looked
+// faceted up close). Here a band's radius comes from the pixel's distance to the ring's centre (_PolarCenter, object
+// space; _PolarRadii = inner and outer radius, then their radii in the texture) and only the angle from the mesh's UV
+// (around _PolarUV, the texture's centre corner): every band is a true circle.
 Shader "GoF2/SkyLayer"
 {
     Properties
@@ -19,6 +25,11 @@ Shader "GoF2/SkyLayer"
         _Ambient ("Ambient", Color) = (0.2, 0.2, 0.2, 1)
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src Blend", Float) = 5
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst Blend", Float) = 10
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 0
+        _Polar ("Polar ring mapping", Float) = 0
+        _PolarCenter ("Ring centre (object space)", Vector) = (0, 0, 0, 0)
+        _PolarRadii ("Ring radii: inner, outer, texture inner, texture outer", Vector) = (0, 1, 0, 1)
+        _PolarUV ("Texture centre (UV)", Vector) = (1, 0, 0, 0)
     }
     SubShader
     {
@@ -26,7 +37,7 @@ Shader "GoF2/SkyLayer"
         Blend [_SrcBlend] [_DstBlend]
         ZWrite Off
         ZTest LEqual
-        Cull Off
+        Cull [_Cull]
 
         Pass
         {
@@ -48,11 +59,13 @@ Shader "GoF2/SkyLayer"
                 float4 _LightDir;
                 half4 _LightColor;
                 half4 _Ambient;
+                float _Polar;
+                float4 _PolarCenter, _PolarRadii, _PolarUV;
                 float _SrcBlend, _DstBlend;
             CBUFFER_END
 
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; half4 color : COLOR; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; float3 normalWS : TEXCOORD1; half4 color : COLOR; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; float3 normalWS : TEXCOORD1; half4 color : COLOR; float3 positionOS : TEXCOORD2; };
 
             Varyings vert(Attributes i)
             {
@@ -67,6 +80,7 @@ Shader "GoF2/SkyLayer"
                 // streamed into it).
                 o.uv = i.uv - _UVOffset.xy;
                 o.normalWS = TransformObjectToWorldNormal(i.normalOS);
+                o.positionOS = i.positionOS.xyz;
                 // The supernova flares fade out toward their edges through their vertex colours (0..0.5): the original
                 // draws a mesh's colour array whenever it has one.
                 o.color = _UseVertexColor > 0.5 ? i.color : half4(1, 1, 1, 1);
@@ -75,7 +89,15 @@ Shader "GoF2/SkyLayer"
 
             half4 frag(Varyings i) : SV_Target
             {
-                half4 t = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv) * _Color * i.color;
+                float2 uv = i.uv;
+                if (_Polar > 0.5)
+                {
+                    float rho = saturate((length(i.positionOS - _PolarCenter.xyz) - _PolarRadii.x) / max(_PolarRadii.y - _PolarRadii.x, 1e-5));
+                    float2 d = uv - _PolarUV.xy;
+                    float phi = atan2(d.y, d.x);
+                    uv = _PolarUV.xy + lerp(_PolarRadii.z, _PolarRadii.w, rho) * float2(cos(phi), sin(phi));
+                }
+                half4 t = SAMPLE_TEXTURE2D_GRAD(_MainTex, sampler_MainTex, uv, ddx(i.uv), ddy(i.uv)) * _Color * i.color;
                 if (_Lit > 0.5)
                 {
                     // Two-sided: the camera sits inside the belt.
