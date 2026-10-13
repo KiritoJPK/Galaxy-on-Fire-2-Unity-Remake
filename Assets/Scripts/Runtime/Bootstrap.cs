@@ -38,6 +38,11 @@ namespace GoF2Remake
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Init()
         {
+#if UNITY_EDITOR
+            // Cloud Diagnostics: no exceptions from Play mode in an Editor (contributors' clones without the asset pack's
+            // textures sent their Editors' errors to the project's dashboard, 2026-10-11); the players' builds still report.
+            UnityEngine.CrashReportHandler.CrashReportHandler.enableCaptureExceptions = false;
+#endif
             // A dedicated server (-server): no menu, rendering options, sound or desktop extras, only the server.
             if (Multiplayer.DedicatedServer.Enabled) { Multiplayer.DedicatedServer.Boot(); return; }
             int editorVSync = QualitySettings.vSyncCount;

@@ -628,10 +628,13 @@ namespace GoF2Remake.UI
             int[] people = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 20, 24, 25, 26, 31, 32, 34, 36, 37, 38, 39, 40, 44, 45, 46, 47, 55, 60 };
             foreach (int s in people)
             {
-                string full = StoryTable.SpeakerName(s);
-                Add(full, Person);
-                foreach (var part in full.Split(' '))
-                    if (part.Length >= 4 && !part.EndsWith(".") && char.IsUpper(part[0])) Add(part, Person);
+                // A mod character replacing the speaker gives its name too; the texts still use the game's own.
+                foreach (var full in new[] { StoryTable.OriginalSpeakerName(s), StoryTable.SpeakerName(s) })
+                {
+                    Add(full, Person);
+                    foreach (var part in full.Split(' '))
+                        if (part.Length >= 4 && !part.EndsWith(".") && char.IsUpper(part[0])) Add(part, Person);
+                }
             }
             foreach (var (n, kind) in LoreNames) Add(n, kind);
             // Remake mods: the mods' characters (ModCharacters) are people too.

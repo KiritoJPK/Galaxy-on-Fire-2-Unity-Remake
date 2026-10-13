@@ -117,10 +117,24 @@ namespace GoF2Remake.Data
 
         public bool Overloaded => Load > MaxLoad;
 
-        /// <summary>Item::mixItems: everything in cargo or in stock, by item index.</summary>
+        /// <summary>Item::mixItems: everything in cargo or in stock, by item index. Remake: an item number the item table
+        /// doesn't have is left out (logged once): the window reads every row's item, and one unknown number in the hold
+        /// or the stock threw on every trade (crash reports from a Windows build, 2026-10-12, source not found yet).</summary>
         public List<int> ShopItems() =>
             Session.Cargo.Where(s => s.amount > 0).Select(s => s.item)
-                .Concat(Stock.items.Where(s => s.amount > 0).Select(s => s.item)).Distinct().OrderBy(i => i).ToList();
+                .Concat(Stock.items.Where(s => s.amount > 0).Select(s => s.item)).Distinct().Where(Known).OrderBy(i => i).ToList();
+
+        static readonly HashSet<int> reportedUnknown = new HashSet<int>();
+
+        /// <summary>The item is in the item table; else false, with a warning the first time (where it sits).</summary>
+        bool Known(int item)
+        {
+            if (db.Item(item) != null) return true;
+            if (reportedUnknown.Add(item))
+                Debug.LogWarning($"Hangar: item {item} (hold {CargoOf(item)} t, station {Station} stock {StockOf(item)} t) " +
+                                 $"isn't in the item table of {db.Items.Count}: left out of the shop");
+            return false;
+        }
 
         public int SlotCount(int type)
         {

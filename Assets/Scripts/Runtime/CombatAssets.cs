@@ -77,15 +77,19 @@ namespace GoF2Remake.Flight
         {
             var a = Load();
             if (go == null || a == null || a.wreckIntact == null || a.wreckDamaged == null) return;
+            string scope = go.GetComponentInChildren<Visuals.AssembledObject>(true)?.ModScope;   // its own skin first
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
             {
                 var mats = r.sharedMaterials;
                 bool changed = false;
                 for (int i = 0; i < mats.Length; i++)
                 {
-                    int k = mats[i] != null ? System.Array.IndexOf(a.wreckIntact, mats[i]) : -1;
+                    // A skinned hull (Modding.ModTextures) draws a copy: its game material finds the damaged one, which
+                    // takes the mod's *_dmg textures too.
+                    var intact = Modding.ModTextures.OriginalOf(mats[i]) ?? mats[i];
+                    int k = intact != null ? System.Array.IndexOf(a.wreckIntact, intact) : -1;
                     if (k < 0 || k >= a.wreckDamaged.Length || a.wreckDamaged[k] == null) continue;
-                    mats[i] = a.wreckDamaged[k];
+                    mats[i] = Modding.ModTextures.Replace(a.wreckDamaged[k], scope);
                     changed = true;
                 }
                 if (changed) r.sharedMaterials = mats;

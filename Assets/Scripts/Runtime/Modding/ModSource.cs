@@ -97,20 +97,39 @@ namespace GoF2Remake.Modding
         }
     }
 
+    /// <summary>A file of a mod that couldn't be read (a damaged archive, a closed one): a data problem of that mod, reported
+    /// as its warning, not a bug of the game.</summary>
+    public class ModFileException : IOException
+    {
+        public ModFileException(string message, Exception inner = null) : base(message, inner) { }
+
+        /// <summary>A failure reading a mod's files (this, IO, a damaged archive, an archive closed by a rescan) rather than a
+        /// bug: the loaders warn on the mod and don't log the exception (the cloud diagnostics count those as crashes).</summary>
+        public static bool IsFileError(Exception e) => e is IOException || e is InvalidDataException || e is ObjectDisposedException;
+    }
+
     /// <summary>A zipped mod. The archive stays open while the mod is installed (its entries are read on demand); a mod
-    /// whose files all sit in one top folder (zipped from the folder itself) is read from inside it.</summary>
+    /// whose files all sit in one top folder (zipped from the folder itself) is read from inside it. Thread-safe: the
+    /// background loaders read it from worker threads, one entry at a time.</summary>
     public class ZipSource : ModSource
     {
-        readonly ZipArchive zip;
+        ZipArchive zip;
+        bool disposed;
+        readonly object gate = new object();
         readonly Dictionary<string, ZipArchiveEntry> entries = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
         readonly List<string> files = new List<string>();
+        string prefix = "";
+
+        // Shared for delete: an export or Delete in the Mod Browser can replace the zip while this source (or one a domain
+        // reload left behind, open until it is collected) still reads it.
+        static ZipArchive OpenArchive(string archive) =>
+            new ZipArchive(new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete), ZipArchiveMode.Read);
 
         public ZipSource(string archive)
         {
             Location = archive;
-            zip = new ZipArchive(File.OpenRead(archive), ZipArchiveMode.Read);
+            zip = OpenArchive(archive);
             var all = zip.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
-            string prefix = "";
             if (!all.Any(e => string.Equals(Normalise(e.FullName), ModManifest.FileName, StringComparison.OrdinalIgnoreCase)))
             {
                 var inner = all.FirstOrDefault(e => Normalise(e.FullName).EndsWith("/" + ModManifest.FileName, StringComparison.OrdinalIgnoreCase)
@@ -130,19 +149,112 @@ namespace GoF2Remake.Modding
 
         public override IReadOnlyList<string> Files => files;
 
+        /// <summary>The entry's bytes. A read that fails (a local header or deflate data that doesn't check out) is tried once
+        /// more on the archive opened afresh, in case the open stream got out of step; failing again, the file is damaged in
+        /// the archive (players' reports from Android: a mod zip of 79 models, one or two entries bad) and a ModFileException
+        /// says so. A source closed meanwhile (the Mod Browser rescans: ModManager.Scan releases the old sources while the
+        /// loaders still read) throws a ModFileException too, never a read on a closed stream.</summary>
         public override byte[] ReadBytes(string path)
         {
             var f = Resolve(path);
             if (f == null) return null;
-            lock (zip)
+            Exception first = null;
+            for (int attempt = 0; attempt < 2; attempt++)
             {
-                using var s = entries[f].Open();
-                using var m = new MemoryStream();
-                s.CopyTo(m);
-                return m.ToArray();
+                byte[] bytes;
+                uint crc;
+                lock (gate)
+                {
+                    if (disposed) throw new ModFileException($"{f}: the mod's archive was closed (the mods were read again)");
+                    try
+                    {
+                        if (attempt > 0) Reopen();
+                        bytes = ReadEntry(f, out crc);
+                    }
+                    catch (Exception e) when (e is InvalidDataException || e is IOException) { first ??= e; continue; }
+                }
+                // The CRC outside the gate, so the workers check in parallel. The inflater doesn't check it: a damaged
+                // entry can inflate without an error into the wrong bytes (tried on CoreCLR), which glTFast then reads.
+                if (Crc32.Of(bytes) == crc) return bytes;
+                first ??= new InvalidDataException("CRC mismatch");
             }
+            throw new ModFileException($"{f} is damaged in {Path.GetFileName(Location)} ({first?.Message}): download or import the mod again", first);
         }
 
-        public override void Dispose() => zip.Dispose();
+        byte[] ReadEntry(string f, out uint crc)
+        {
+            if (!entries.TryGetValue(f, out var entry)) throw new ModFileException($"{f}: no longer in {Path.GetFileName(Location)}");
+            crc = entry.Crc32;
+            using var s = entry.Open();
+            using var m = entry.Length > 0 && entry.Length < int.MaxValue ? new MemoryStream((int)entry.Length) : new MemoryStream();
+            s.CopyTo(m);
+            if (m.Length != entry.Length) throw new InvalidDataException($"{m.Length} of {entry.Length} bytes");
+            return m.Length == m.Capacity ? m.GetBuffer() : m.ToArray();
+        }
+
+        /// <summary>The archive opened again, the entries taken from the new one (under the gate).</summary>
+        void Reopen()
+        {
+            var fresh = OpenArchive(Location);
+            var map = new Dictionary<string, ZipArchiveEntry>(StringComparer.OrdinalIgnoreCase);
+            foreach (var e in fresh.Entries)
+            {
+                if (string.IsNullOrEmpty(e.Name)) continue;
+                string n = Normalise(e.FullName);
+                if (n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) map[n.Substring(prefix.Length)] = e;
+            }
+            try { zip.Dispose(); } catch { }
+            zip = fresh;
+            entries.Clear();
+            foreach (var kv in map) entries[kv.Key] = kv.Value;
+        }
+
+        public override void Dispose()
+        {
+            lock (gate)
+            {
+                if (disposed) return;
+                disposed = true;
+                zip.Dispose();
+            }
+        }
+    }
+
+    /// <summary>The zip format's CRC-32 (IEEE, reflected 0xEDB88320), sliced by 8: a mod's models are read whole on every start
+    /// (hundreds of MB for the big ship packs), so the check has to keep up with the reads.</summary>
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+    public static class Crc32
+    {
+        static readonly uint[] table = Make();
+
+        static uint[] Make()
+        {
+            var t = new uint[8 * 256];
+            for (uint i = 0; i < 256; i++)
+            {
+                uint c = i;
+                for (int k = 0; k < 8; k++) c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+                t[i] = c;
+            }
+            for (int i = 0; i < 256; i++)
+                for (int s = 1; s < 8; s++) t[s * 256 + i] = (t[(s - 1) * 256 + i] >> 8) ^ t[t[(s - 1) * 256 + i] & 0xFF];
+            return t;
+        }
+
+        public static uint Of(byte[] data)
+        {
+            var t = table;
+            uint c = 0xFFFFFFFFu;
+            int i = 0, n = data.Length;
+            for (; i + 8 <= n; i += 8)
+            {
+                uint a = c ^ (uint)(data[i] | data[i + 1] << 8 | data[i + 2] << 16 | data[i + 3] << 24);
+                uint b = (uint)(data[i + 4] | data[i + 5] << 8 | data[i + 6] << 16 | data[i + 7] << 24);
+                c = t[7 * 256 + (a & 0xFF)] ^ t[6 * 256 + ((a >> 8) & 0xFF)] ^ t[5 * 256 + ((a >> 16) & 0xFF)] ^ t[4 * 256 + (a >> 24)]
+                  ^ t[3 * 256 + (b & 0xFF)] ^ t[2 * 256 + ((b >> 8) & 0xFF)] ^ t[256 + ((b >> 16) & 0xFF)] ^ t[b >> 24];
+            }
+            for (; i < n; i++) c = t[(c ^ data[i]) & 0xFF] ^ (c >> 8);
+            return ~c;
+        }
     }
 }

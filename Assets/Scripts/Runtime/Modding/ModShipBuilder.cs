@@ -1,8 +1,8 @@
 // ModShipBuilder.cs
 // A mod's ship as the game's other ships are (an AssembledObject template), built at run time from its glTF model and
 // its ships.json entry: the run-time port of PR #34's CustomShipBuilder (the Editor tool that baked the remake's own ships):
-//   - the model as "hull", turned by modelYaw and scaled to modelLength game units nose to tail; a "materials" entry
-//     replaces the model's material on the renderers (name contains 'mesh') / submeshes it names (ModMaterials.FromSpec);
+//   - the model as "hull", turned by modelPitch / modelYaw / modelRoll (Unity Euler x / y / z), scaled to modelLength game
+//     units nose to tail and moved by modelOffset (game units in the ship's frame); a "materials" entry replaces the model's material on the renderers (name contains 'mesh') / submeshes it names (ModMaterials.FromSpec);
 //   - the player's engine glow at every exhaust mount (slotType 3; playerVariantParts like *_engine_glow_add): the
 //     Phantom's glow shape (a 12-segment disc and a flared ring 0.87 r behind it, radius x1.31) on the shared glow
 //     sprite (mat_34813, centre uv (0.46, 0.947)); no exhaust mounts = no flame (ShipExhaust uses the same mounts); a
@@ -41,7 +41,8 @@ namespace GoF2Remake.Modding
             model.name = "hull";
             model.transform.SetParent(root.transform, false);
             model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.Euler(0f, c.modelYaw, 0f);
+            model.transform.localRotation = Quaternion.Euler(c.modelPitch, c.modelYaw, c.modelRoll);
+            FlattenSkinned(model);
             var renderers = model.GetComponentsInChildren<Renderer>(true);
             var specs = c.materials ?? new List<CustomShipMaterial>();
             var mats = new Material[specs.Count];
@@ -59,6 +60,9 @@ namespace GoF2Remake.Modding
             foreach (var r in renderers) { r.shadowCastingMode = ShadowCastingMode.On; r.receiveShadows = true; }
             float length = BoundsIn(root.transform, renderers).size.z;
             if (length > 0f) model.transform.localScale *= c.modelLength * M / length;
+            // modelOffset: the sized hull moved in the ship's frame (game units, x mirrored like the mounts, MountToLocal).
+            if (c.modelOffset != null && c.modelOffset.Length >= 3)
+                model.transform.localPosition = new Vector3(-c.modelOffset[0], c.modelOffset[1], c.modelOffset[2]) * M;
 
             var parts = new List<GameObject>();
             var glow = BuildEngineGlow(c);
@@ -87,6 +91,27 @@ namespace GoF2Remake.Modding
             float h = Mathf.Clamp01(group.size / (2f * CullDistance * M * tanHalf));
             group.SetLODs(new[] { new LOD(h, root.GetComponentsInChildren<Renderer>(true)) });
             return root;
+        }
+
+        /// <summary>Skinned meshes (a GLB whose hull is bound to a skeleton, common in exported game models) baked into plain
+        /// meshes in their rest pose: a ship never animates, and everything that measures or collides with the hull (the
+        /// length fit, the hangar height, mesh collision, the shadow bake, the Mod Builder's hull picking) reads the mesh in
+        /// its bind pose, while the bones draw it elsewhere and at another size.</summary>
+        internal static void FlattenSkinned(GameObject model)
+        {
+            foreach (var smr in model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                if (smr.sharedMesh == null) continue;
+                var baked = new Mesh { name = smr.sharedMesh.name };
+                baked.indexFormat = smr.sharedMesh.indexFormat;
+                smr.BakeMesh(baked);   // the drawn pose, in the renderer's own space without its scale (the transform adds it)
+                baked.RecalculateBounds();
+                var go = smr.gameObject;
+                var mats = smr.sharedMaterials;
+                Object.DestroyImmediate(smr);
+                go.AddComponent<MeshFilter>().sharedMesh = baked;
+                go.AddComponent<MeshRenderer>().sharedMaterials = mats;
+            }
         }
 
         internal static Mesh MeshOf(Renderer r) => r is SkinnedMeshRenderer s ? s.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;

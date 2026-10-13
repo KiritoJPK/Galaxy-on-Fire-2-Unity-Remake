@@ -201,7 +201,7 @@ namespace GoF2Remake.Modding
             var c = Current;
             if (c == null || !c.trafficShips.TryGetValue(race == 8 || race > 3 ? 8 : race, out var refs) || refs.Count == 0) return fallback;
             for (int tries = 0; tries < 8; tries++)
-                if (ModContent.TryResolveShip(refs[UnityEngine.Random.Range(0, refs.Count)], out int ship) && Database.Load().Ship(ship) != null) return ship;
+                if (ModContent.TryResolveShip(refs[UnityEngine.Random.Range(0, refs.Count)], out int ship) && Database.Shared.Ship(ship) != null) return ship;
             return fallback;
         }
 

@@ -46,6 +46,9 @@ menu's **Mods** screen and turning it on. Problems show there with file and line
 
 ## Mod folder
 
+Images (icons, portraits, textures, skins, planets, suns, skies, card art, preview) may be PNG (safest), JPG, TGA, BMP, DDS
+(DXT1/3/5, uncompressed) or the game's .aei.
+
 ```
 my_mod/
   mod.json            required
@@ -309,14 +312,18 @@ required). `override` changes originals (name, techLevel, looks, music...).
 ## characters.json, voices, music, sounds, textures
 
 - `characters.json`: `[{ "id", "name", "portrait": "portraits/x.png" (4:5, 320 x 400), "race", "gender", "mirrored",
-  "background", "frame", "replaces" }]`. Named in dialogs as `id`, `mod_id:id` or the name; `id as Other Name`.
+  "background", "frame", "replaces" }]`; `frame` = the game's faint scanline overlay, `background` = a dark backdrop
+  that only shows through transparent parts of the PNG (both on by default). Named in dialogs as `id`, `mod_id:id` or the name; `id as Other Name`.
+  `replaces` (a story speaker's name, e.g. `"Keith"`, or number) takes that speaker's portrait everywhere, and its name
+  in the headers when the character has a `name`; other lines' mentions of the old name and the voices stay.
 - Voice-over: `[voice <clip>]` in a Dialog page / Radio line; files `voices/<clip>.ogg` (or `voices/en/`, `voices/de/`).
 - `music/<name>.ogg`: a game track's name (`Space_Terraner`, `Station_Vossk`, `Space_Battle_Full`, `Space_NoCombat_Void`
   (main menu)...) replaces it; any other name is a new track for systems/stations (`spaceMusic`, `stationMusic`, `music`) and
   quests.
 - `sounds/<name>.ogg`: replaces the game sound with that file name (from the game's Assets/Audio folders).
 - `textures/<name>.png`: replaces that game texture everywhere (`ship_028_terran_diffuse`; keep the original UV layout,
-  2048 x 2048). Also the sky's planets, suns and rings (`planet_000_small` ... `planet_019_big`, `planet_void_*`,
+  2048 x 2048). `textures/<model>/<name>.png` (e.g. `textures/ship_028_terran/glow_terran.png`) replaces a shared texture
+  (`glow_<race>` lights, `ship_engine_glow`) on that one model only, before the every-ship one. Also the sky's planets, suns and rings (`planet_000_small` ... `planet_019_big`, `planet_void_*`,
   `sn_planet_024_*` ... `sn_planet_026_*`, `sun_000` ..., `sn_sun_011`, `sn_planet_ring`): one whole disc image each, keep the
   transparent edge. `backdrop.json` `{ "planets": "star", "planetGlow": 2, "planetFlare": 0.35 }` draws the retextured planets
   as stars (facing the camera, no ring, a core glow, a weaker copy of the sun's flare).

@@ -172,7 +172,7 @@ namespace GoF2Remake.Modding
         static readonly HashSet<string> ShipFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "id", "override", "name", "description", "race", "armor", "cargo", "price", "priceDefault", "slots", "handling",
-            "hangarHeight", "mounts", "model", "icon", "modelLength", "modelYaw", "engineGlowRadius", "engineGlowColor", "materials", "throttleGlow",
+            "hangarHeight", "mounts", "model", "icon", "modelLength", "modelYaw", "modelPitch", "modelRoll", "modelOffset", "engineGlowRadius", "engineGlowColor", "materials", "throttleGlow",
             "extraGlows", "lounge", "dealer", "available",
         };
 

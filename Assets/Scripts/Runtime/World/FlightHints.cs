@@ -58,7 +58,8 @@ namespace GoF2Remake.World
             if (level.Dialogue || level.Cutscene || level.Navigation == null || level.Navigation.Jumping || level.Navigation.PauseMenuOpen) return;
             if (level.SystemJump != null && level.SystemJump.Cinematic) return;
             if (level.Health != null && level.Health.Dead) return;
-            if (!Settings.TutorialHints) return;   // remake option (off by default): no tutorial popups, nothing marked shown
+            // Remake option (off by default): no tutorial popups, nothing marked shown; none in a Mod Builder test flight.
+            if (!Settings.TutorialHints || Modding.ModBuilder.Active) return;
             Check();
         }
 

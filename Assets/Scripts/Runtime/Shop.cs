@@ -118,6 +118,13 @@ namespace GoF2Remake.Data
         public static void AddToCargo(int item, int amount)
         {
             if (amount <= 0) return;
+            // Remake: a number the item table doesn't have never goes into the hold (it ended up in a player's hold or stock
+            // and the hangar threw on every trade, 2026-10-12): refused, with the caller logged to find where it came from.
+            if (Database.Shared.Item(item) == null)
+            {
+                Debug.LogWarning($"Shop: {amount} t of item {item}, which isn't in the item table, not added to the hold\n{System.Environment.StackTrace}");
+                return;
+            }
             var stack = Session.Cargo.Find(s => s.item == item);
             if (stack != null) stack.amount += amount;
             else Session.Cargo.Add(new ItemStack(item, amount));

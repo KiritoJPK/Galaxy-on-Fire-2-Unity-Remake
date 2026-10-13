@@ -428,7 +428,7 @@ namespace GoF2Remake.Flight
             int t = tier - 1;
             int sightingId = sighting != null ? sighting.id : -1;
             int rank = Mathf.Min(Session.Rank, 20);
-            var db = Database.Load();
+            var db = Database.Shared;
             int Fighter() => tier >= 4 ? NpcTables.StrongFighter(db, Standing.Pirate) : NpcTables.RandomFighter(Standing.Pirate);
             if (outpostEvent)
             {
@@ -678,7 +678,8 @@ namespace GoF2Remake.Flight
                 for (int tries = 0; tries < 40; tries++)
                 {
                     c = new Vector3(Random.Range(0, 60000) - 30000, Random.Range(0, 16000) - 8000, Random.Range(0, 40000) + 110000);
-                    if (!Touches(hull, CapitalVolumes(terranKind), c - half) && !Touches(hull, CapitalVolumes(SpawnSpec.CapitalVossk), c + half)) break;
+                    if (!Touches(hull, CapitalVolumes(terranKind), c - half) && !Touches(hull, CapitalVolumes(SpawnSpec.CapitalVossk), c + half)
+                        && !AtMenuCamera(CapitalVolumes(terranKind), c - half) && !AtMenuCamera(CapitalVolumes(SpawnSpec.CapitalVossk), c + half)) break;
                 }
             }
             var terran = list[AddCapitalShipAt(db, list, terranKind, c - half, true)];
@@ -716,8 +717,29 @@ namespace GoF2Remake.Flight
         {
             var hull = CollisionVolume.ForStation(GoF2Remake.World.OrbitBuilder.StationLook(station), false);
             Vector3 p = roll();
-            for (int i = 0; i < 40 && Touches(hull, ship, p); i++) p = roll();
+            for (int i = 0; i < 40 && (Touches(hull, ship, p) || AtMenuCamera(ship, p)); i++) p = roll();
             return p;
+        }
+
+        /// <summary>Remake: the main menu's backdrop camera (game units; MenuBackground sets it while its traffic is planned,
+        /// null otherwise). A capital ship placed with the camera inside its hull filled the menu with clipped plating.</summary>
+        public static Vector3? MenuCamera;
+        /// <summary>How close a capital ship's boxes may come to the menu camera (Unity metres): close is fine, inside isn't.</summary>
+        const float MenuCameraMargin = 60f;
+
+        /// <summary>The ship's volumes at 'gamePos' reach within MenuCameraMargin of the menu camera.</summary>
+        static bool AtMenuCamera(List<CollisionVolume> ship, Vector3 gamePos)
+        {
+            if (MenuCamera == null) return false;
+            var cam = MenuCamera.Value;
+            var offset = new Vector3(gamePos.x - cam.x, gamePos.y - cam.y, -(gamePos.z - cam.z)) * 0.05f;   // the ship from the camera, Unity metres
+            foreach (var b in ship)
+            {
+                var bh = (b.sphere ? Vector3.one * b.radius : b.half) + Vector3.one * MenuCameraMargin;
+                var d = b.centre + offset;
+                if (Mathf.Abs(d.x) < bh.x && Mathf.Abs(d.y) < bh.y && Mathf.Abs(d.z) < bh.z) return true;
+            }
+            return false;
         }
 
         static bool Touches(List<CollisionVolume> station, List<CollisionVolume> ship, Vector3 gamePos)

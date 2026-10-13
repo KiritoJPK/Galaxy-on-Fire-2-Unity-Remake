@@ -53,7 +53,7 @@ namespace GoF2Remake.UI
             int race = Shop.ShipMakerRace(ship);
             return race >= 0 && (race <= 3 || race == 7 || race == 8) ? Localization.Get(406 + race) : "";
         }
-        public static string Category(ItemData it) => Modding.ModBlueprints.ShipOf(it.index) >= 0
+        public static string Category(ItemData it) => it == null ? "" : Modding.ModBlueprints.ShipOf(it.index) >= 0
             ? Localization.Extra("bpShipBlueprint", "Ship blueprint")   // a mod's ship blueprint (its hidden item)
             : Localization.Get(221 + it.categoryId);
 

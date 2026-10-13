@@ -1,0 +1,922 @@
+/* The Mod Builder's screen over the hangar (UI.ModBuilderView). Panel pixels: the station's panel scales to a 1080-high
+   screen. The theme's tokens (GoF2Common.uss) come with the station menu's document. */
+
+.mbv-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.mbv-root--flying > * {
+    display: none;
+}
+
+.mbv-blocker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+}
+
+.mbv-viewport {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.mbv-labels {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.mbv-panel {
+    background-color: var(--gof-panel);
+    border-width: 1px;
+    border-color: var(--gof-line);
+    border-radius: 2px;
+}
+
+/* ---- top bar ---- */
+
+.mbv-top {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 76px;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 24px;
+    background-color: rgba(4, 10, 18, 0.88);
+    border-bottom-width: 1px;
+    border-bottom-color: var(--gof-line);
+}
+
+.mbv-title-box {
+    margin-right: 20px;
+    min-width: 200px;
+    flex-shrink: 0;
+}
+
+.mbv-title {
+    font-size: 24px;
+    letter-spacing: 5px;
+    color: var(--gof-cyan);
+}
+
+.mbv-project {
+    font-size: 15px;
+    color: var(--gof-text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 280px;
+}
+
+/* The kinds strip takes what the title and Save / Exit leave, scrolling sideways when that is too little. */
+.mbv-kinds-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    margin-right: 10px;
+}
+
+.mbv-kinds {
+    flex-direction: row;
+    flex-shrink: 0;
+}
+
+.mbv-kind {
+    margin: 0 4px 0 0;
+    padding: 6px 8px;
+    font-size: 12px;
+    letter-spacing: 1px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--gof-text);
+    background-color: rgba(255, 255, 255, 0.03);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.15);
+    border-radius: 2px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.mbv-kind-name {
+    color: var(--gof-text);
+    white-space: nowrap;
+    -unity-text-align: middle-left;
+    padding: 0;
+    margin: 0;
+}
+
+.mbv-kind--on {
+    color: #04121c;
+    background-color: var(--gof-cyan);
+    border-color: var(--gof-cyan);
+}
+
+.mbv-kind--on > .mbv-kind-name {
+    color: #04121c;
+}
+
+.mbv-kind:disabled {
+    opacity: 0.45;
+}
+
+.mbv-soon {
+    margin-left: 5px;
+    padding: 0 4px;
+    font-size: 9px;
+    white-space: nowrap;
+    letter-spacing: 1px;
+    color: var(--gof-text-dim);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.25);
+    border-radius: 2px;
+}
+
+.mbv-spacer {
+    flex-grow: 1;
+}
+
+.mbv-top-button {
+    margin-left: 10px;
+    min-width: 110px;
+    flex-shrink: 0;
+}
+
+.mbv-exit {
+    border-color: rgba(230, 80, 60, 0.6);
+}
+
+/* ---- buttons and fields ---- */
+
+.mbv-button {
+    margin: 4px 8px 4px 0;
+    padding: 8px 14px;
+    font-size: 15px;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    color: var(--gof-text);
+    background-color: var(--gof-cyan-faint);
+    border-width: 1px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 2px;
+    transition-duration: 0.15s;
+}
+
+.can-hover .mbv-button:hover,
+.mbv-button:hover {
+    color: #ffffff;
+    border-color: var(--gof-amber);
+    background-color: var(--gof-cyan-soft);
+}
+
+.mbv-button:active {
+    background-color: var(--gof-amber-soft);
+}
+
+.mbv-button:disabled {
+    opacity: 0.35;
+}
+
+.mbv-danger {
+    border-color: rgba(230, 80, 60, 0.6);
+}
+
+.mbv-danger:hover {
+    background-color: rgba(200, 50, 40, 0.45);
+    border-color: rgba(255, 110, 90, 1);
+}
+
+.mbv-toggle--on {
+    color: #04121c;
+    background-color: var(--gof-cyan);
+    border-color: var(--gof-cyan);
+}
+
+.mbv-add {
+    margin-right: 0;
+    margin-top: 8px;
+    -unity-text-align: middle-left;
+}
+
+.mbv-heading {
+    margin: 14px 0 6px 0;
+    font-size: 15px;
+    letter-spacing: 4px;
+    color: var(--gof-cyan);
+}
+
+.mbv-label {
+    margin-top: 8px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    color: var(--gof-text-dim);
+}
+
+.mbv-note {
+    margin: 4px 0 6px 0;
+    font-size: 14px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+}
+
+.mbv-inline-label {
+    flex-grow: 1;
+    flex-shrink: 1;
+    font-size: 15px;
+    color: var(--gof-text);
+    -unity-text-align: middle-left;
+}
+
+.mbv-row {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.mbv-field {
+    margin: 4px 0;
+    flex-direction: row;
+    align-items: center;
+}
+
+.mbv-field > .unity-label {
+    min-width: 170px;
+    max-width: 170px;
+    font-size: 15px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+}
+
+.mbv-field .unity-base-text-field__input,
+.mbv-field .unity-base-field__input {
+    flex-grow: 1;
+    padding: 6px 10px;
+    font-size: 16px;
+    color: var(--gof-text);
+    background-color: rgba(0, 0, 0, 0.35);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.2);
+    border-radius: 2px;
+}
+
+.mbv-field:focus .unity-base-text-field__input,
+.mbv-field .unity-base-text-field__input:focus {
+    border-color: var(--gof-amber);
+}
+
+.mbv-field--multi .unity-base-text-field__input {
+    min-height: 70px;
+    white-space: normal;
+    -unity-text-align: upper-left;
+}
+
+.mbv-row > .mbv-field {
+    flex-grow: 1;
+    margin-right: 8px;
+}
+
+.mbv-xyz > .mbv-field > .unity-label {
+    min-width: 22px;
+    max-width: 22px;
+    color: var(--gof-text);
+}
+
+.mbv-xyz > .mbv-field {
+    width: 30%;
+    flex-grow: 0;
+}
+
+.mbv-seg-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.mbv-seg {
+    padding: 6px 10px;
+    font-size: 13px;
+    margin-right: 6px;
+}
+
+.mbv-seg--on {
+    color: #04121c;
+    background-color: var(--gof-cyan);
+    border-color: var(--gof-cyan);
+}
+
+.mbv-step {
+    min-width: 40px;
+    padding: 4px 8px;
+    margin-right: 4px;
+}
+
+/* ---- left: ships ---- */
+
+.mbv-left {
+    position: absolute;
+    left: 20px;
+    top: 92px;
+    bottom: 24px;
+    width: 360px;
+    padding: 6px 16px 16px 16px;
+}
+
+.mbv-ship-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    background-color: rgba(0, 0, 0, 0.18);
+}
+
+.mbv-ship-row {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+    padding: 6px 8px;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-left-width: 3px;
+    border-left-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+}
+
+.mbv-ship-row:hover {
+    background-color: rgba(58, 170, 220, 0.14);
+}
+
+.mbv-ship-row--on {
+    background-color: var(--gof-cyan-faint);
+    border-left-color: var(--gof-amber);
+}
+
+.mbv-ship-icon {
+    width: 98px;
+    height: 48px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.mbv-ship-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.mbv-ship-name {
+    font-size: 17px;
+    color: var(--gof-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mbv-ship-sub {
+    font-size: 12px;
+    color: var(--gof-text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- right: the ship's tabs ---- */
+
+.mbv-right {
+    position: absolute;
+    right: 20px;
+    top: 92px;
+    bottom: 128px;
+    width: 500px;
+    padding: 10px 18px 14px 18px;
+}
+
+.mbv-tabs {
+    flex-direction: row;
+    flex-shrink: 0;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--gof-line);
+    padding-bottom: 8px;
+}
+
+.mbv-tab {
+    flex-grow: 1;
+    margin-right: 6px;
+}
+
+.mbv-tab--on {
+    color: #04121c;
+    background-color: var(--gof-cyan);
+    border-color: var(--gof-cyan);
+}
+
+.mbv-right-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.mbv-page {
+    padding-bottom: 10px;
+}
+
+.mbv-add-row > .mbv-type-button {
+    border-left-width: 4px;
+    padding-left: 10px;
+    font-size: 13px;
+}
+
+.mbv-type-button--on {
+    background-color: var(--gof-amber-soft);
+    border-color: var(--gof-amber);
+}
+
+.mbv-slot-row {
+    margin: 2px 0;
+}
+
+.mbv-point-row {
+    flex-direction: row;
+    align-items: center;
+    margin: 1px 0;
+    padding: 5px 8px;
+    background-color: rgba(0, 0, 0, 0.18);
+    border-width: 0;
+    border-left-width: 3px;
+    border-left-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+}
+
+.mbv-point-row:hover {
+    background-color: rgba(58, 170, 220, 0.14);
+}
+
+.mbv-point-row--on {
+    background-color: var(--gof-cyan-faint);
+    border-left-color: var(--gof-amber);
+}
+
+.mbv-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    margin-right: 10px;
+}
+
+.mbv-point-name {
+    flex-grow: 1;
+    font-size: 15px;
+    color: var(--gof-text);
+}
+
+.mbv-point-pos {
+    font-size: 14px;
+    color: var(--gof-text-dim);
+}
+
+.mbv-selected {
+    margin-top: 12px;
+    padding: 4px 12px 10px 12px;
+    background-color: rgba(255, 166, 48, 0.06);
+    border-left-width: 3px;
+    border-left-color: var(--gof-amber);
+}
+
+.mbv-item-row {
+    flex-direction: row;
+    align-items: center;
+    margin: 2px 0;
+    padding: 4px 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.1);
+    border-radius: 2px;
+}
+
+.mbv-item-row:hover {
+    border-color: var(--gof-amber);
+}
+
+.mbv-item-icon {
+    width: 82px;
+    height: 40px;
+    margin-right: 10px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.mbv-item-name {
+    font-size: 15px;
+    color: var(--gof-text);
+}
+
+/* The engines slider, over the 3D view's top left. */
+.mbv-engines {
+    position: absolute;
+    left: 400px;
+    top: 92px;
+    width: 300px;
+    padding: 8px 14px 4px 14px;
+}
+
+.mbv-engines-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.mbv-engines-title {
+    flex-grow: 1;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--gof-cyan);
+}
+
+.mbv-engines-value {
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--gof-text);
+}
+
+.mbv-engines-value--boost {
+    color: var(--gof-amber);
+}
+
+.mbv-engines-slider {
+    margin: 0;
+}
+
+/* ---- bottom ---- */
+
+.mbv-testfly {
+    position: absolute;
+    right: 20px;
+    bottom: 24px;
+    width: 500px;
+    height: 88px;
+    margin: 0;
+    font-size: 30px;
+    letter-spacing: 8px;
+    -unity-text-align: middle-center;
+    color: #1A0E00;
+    background-color: var(--gof-amber);
+    border-width: 0;
+    border-radius: 2px;
+    transition-duration: 0.15s;
+}
+
+.mbv-testfly:hover {
+    background-color: #FFC070;
+}
+
+.mbv-status {
+    position: absolute;
+    left: 400px;
+    right: 540px;
+    bottom: 28px;
+    padding: 8px 14px;
+    font-size: 16px;
+    color: var(--gof-text);
+    white-space: normal;
+    background-color: rgba(4, 10, 18, 0.78);
+    border-left-width: 3px;
+    border-left-color: var(--gof-cyan);
+}
+
+.mbv-status--error {
+    color: rgb(255, 180, 140);
+    border-left-color: rgb(230, 80, 60);
+}
+
+.mbv-place-hint {
+    position: absolute;
+    left: 400px;
+    right: 540px;
+    top: 176px;
+    padding: 10px 16px;
+    font-size: 18px;
+    -unity-text-align: middle-center;
+    color: #1A0E00;
+    background-color: rgba(255, 166, 48, 0.92);
+    border-radius: 2px;
+}
+
+.mbv-point-tag {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 15px;
+    -unity-font-style: bold;
+    -unity-text-outline-width: 0.25px;
+    -unity-text-outline-color: rgba(0, 0, 0, 0.9);
+}
+
+.mbv-point-tag--on {
+    font-size: 19px;
+}
+
+/* ---- modal ---- */
+
+.mbv-modal {
+    display: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.55);
+    align-items: center;
+    justify-content: center;
+}
+
+.mbv-modal--shown {
+    display: flex;
+}
+
+.mbv-modal-box {
+    width: 1100px;
+    max-height: 82%;
+    padding: 14px 24px 18px 24px;
+}
+
+.mbv-modal-box--small {
+    width: 640px;
+}
+
+/* A picker's list: a set height, or its scroll view sizes to nothing. */
+.mbv-modal-box--list {
+    height: 82%;
+}
+
+.mbv-confirm-text {
+    margin: 8px 0 16px 0;
+    font-size: 18px;
+    color: var(--gof-text);
+    white-space: normal;
+}
+
+.mbv-picker-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-bottom: 10px;
+}
+
+.mbv-picker-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.mbv-tile {
+    width: 196px;
+    margin: 0 8px 8px 0;
+    padding: 8px;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.12);
+    border-radius: 2px;
+}
+
+.mbv-tile:hover {
+    border-color: var(--gof-amber);
+    background-color: var(--gof-cyan-faint);
+}
+
+.mbv-tile-icon {
+    width: 180px;
+    height: 88px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.mbv-tile-name {
+    margin-top: 4px;
+    font-size: 14px;
+    color: var(--gof-text);
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+/* ---- narrower screens (ModBuilderView.UpdateLayoutClasses): below 16:10 the panels narrow, below ~4:3 the type too ---- */
+
+.mbv-narrow .mbv-left { width: 300px; }
+.mbv-narrow .mbv-right { width: 420px; }
+.mbv-narrow .mbv-testfly { width: 420px; }
+.mbv-narrow .mbv-status,
+.mbv-narrow .mbv-place-hint { left: 340px; right: 460px; }
+.mbv-narrow .mbv-engines { left: 340px; width: 260px; }
+.mbv-narrow .mbv-field > .unity-label { min-width: 140px; max-width: 140px; }
+.mbv-narrow .mbv-ship-icon { width: 82px; height: 40px; }
+
+.mbv-compact .mbv-top { padding: 0 14px; height: 68px; }
+.mbv-compact .mbv-title-box { min-width: 0; margin-right: 12px; }
+.mbv-compact .mbv-title { font-size: 19px; letter-spacing: 3px; }
+.mbv-compact .mbv-project { max-width: 170px; font-size: 13px; }
+.mbv-compact .mbv-top-button { min-width: 80px; margin-left: 6px; }
+.mbv-compact .mbv-left { left: 12px; top: 80px; bottom: 16px; width: 250px; padding: 4px 10px 10px 10px; }
+.mbv-compact .mbv-right { right: 12px; top: 80px; bottom: 104px; width: 360px; padding: 8px 12px 10px 12px; }
+.mbv-compact .mbv-testfly { right: 12px; bottom: 16px; width: 360px; height: 74px; font-size: 24px; letter-spacing: 6px; }
+.mbv-compact .mbv-status,
+.mbv-compact .mbv-place-hint { left: 274px; right: 384px; }
+.mbv-compact .mbv-status { bottom: 18px; font-size: 14px; }
+.mbv-compact .mbv-place-hint { top: 164px; font-size: 15px; }
+.mbv-compact .mbv-engines { left: 274px; top: 80px; width: 220px; }
+.mbv-compact .mbv-button { font-size: 13px; letter-spacing: 1px; padding: 6px 10px; margin: 3px 6px 3px 0; }
+.mbv-compact .mbv-tab { margin-right: 4px; }
+.mbv-compact .mbv-heading { font-size: 13px; letter-spacing: 3px; margin: 10px 0 4px 0; }
+.mbv-compact .mbv-note { font-size: 13px; }
+.mbv-compact .mbv-field > .unity-label { min-width: 110px; max-width: 110px; font-size: 13px; }
+.mbv-compact .mbv-field .unity-base-text-field__input,
+.mbv-compact .mbv-field .unity-base-field__input { font-size: 14px; padding: 4px 8px; }
+.mbv-compact .mbv-ship-icon { width: 66px; height: 32px; margin-right: 8px; }
+.mbv-compact .mbv-ship-name { font-size: 15px; }
+.mbv-compact .mbv-seg { padding: 4px 7px; font-size: 12px; }
+.mbv-compact .mbv-item-icon { width: 66px; height: 32px; }
+.mbv-compact .mbv-item-name,
+.mbv-compact .mbv-point-name { font-size: 14px; }
+.mbv-compact .mbv-modal-box { width: 92%; }
+.mbv-compact .mbv-tile { width: 150px; }
+.mbv-compact .mbv-tile-icon { width: 134px; height: 66px; }
+
+/* The X / Y / Z rows keep their one-letter labels in every layout (the rules above are more specific than .mbv-xyz's). */
+.mbv-root .mbv-xyz > .mbv-field > .unity-label { min-width: 22px; max-width: 22px; }
+
+/* ---- kinds: each kind's side panels (ModBuilderView.SelectKind) ---------------------------------------------------- */
+
+.mbv-group {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+
+/* Items: the selected item's icon and title. */
+.mbv-item-head {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.mbv-item-head-icon {
+    width: 120px;
+    height: 59px;
+    flex-shrink: 0;
+    margin-right: 12px;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/* Characters: the portrait as a conversation shows it (the game's .portrait rules, UI/Dialogue/Dialogue.uss). */
+.mbv-char-preview {
+    align-items: center;
+    margin: 4px 0 10px 0;
+}
+
+.mbv-char-preview-name {
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--gof-text);
+    margin-bottom: 6px;
+}
+
+.mbv-portrait {
+    width: 160px;
+    height: 200px;
+    flex-shrink: 0;
+    overflow: hidden;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.mbv-root .portrait-layers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 160px;
+    height: 200px;
+}
+
+.mbv-root .portrait--mirrored .portrait-layers {
+    scale: -1 1;
+}
+
+.mbv-root .portrait-part,
+.mbv-root .portrait-frame {
+    position: absolute;
+    left: 0;
+    -unity-background-scale-mode: stretch-to-fill;
+}
+
+.mbv-root .portrait-frame {
+    top: 0;
+    width: 160px;
+    height: 200px;
+}
+
+.mbv-char-thumb {
+    width: 40px;
+    height: 50px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    -unity-background-scale-mode: scale-and-crop;
+    background-color: rgba(0, 0, 0, 0.35);
+}
+
+/* The story speakers' picker: each portrait at half size. */
+.mbv-speaker-tile {
+    width: 112px;
+}
+
+.mbv-speaker-clip {
+    width: 80px;
+    height: 100px;
+    overflow: hidden;
+}
+
+.mbv-portrait--small {
+    scale: 0.5 0.5;
+    transform-origin: 0 0;
+}
+
+/* The Characters kind (in the bar) has no Test fly button: the right panel goes down like the left one. */
+.mbv-root--bar .mbv-right { bottom: 24px; }
+.mbv-compact.mbv-root--bar .mbv-right { bottom: 16px; }
+
+/* Skins: one row per texture of the ship (ModBuilderViewSkins). */
+.mbv-skin-row {
+    flex-direction: row;
+    align-items: flex-start;
+    margin: 6px 0 10px 0;
+    padding-bottom: 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(216, 236, 247, 0.08);
+}
+
+.mbv-skin-thumb {
+    width: 96px;
+    height: 96px;
+    flex-shrink: 0;
+    margin-right: 12px;
+    background-color: rgba(0, 0, 0, 0.35);
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.mbv-skin-info {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.mbv-skin-role {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--gof-text-dim);
+}
+
+.mbv-skin-role--on {
+    color: var(--gof-amber);
+}
+
+.mbv-skin-name {
+    font-size: 13px;
+    color: var(--gof-text);
+    margin: 2px 0 4px 0;
+    white-space: normal;
+}
+
+/* The hangar picker: a heading per kind of hangar, across the grid. */
+.mbv-picker-heading {
+    width: 100%;
+    margin: 10px 0 6px 0;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--gof-amber);
+}
+
+.mbv-hangar-button {
+    min-width: 0;
+}
+
+/* A skin texture other ships share (the lights, the engine glow). */
+.mbv-note--warn {
+    color: var(--gof-amber);
+}
+
+/* The Menu (top bar): its entries one under another; Options (OptionsView) in place of the box. */
+.mbv-modal-box--menu {
+    width: 420px;
+}
+
+.mbv-menu-item {
+    margin: 6px 0 0 0;
+    padding: 12px 16px;
+    font-size: 18px;
+    -unity-text-align: middle-left;
+}
+
+.mbv-modal--options > .options-panel {
+    max-height: 90%;
+}

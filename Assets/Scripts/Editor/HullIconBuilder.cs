@@ -5,7 +5,8 @@
 // Each assembled model is rendered in a preview scene like the original's ship icons look (from its left side, above and
 // a little ahead, the nose toward the bottom left, lit warm from the front), 4x supersampled, its alpha from a render on
 // black and one on white, over the blue striped ship frame 1276 (ItemIconBuilder's frame, Reference/research/item_icons.json).
-// Output: Resources/GoF2Icons/hull_<key>.png (180 x 88 like the others), read by ItemInfo.HullIcon.
+// Output: Resources/GoF2Icons/hull_<key>.png (180 x 88 like the others), read by ItemInfo.HullIcon; and the bare frame
+// as frame_ship.png (readable, uncompressed), which the Mod Builder's runtime icons (Modding.ShipIconMaker) are drawn over.
 
 using System.Collections.Generic;
 using System.IO;
@@ -32,6 +33,31 @@ namespace GoF2Remake.EditorTools
         [System.Serializable] class IconFile { public List<Entry> entries; }
 
         public static string IconPath(string key) => $"{ItemIconBuilder.OutDir}/hull_{key}.png";
+        public static string FramePath => $"{ItemIconBuilder.OutDir}/frame_ship.png";
+
+        /// <summary>The ship frame alone for the game (Modding.ShipIconMaker reads its pixels, so readable and uncompressed).</summary>
+        [MenuItem("GoF2/Build/Ship Icon Frame", priority = 223)]
+        public static void WriteShipFrame()
+        {
+            var frame = LoadFrame();
+            if (frame == null) { Debug.LogError("GoF2: the ship frame 1276 isn't in the atlases (item_icons.json)"); return; }
+            var t = new Texture2D(PadW, PadH, TextureFormat.RGBA32, false);
+            t.SetPixels32(frame);
+            t.Apply();
+            File.WriteAllBytes(FramePath, t.EncodeToPNG());
+            Object.DestroyImmediate(t);
+            AssetDatabase.ImportAsset(FramePath);
+            var ti = (TextureImporter)AssetImporter.GetAtPath(FramePath);
+            ti.textureType = TextureImporterType.Default;
+            ti.mipmapEnabled = false;
+            ti.alphaIsTransparency = true;
+            ti.wrapMode = TextureWrapMode.Clamp;
+            ti.npotScale = TextureImporterNPOTScale.None;
+            ti.isReadable = true;
+            ti.textureCompression = TextureImporterCompression.Uncompressed;
+            ti.SaveAndReimport();
+            Debug.Log($"GoF2: ship frame in {FramePath}.");
+        }
 
         [MenuItem("GoF2/Build/Hull Icons", priority = 222)]
         public static void Build()
@@ -107,6 +133,7 @@ namespace GoF2Remake.EditorTools
                 ti.SaveAndReimport();
             }
             Debug.Log($"GoF2: {written.Count} hull icons in {ItemIconBuilder.OutDir}.");
+            WriteShipFrame();
         }
 
         static void AddLight(UnityEngine.SceneManagement.Scene scene, Vector3 dir, Color colour, float intensity)

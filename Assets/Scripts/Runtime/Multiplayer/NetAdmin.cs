@@ -425,10 +425,16 @@ namespace GoF2Remake.Multiplayer
             int found = -1, matches = 0;
             for (int i = 0; i < StoryTable.SpeakerCount; i++)
             {
-                string n = StoryTable.SpeakerName(i);
-                if (string.IsNullOrEmpty(n)) continue;
-                if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) return i;
-                if (n.StartsWith(name, StringComparison.OrdinalIgnoreCase) || n.Split(' ')[0].Equals(name, StringComparison.OrdinalIgnoreCase)) { found = i; matches++; }
+                // The game's name and a mod's replacing one (characters.json "replaces") both find the speaker.
+                string own = StoryTable.OriginalSpeakerName(i), shown = StoryTable.SpeakerName(i);
+                bool partial = false;
+                foreach (var n in own == shown ? new[] { own } : new[] { own, shown })
+                {
+                    if (string.IsNullOrEmpty(n)) continue;
+                    if (string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) return i;
+                    if (n.StartsWith(name, StringComparison.OrdinalIgnoreCase) || n.Split(' ')[0].Equals(name, StringComparison.OrdinalIgnoreCase)) partial = true;
+                }
+                if (partial) { found = i; matches++; }
             }
             return matches == 1 ? found : -1;
         }

@@ -180,7 +180,8 @@ namespace GoF2Remake.Modding
                 names[c.index] = c.name;
                 Debug.Log($"Mods: {mod.Id}: ship {c.index} \"{c.name}\" built from {c.model}");
             }
-            catch (System.Exception e) { Warn(mod, $"{c.model}: {e.Message}"); Debug.LogException(e); }
+            catch (System.Exception e) when (rev == ModManager.Revision) { Warn(mod, $"{c.model}: {e.Message}"); if (!ModFileException.IsFileError(e)) Debug.LogException(e); }
+            catch (System.Exception) { }   // a load the mods changed under (ModManager.Scan closes the old archives): a newer one runs
             finally
             {
                 if (rev == ModManager.Revision)
@@ -216,14 +217,18 @@ namespace GoF2Remake.Modding
         static int ShipOf(string assembly) =>
             assembly != null && assembly.StartsWith("ship_") && assembly.Length > 8 && int.TryParse(assembly.Substring(5, 3), out int n) ? n : -1;
 
-        /// <summary>The template for a mod ship's assembly; the Phantom's prefab while the model isn't built.</summary>
+        /// <summary>The template for a mod ship's assembly; while the model isn't built the game's own model of that ship (a
+        /// replaced original's), else the Phantom's. Always the game's prefabs: asking ShipAssembly for the Phantom when a mod
+        /// replaces the Phantom's model handed back this very assembly, and the two called each other until the stack
+        /// overflowed (the Mod Builder's Exit with the Phantom's model replaced crashed the Editor).</summary>
         public static GameObject Template(string assembly)
         {
             int ship = ShipOf(assembly);
             if (ship >= 0 && templates.TryGetValue(ship, out var t) && t != null) return t;
-            if (!Ready) Debug.LogWarning($"Mods: ship {ship}'s model is still loading: the Phantom stands in");
-            var db = Database.Load();
-            return Visuals.AssembledObject.LoadPrefab(db.ShipAssembly(FallbackShip));
+            if (!Ready) Debug.LogWarning($"Mods: ship {ship}'s model is still loading: the game's model stands in");
+            var db = Database.Shared;
+            var stand = (ship >= 0 ? db.ShipAssembly(ship, original: true) : null) ?? db.ShipAssembly(FallbackShip, original: true);
+            return stand != null && stand.pack != Pack ? Visuals.AssembledObject.LoadPrefab(stand) : null;
         }
 
         /// <summary>Runs the action once the models are built (at most 'timeoutSeconds' later).</summary>
@@ -242,5 +247,8 @@ namespace GoF2Remake.Modding
 
         /// <summary>A mod ship's shop icon, null = none.</summary>
         public static Texture2D Icon(int ship) => icons.TryGetValue(ship, out var t) ? t : null;
+
+        /// <summary>A ship's icon replaced in place (the Mod Builder's generated one, until the project is read again).</summary>
+        public static void SetIcon(int ship, Texture2D icon) => icons[ship] = icon;
     }
 }

@@ -47,6 +47,15 @@ namespace GoF2Remake.Flight
         readonly List<Color> tints = new List<Color>();
         bool on;
 
+        /// <summary>Remake (the Mod Builder's engine slider): the plume of a ship standing still, as at this fraction of full
+        /// throttle (0 = none). The particles come per distance flown (one per 8 units), so a parked ship showed none; this
+        /// adds the rate a ship at that share of the base speed of 2 units/ms would have (250 a second at full) over time.</summary>
+        public float stationary;
+        /// <summary>The boost look while standing still (0..1, like BoostVisualPercent): the plume grows as in a boost.</summary>
+        public float stationaryBoost;
+        float stationaryApplied;
+        const float CruiseUnitsPerSecond = 2000f;
+
         public static ShipExhaust Attach(GameObject player, Database db, ShipController ship, int shipIndex)
         {
             var e = player.AddComponent<ShipExhaust>();
@@ -275,8 +284,14 @@ namespace GoF2Remake.Flight
                 on = want;
                 foreach (var ps in systems) if (on) ps.Play(true); else ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
             }
+            if (stationary != stationaryApplied)
+            {
+                stationaryApplied = stationary;
+                foreach (var ps in systems) { var em = ps.emission; em.rateOverTime = Mathf.Clamp01(stationary) * CruiseUnitsPerSecond / 8f; }
+            }
             if (!on) return;
             float boost = remoteBoost != null ? remoteBoost() : ship.Model != null ? ship.Model.BoostVisualPercent : 0f;
+            boost = Mathf.Max(boost, stationaryBoost);
             float cloakPct = remoteCloak != null ? remoteCloak() : cloak != null && cloak.Rules != null ? cloak.Rules.Percentage : 0f;
             float grey = Mathf.Clamp(221f - 2.01f * cloakPct, 0f, 255f) / 255f;
             for (int i = 0; i < systems.Count; i++)

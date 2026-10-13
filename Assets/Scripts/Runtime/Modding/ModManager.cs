@@ -10,6 +10,8 @@
 // What is on is Active: the enabled, unbroken mods whose dependencies are on, in load order with dependencies first.
 // A multiplayer session replaces it (BeginSession): a session without modded content has none, one that allows it has
 // exactly the host's. Every change bumps Revision, so ModContent re-reads the content and Database.Load merges it.
+// The Mod Builder (ModBuilder) replaces it too while a project is open: the project's folder is the only active mod
+// (SetBuilderProject), so it is tested on its own and its ship models reload quickly.
 
 using System;
 using System.Collections.Generic;
@@ -27,6 +29,7 @@ namespace GoF2Remake.Modding
         static List<ModInfo> installed;
         static List<ModInfo> active;
         static List<string> sessionIds;   // null = single player (the enabled mods)
+        static ModInfo builderProject;    // the Mod Builder's open project (ModBuilder), null = none
 
         /// <summary>Bumped whenever the active mods may have changed (a scan, a toggle, the order, a session).</summary>
         public static int Revision { get; private set; }
@@ -38,8 +41,21 @@ namespace GoF2Remake.Modding
         {
             if (installed != null) foreach (var m in installed) m.Release();
             installed = null; active = null; sessionIds = null;
+            builderProject?.Release();
+            builderProject = null;
             Revision++;
         }
+
+#if UNITY_EDITOR
+        // A code reload drops these lists without closing the zips they read, and the Editor then kept a lock on every zip mod
+        // until it quit (an export couldn't replace its own mod): they are closed before the reload.
+        [UnityEditor.InitializeOnLoadMethod]
+        static void CloseZipsBeforeReload() => UnityEditor.AssemblyReloadEvents.beforeAssemblyReload += () =>
+        {
+            if (installed != null) foreach (var m in installed) m.Release();
+            builderProject?.Release();
+        };
+#endif
 
         /// <summary>The folder every platform reads (created on first use).</summary>
         public static string UserFolder => Path.Combine(Application.persistentDataPath, "Mods");
@@ -61,7 +77,9 @@ namespace GoF2Remake.Modding
         /// <summary>Every mod found, sorted by load order (the enabled ones in their order, then the rest by name).</summary>
         public static IReadOnlyList<ModInfo> Installed { get { if (installed == null) Scan(); return installed; } }
 
-        public static ModInfo Find(string id) => Installed.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
+        public static ModInfo Find(string id) =>
+            builderProject != null && string.Equals(builderProject.Id, id, StringComparison.OrdinalIgnoreCase) ? builderProject
+            : Installed.FirstOrDefault(m => string.Equals(m.Id, id, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>Reads the Mods folders again (the browser's Refresh, entering the main menu).</summary>
         public static void Scan()
@@ -160,7 +178,40 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>The mods whose content is in the game now, in the order it is applied.</summary>
-        public static IReadOnlyList<ModInfo> Active => active ??= Resolve(sessionIds ?? EnabledIds);
+        public static IReadOnlyList<ModInfo> Active => active ??= builderProject != null ? BuilderActive() : Resolve(sessionIds ?? EnabledIds);
+
+        /// <summary>The Mod Builder's project (its folder read as a mod), null = none open.</summary>
+        public static ModInfo BuilderProject => builderProject;
+
+        /// <summary>The Mod Builder opens a project (its folder, read again: call it after every change to its files) or
+        /// closes it (null): while open the project is the only active mod (BuilderActive).</summary>
+        public static void SetBuilderProject(string folder)
+        {
+            builderProject?.Release();
+            builderProject = null;
+            if (folder != null)
+            {
+                var src = ModSource.Open(folder);
+                if (src == null) Debug.LogWarning($"Mods: the Mod Builder project {folder} has no mod.json");
+                else
+                {
+                    try { builderProject = new ModInfo(ModManifest.Read(src), src); }
+                    catch (ModJsonException e) { builderProject = new ModInfo(null, src); builderProject.Errors.Add(e.Message); }
+                    ModContent.ClearParsed();
+                    if (!builderProject.Broken) ModContent.Parse(builderProject);   // its errors show in the builder
+                }
+            }
+            Invalidate();
+        }
+
+        /// <summary>The builder's project alone (with the installed mods it depends on); none while it has errors.</summary>
+        static List<ModInfo> BuilderActive()
+        {
+            if (builderProject.Broken) return new List<ModInfo>();
+            var list = Resolve(builderProject.Manifest.dependencies.ToList());
+            list.Add(builderProject);
+            return list;
+        }
 
         /// <summary>The enabled mods that need 'id', directly or through another (turning it off turns them off).</summary>
         public static List<ModInfo> NeededBy(string id, List<string> enabled = null)

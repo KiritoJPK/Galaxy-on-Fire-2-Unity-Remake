@@ -54,7 +54,7 @@ namespace GoF2Remake.UI
             Panel.usageHints = UsageHints.DynamicTransform;
 
             var titleRow = Add(Panel, new VisualElement(), "mods-title-row");
-            Add(titleRow, new Label(T("modsTitle", "Mods").ToUpperInvariant()), "panel-title", "gof-semibold");
+            Add(titleRow, new Label(T("modBrowser", "Mod Browser").ToUpperInvariant()), "panel-title", "gof-semibold");
             Add(titleRow, new VisualElement(), "mp-title-spacer");
             count = Add(titleRow, new Label(), "mods-count");
             Add(Panel, new VisualElement(), "panel-accent");
@@ -154,6 +154,9 @@ namespace GoF2Remake.UI
             empty.style.display = mods.Count == 0 ? DisplayStyle.Flex : DisplayStyle.None;
             if (selected == null || !rows.ContainsKey(selected)) selected = mods.FirstOrDefault()?.Id;
             Refresh();
+            // The selected row in view once laid out (a rebuilt list starts at the top).
+            if (selected != null && rows.TryGetValue(selected, out var picked))
+                list.schedule.Execute(() => { if (list.contentContainer.Contains(picked)) list.ScrollTo(picked); });
         }
 
         static string Sub(ModInfo m)
@@ -248,9 +251,12 @@ namespace GoF2Remake.UI
                 text += "\n" + string.Format(T("modsDeleteNeeded", "These mods need it and are turned off: {0}"), string.Join(", ", needers.Select(m => m.Name)));
             ask(title, text, () =>
             {
-                if (!ModImport.Delete(mod, out string error))
-                    notice(title, string.Format(T("modsDeleteFailed", "The mod couldn't be deleted: {0}"), error));
-                selected = null;
+                int at = ModManager.Installed.ToList().FindIndex(m => m.Id == mod.Id);
+                bool deleted = ModImport.Delete(mod, out string error);
+                if (!deleted) notice(title, string.Format(T("modsDeleteFailed", "The mod couldn't be deleted: {0}"), error));
+                // The mod that took its place in the list (the last one when it was last), not the top one.
+                var mods = ModManager.Installed;
+                selected = !deleted ? mod.Id : mods.Count > 0 ? mods[Mathf.Clamp(at, 0, mods.Count - 1)].Id : null;
                 Rebuild();
             });
         }

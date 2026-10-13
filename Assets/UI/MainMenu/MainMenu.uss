@@ -647,6 +647,182 @@
     white-space: nowrap;
 }
 
+/* ---- Mod Builder projects (remake, ModBuilderProjects) ---------------------------------- */
+
+.mb-new-row {
+    flex-direction: row;
+    align-items: center;
+    flex-shrink: 0;
+    margin-bottom: 10px;
+}
+
+.mb-new-name {
+    flex-grow: 1;
+    margin: 0 10px 0 0;
+}
+
+.mb-create {
+    margin-right: 0;
+    flex-shrink: 0;
+}
+
+.mb-field {
+    margin: 0;
+}
+
+.mb-field .unity-base-text-field__input {
+    padding: 8px 12px;
+    font-size: 18px;
+    color: var(--gof-text);
+    background-color: rgba(0, 0, 0, 0.35);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.2);
+    border-radius: 2px;
+}
+
+.mb-field:focus .unity-base-text-field__input {
+    border-color: var(--gof-amber);
+}
+
+.mb-field--multi .unity-base-text-field__input {
+    min-height: 84px;
+    white-space: normal;
+    -unity-text-align: upper-left;
+}
+
+.mb-thumb {
+    -unity-background-scale-mode: scale-to-fit;
+    background-color: rgba(62, 200, 255, 0.06);
+}
+
+.mb-empty {
+    top: 60px;
+}
+
+.mb-detail-scroll {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
+}
+
+.mb-fields {
+    margin-top: 12px;
+}
+
+.mb-field-box {
+    margin-bottom: 10px;
+    flex-grow: 1;
+}
+
+.mb-field-pair {
+    flex-direction: row;
+}
+
+.mb-field-pair > .mb-field-box:first-child {
+    margin-right: 14px;
+    flex-grow: 3;
+}
+
+.mb-field-label {
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--gof-text-dim);
+    margin-bottom: 4px;
+}
+
+/* Under the project's name, like GitHub's "will be created as": the mod id it gives. */
+.mb-id-hint {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--gof-text-dim);
+    opacity: 0.8;
+}
+
+.mb-actions > .mods-action {
+    white-space: nowrap;
+    padding: 10px 14px;
+    font-size: 15px;
+    letter-spacing: 2px;
+}
+
+.mb-actions > .mods-delete {
+    margin-left: auto;
+}
+
+.mb-field--multi .unity-base-text-field__input {
+    min-height: 44px;
+}
+
+.mb-section {
+    margin: 10px 0 8px 0;
+    font-size: 15px;
+    letter-spacing: 4px;
+    color: var(--gof-cyan);
+}
+
+.mb-kinds {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.mb-kind {
+    width: 24%;
+    margin: 0 1% 8px 0;
+    padding: 7px 10px;
+    align-items: stretch;
+    background-color: var(--gof-cyan-faint);
+    border-width: 1px;
+    border-color: var(--gof-cyan-soft);
+    border-left-width: 3px;
+    border-left-color: var(--gof-cyan);
+    border-radius: 2px;
+    transition-duration: 0.18s;
+}
+
+.can-hover .mb-kind:hover,
+.mb-kind:focus {
+    border-left-color: var(--gof-amber);
+    background-color: var(--gof-cyan-soft);
+}
+
+.mb-kind--soon,
+.mb-kind:disabled {
+    opacity: 0.42;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-color: rgba(216, 236, 247, 0.12);
+    border-left-color: rgba(216, 236, 247, 0.25);
+}
+
+.mb-kind-title {
+    font-size: 14px;
+    letter-spacing: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #FFFFFF;
+    -unity-text-align: middle-left;
+}
+
+.mb-kind-state {
+    margin-top: 2px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--gof-amber);
+    -unity-text-align: middle-left;
+}
+
+.mb-kind--soon .mb-kind-state {
+    color: var(--gof-text-dim);
+}
+
+.mb-kind-desc {
+    margin-top: 4px;
+    font-size: 13px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+    -unity-text-align: upper-left;
+}
+
 /* ---- multiplayer --------------------------------------------------------------------- */
 
 .mp-title-row {

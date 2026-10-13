@@ -92,7 +92,10 @@ namespace GoF2Remake.Visuals
             float keepOut = cameraKeepOut + Layout.AsteroidMeshRadius * 2.2f * OrbitLayout.MetersPerUnit;
             OrbitBuilder.SpawnAsteroids(db, Layout, transform, p => (p - camPos).sqrMagnitude < keepOut * keepOut);
 
-            SpawnTraffic(db);
+            // A capital ship's point is rolled again while its hull would reach the camera (TrafficPlan.AtMenuCamera).
+            TrafficPlan.MenuCamera = camGame;
+            try { SpawnTraffic(db); }
+            finally { TrafficPlan.MenuCamera = null; }
             OrbitBuilder.SpawnDust(Layout, transform);
             var cam = menuCamera != null ? menuCamera.GetComponent<Camera>() : Camera.main;
             OrbitBuilder.SpawnBackdrop(Layout, cam, transform);

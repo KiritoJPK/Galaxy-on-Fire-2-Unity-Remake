@@ -547,7 +547,9 @@ namespace GoF2Remake.Events
             {
                 foreach (string ext in Extensions)
                 {
-                    string modText = mods[m].Source.ReadText("events/" + name + "." + ext);
+                    string modText;
+                    try { modText = mods[m].Source.ReadText("events/" + name + "." + ext); }
+                    catch (Exception e) when (Modding.ModFileException.IsFileError(e)) { Debug.LogWarning($"EventRunner: {mods[m].Id}: {e.Message}"); continue; }
                     if (modText != null) { from = mods[m].Manifest.id; return Script(modText, out error); }
                 }
             }

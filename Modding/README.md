@@ -3,6 +3,15 @@
 A mod is a folder (or a `.zip`) of plain files: JSON for data, PNG for images. Mods contain no code, so a mod you download can't
 harm your computer. Players turn mods on and off in the main menu's **Mods** screen.
 
+**Making a mod in the game:** main menu > **Mods** > **Mod Builder** (experimental) makes projects in this same format
+without writing any JSON: new ships from a `.glb` model or changes to the game's ships, their stats and textures, their
+hardpoints placed on the hull in 3D, and test flights against pirates; new items made from a game item (or changes to one)
+with their own stats and icon, fitted to the ship to try them out; characters with their portraits, for your quests
+or standing in for a story character; and skins: a game ship's textures replaced, with its originals saved for you to paint
+over. A new ship's shop icon is rendered from its model
+(`icons/<id>.png`; put your own PNG in `icon` and the builder leaves it alone). **Export as mod** puts the finished project into your
+Mods folder. Ships, items, characters and skins can be built there so far; everything below can still be written by hand.
+
 **Making a mod with an AI assistant:** `Modding/ai/gof2-modding` is this guide condensed for Claude, ChatGPT and the like,
 with every original item, ship, system and station number in `reference.md`. See `Modding/ai/README.md` for how to use it.
 
@@ -30,6 +39,10 @@ What mods can do so far:
 - **Build on other mods**: a story mod can use the ships, items and systems of a mod it depends on.
 - **Make a whole new game**: a campaign of its own under New Game, with its own start, galaxy, shops and NPC ships.
 - **Translate** their own texts into any of the game's languages.
+
+**Image formats:** wherever this guide asks for a PNG (icons, portraits, textures and skins, planets, suns, skies, card art,
+the preview), JPG, TGA (uncompressed or RLE), BMP, DDS (DXT1, DXT3, DXT5 or uncompressed; not BC7) and the game's own `.aei`
+files work too. PNG stays the safe choice. The Mod Builder's pickers take all of them and store the picture as a PNG.
 
 ## Where mods go
 
@@ -355,6 +368,8 @@ A list of entries, like items.json: `"id"` adds a ship, `"override"` changes one
 | `slots` | `primary`, `secondary`, `turret`, `equipment`. A ship may have several turret slots, one per turret mount. |
 | `model` | **Required.** The ship's model, a `.glb` (or `.gltf`) file in the mod. Shots hit its real shape, and the player's ship slides along it: every mesh counts except those with an additive / glow material, so keep invisible helper meshes out of the file. |
 | `modelLength`, `modelYaw` | Its length nose to tail in game units (the Phantom is about 1000; 20 units = 1 m), and a turn in degrees when the model's nose doesn't point forward (+Z). The model is scaled to that length. |
+| `modelPitch`, `modelRoll` | More turns in degrees (about the side axis and the length axis), for a model lying nose up or on its side in its file. |
+| `modelOffset` | `[x, y, z]` in game units (like the mounts): the sized model moved off the ship's centre, the point it turns, docks and flies around. |
 | `icon` | The shop icon, a PNG of 180 x 88 like the originals (the ship on the plate). None = the Phantom's. |
 | `hangarHeight` | How high its pivot sits above the hangar pad, in game units (the originals 140 to 400). |
 | `mounts` | Where guns and exhausts sit, in game units from the ship's centre (x right, y up, z forward): `slotType` 0 primary gun, 1 secondary, 2 turret (`"upsideDown": true` hangs it under the hull), 3 engine exhaust (the flame and its particles; `turretAngles[0]` sizes the particles; `"glowColor": [r, g, b]` (0 to 1) colours that exhaust's flame and its exhaust particles; `"glowSize": [halfWidth, halfHeight, length]` (game units) makes the flame an ellipse of that size, its flared ring `length` behind the nozzle). |
@@ -420,7 +435,8 @@ fewer slots, what no longer fits moves to the hold the next time the player dock
 [ { "override": 10, "slots": { "primary": 3, "secondary": 2 } } ]
 ```
 
-An override of an original ship can also give it a new **model**: `model` with `modelLength`, `modelYaw`, `materials`,
+An override of an original ship can also give it a new **model**: `model` with `modelLength`, `modelYaw` (and `modelPitch`,
+`modelRoll`, `modelOffset`), `materials`,
 `engineGlowRadius` / `engineGlowColor` and the glows, as for a new ship. Every ship of that number then uses it (yours, the
 NPCs', the hangar's). Its guns and exhausts stay at the original's mounts unless the entry has its own `mounts`.
 
@@ -902,8 +918,9 @@ named can use them: a **Dialog** page, a **Radio** call, an **Ask** / **Vote** q
 | `portrait` | **Required.** A PNG for the game's portrait box, 4:5 (320 x 400 stays sharp on big screens). It covers the box, its top kept. Leave it transparent around the character and the game's portrait background shows behind, like the game's own faces. |
 | `race`, `gender` | What the game draws by race: the figure standing in the Space Lounge when the character is a bar mission's client, the name's colour in the dialogue. Default `terran`, `male`. |
 | `mirrored` | `true`: drawn mirrored (the game mirrors Keith's portrait). |
-| `background`, `frame` | `false`: without the game's portrait background / frame. |
-| `replaces` | A story character (`"Gunant Breh"`, or a speaker number) whose portrait this one takes everywhere, the game's own story included. Their name and voice stay. |
+| `frame` | `false`: without the faint scanlines the game draws over every portrait (a light screen look, about 10 % dark lines). |
+| `background` | `false`: without the dark, half-transparent backdrop behind the picture. It only shows through transparent parts of your PNG (a cut-out character), so a full picture looks the same either way. |
+| `replaces` | A story character (`"Gunant Breh"`, `"Keith"`, or a speaker number) whose portrait this one takes everywhere, the game's own story included, and whose name too when this character has a `name` (the dialogue and radio headers, `%player%` for Keith). Other characters' lines that mention the old name, and the voices, stay. |
 
 Name the character in a speaker slot by `vega`, by `frontier_systems:vega` (always unique, also across mods) or by its name
 (`Captain Vega`). `vega as Harbour Master` shows another name over the same face, like the story characters. In typed
@@ -957,7 +974,7 @@ yours. Only a weapon's own shot can be set on the item instead (`fx` → `shot`,
 
 ## Textures (skins)
 
-Put images in the mod's `textures` folder (`.png` or `.jpg`), each named like one of the game's textures: it is used instead
+Put images in the mod's `textures` folder (`.png`, `.jpg`, `.tga`, `.bmp`, `.dds` or `.aei`), each named like one of the game's textures: it is used instead
 on every ship, station and object that uses it. The names are the file names in the game's `Assets/Textures` folders, for
 example `ship_028_terran_diffuse` (the Veteran's hull paint), `ship_028_terran_normal_specular` (its bumps and shine) or
 `ship_010_terran_diffuse` (the Phantom). A ship's hull texture is `ship_<number>_<race>_diffuse`; the race is the one in its
@@ -975,6 +992,24 @@ veteran_skin/
   textures/
     ship_028_terran_diffuse.png
 ```
+
+### One ship only
+
+Some textures are shared: `glow_terran` (the lights of every Terran ship), `ship_engine_glow` (every ship's engine glow), a
+race's freighter and wreck textures. To change one only on a single model, put it in a folder named after that model's
+assembly inside `textures` (the ship's model name, as in its hull texture: `ship_028_terran` for the Veteran). It is used on
+that model instead of the game's, and before a `textures/<name>` file of the same name, which every other ship keeps using.
+
+```
+veteran_skin/
+  textures/
+    ship_028_terran_diffuse.png
+    ship_028_terran/
+      glow_terran.png          (the Veteran's lights only)
+      ship_engine_glow.png     (its engine glow only)
+```
+
+The Mod Builder's Skins tab writes these for you: a shared texture has "This ship..." and "All ships..." buttons.
 
 ### Planets, suns and rings
 

@@ -59,7 +59,7 @@ namespace GoF2Remake.Data
         public static BlueprintState State(Database db, int product)
         {
             var s = Session.Blueprints.Find(b => b.item == product);
-            if (s != null) return s;
+            if (s != null) { Fit(db, s); return s; }
             s = new BlueprintState { item = product };
             var it = db.Item(product);
             if (it != null) foreach (var part in it.blueprint) s.remaining.Add(part.amount);
@@ -67,17 +67,39 @@ namespace GoF2Remake.Data
             return s;
         }
 
+        /// <summary>Remake: the state's per-ingredient list made as long as the product's recipe (a new ingredient still
+        /// needs its whole amount, one the recipe dropped goes). A state saved under another recipe (the Default economy's
+        /// recipes, a mod's, one made while the product was unknown and so left empty) was shorter, and the Blueprints tab's
+        /// details read past its end (an Android crash report, 2026-10-11).</summary>
+        public static void Fit(Database db, BlueprintState s)
+        {
+            var parts = db.Item(s.item)?.blueprint;
+            if (parts == null || s.remaining.Count == parts.Count) return;
+            while (s.remaining.Count > parts.Count) s.remaining.RemoveAt(s.remaining.Count - 1);
+            for (int k = s.remaining.Count; k < parts.Count; k++) s.remaining.Add(parts[k].amount);
+        }
+
         public static bool IsEmpty(BlueprintState s) => s.moneySpent == 0;
         public static bool IsCompleted(BlueprintState s) => s.remaining.TrueForAll(r => r <= 0);
 
-        public static int Total(Database db, int product, int slot) => db.Item(product)?.blueprint[slot].amount ?? 0;
-        public static int Invested(Database db, BlueprintState s, int slot) => Total(db, s.item, slot) - s.remaining[slot];
+        public static int Total(Database db, int product, int slot)
+        {
+            var parts = db.Item(product)?.blueprint;
+            return parts != null && slot >= 0 && slot < parts.Count ? parts[slot].amount : 0;
+        }
+
+        public static int Invested(Database db, BlueprintState s, int slot)
+        {
+            Fit(db, s);
+            return slot >= 0 && slot < s.remaining.Count ? Total(db, s.item, slot) - s.remaining[slot] : 0;
+        }
 
         /// <summary>BluePrint::getCompletionRate: mean of invested / total per ingredient (0..1).</summary>
         public static float CompletionRate(Database db, BlueprintState s)
         {
             var it = db.Item(s.item);
             if (it == null || it.blueprint.Count == 0) return 0f;
+            Fit(db, s);
             float sum = 0f;
             for (int k = 0; k < it.blueprint.Count; k++)
             {
@@ -92,6 +114,7 @@ namespace GoF2Remake.Data
         {
             var it = db.Item(s.item);
             if (it == null) return false;
+            Fit(db, s);
             for (int k = 0; k < it.blueprint.Count; k++)
                 if (s.remaining[k] > 0 && Shop.CargoOf(it.blueprint[k].item) > 0) return true;
             return false;

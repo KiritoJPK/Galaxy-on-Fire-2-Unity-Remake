@@ -28,7 +28,9 @@ namespace GoF2Remake.Modding
         /// <summary>A file of the mod parsed; null when it doesn't exist. Throws ModJsonException with the file and line.</summary>
         public static JToken Read(ModSource source, string path)
         {
-            var text = source.ReadText(path);
+            string text;
+            try { text = source.ReadText(path); }
+            catch (System.Exception e) when (ModFileException.IsFileError(e)) { throw new ModJsonException($"{path}: {e.Message}"); }
             if (text == null) return null;
             try
             {

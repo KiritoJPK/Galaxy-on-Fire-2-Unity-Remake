@@ -284,6 +284,8 @@ namespace GoF2Remake.World
             bool siege = !storyOrbit && !missionHere && arena == null && KaamoClub.SiegeAt(station);
             // Remake: an event graph quest's orbit (questorbit): no normal traffic, like a story orbit (single player).
             bool questOrbit = !storyOrbit && !missionHere && !siege && arena == null && !NetGame.Active && EventRunner.QuietOrbit(station);
+            // Remake: a Mod Builder test flight (Modding.ModBuilder): a quiet orbit with its own pirates (ModBuilderRange).
+            bool builderTest = Modding.ModBuilder.TestFlying;
             // Level::assignGuns reads the level mission (Status+400): a campaign level or a freelance mission's type.
             NpcTables.InCampaignLevel = storyOrbit;
             NpcTables.LevelFreelanceType = freelanceOrbit ? Freelance.Mission.type : -1;
@@ -292,7 +294,7 @@ namespace GoF2Remake.World
             // ships (NetOrbit) and take them over if it leaves, never building new ones.
             // An arena: no NPCs, or with the Void fighters the alien orbit's own (run by the first player in the match's orbit).
             NetAuthority = NetGame.Active && (arena == null || arena.voids) && NetState.OrbitEmpty(NetOrbitId);
-            ownPassive = storyOrbit || freelanceOrbit || siege || questOrbit || (arena != null && !arena.voids);
+            ownPassive = storyOrbit || freelanceOrbit || siege || questOrbit || builderTest || (arena != null && !arena.voids);
             Traffic.LevelMissionActive = () => (storyOrbit && Story.IsLevelMission(station)) || (missionHere && Freelance.IsMissionOrbit(station));
             Traffic.Setup(db, Layout, Health.Target, Station, ownPassive || (NetGame.Active && !NetAuthority), Wormhole);
             Traffic.LaunchCameraRunning = () => !LaunchCameraOver;
@@ -350,13 +352,13 @@ namespace GoF2Remake.World
                 Traffic.ConvoyDone += () => { Navigation.SetAutopilot(null); Navigation.SetRoute(null); };
             }
             // Level::createWingmen: after the mission's ships (Challenge: unarmed).
-            if (arena == null) Traffic.SpawnWingmen(Player.transform, FreelanceOrbit != null && FreelanceOrbit.Type == MissionType.Challenge);
+            if (arena == null && !builderTest) Traffic.SpawnWingmen(Player.transform, FreelanceOrbit != null && FreelanceOrbit.Type == MissionType.Challenge);
             Navigation.HasWingmen = () => Traffic != null && Traffic.LivingWingmen.Count > 0;
             StorySpace = gameObject.AddComponent<StorySpace>();
             StorySpace.Setup(this, Campaign);
             Hints = gameObject.AddComponent<FlightHints>();
             Hints.Setup(this);
-            Navigation.JumpsBlocked = () => NetArenaClient.InMatch || !Story.PlanetJumpsAllowed || Story.BlocksJumps(Layout.stationIndex, IsStoryOrbit) || (Siege != null && Siege.Active)
+            Navigation.JumpsBlocked = () => NetArenaClient.InMatch || builderTest || !Story.PlanetJumpsAllowed || Story.BlocksJumps(Layout.stationIndex, IsStoryOrbit) || (Siege != null && Siege.Active)
                                             || FreelanceBlocks   // a freelance mission's orbit (#32)
                                             || Events.EventRules.NoJumps   // an event's Restrict Travel
                                             || (!Session.FreePlay && Story.Index == 65 && Layout.stationIndex == 100)   // escorting Khador (MGame::UseKhadorDrive)
@@ -370,7 +372,7 @@ namespace GoF2Remake.World
             Navigation.SetWormhole(Wormhole);
             Navigation.PlanetJumpRefused = st => StorySpace != null && StorySpace.RefusePlanetJump(st);
             // MGame::dockEvent refuses the gate on the same mission check as docking: the story's level missions too.
-            SystemJump.GateBlocked = () => Story.BlocksJumps(Layout.stationIndex, IsStoryOrbit) || FreelanceBlocks
+            SystemJump.GateBlocked = () => builderTest || Story.BlocksJumps(Layout.stationIndex, IsStoryOrbit) || FreelanceBlocks
                                            || (Siege != null && Siege.Active) || Events.EventRules.NoJumps;
             Radar = Player.gameObject.AddComponent<CombatRadar>();
             Radar.Setup(db, Player, Navigation, Mining, Weapons, Health, Traffic);
@@ -386,6 +388,7 @@ namespace GoF2Remake.World
             Session.ComingFromVoid = false;   // Level::init / LevelScript have used it (the Void raid, the closing wormhole)
             if (NetGame.Active) gameObject.AddComponent<NetOrbit>().Setup(this);   // multiplayer: the shared orbit
             if (arena != null) NetArenaClient.OnLevelReady();
+            if (builderTest) gameObject.AddComponent<ModBuilderRange>().Setup(this);
         }
 
         /// <summary>Multiplayer: the orbit as the other players see it: the station's index, or an arena match's own id

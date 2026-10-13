@@ -124,8 +124,16 @@ namespace GoF2Remake.Data
         /// <summary>The step of a campaign index, null past the table.</summary>
         public static StoryStep Step(int index) => index >= 0 && index < Steps.Count ? Steps[index] : null;
 
-        /// <summary>Speaker name (text 1597 + speaker).</summary>
-        public static string SpeakerName(int speaker) => Localization.Get(1597 + speaker);
+        /// <summary>Speaker name (text 1597 + speaker); remake mods: a character that "replaces" the speaker
+        /// (Modding.ModCharacters) and has a name of its own lends it, wherever the speaker is named.</summary>
+        public static string SpeakerName(int speaker)
+        {
+            var r = Modding.ModCharacters.ReplacementFor(speaker);
+            return r != null && r.HasName ? r.Name : OriginalSpeakerName(speaker);
+        }
+
+        /// <summary>The game's own speaker name (text 1597 + speaker), whatever a mod replaces.</summary>
+        public static string OriginalSpeakerName(int speaker) => Localization.Get(1597 + speaker);
 
         /// <summary>The number of story speakers (multiplayer's /dialog looks them up by name).</summary>
         public static int SpeakerCount => Data.speakers.Count;

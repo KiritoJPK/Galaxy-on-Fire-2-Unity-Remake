@@ -40,7 +40,9 @@ namespace GoF2Remake.Modding
                 {
                     var p = Encoding.UTF8.GetBytes(f.ToLowerInvariant() + "\n");
                     sha.TransformBlock(p, 0, p.Length, null, 0);
-                    var b = Source.ReadBytes(f) ?? Array.Empty<byte>();
+                    byte[] b;
+                    try { b = Source.ReadBytes(f) ?? Array.Empty<byte>(); }
+                    catch (Exception e) when (ModFileException.IsFileError(e)) { b = Encoding.UTF8.GetBytes("damaged"); }   // a hash nobody else has
                     sha.TransformBlock(b, 0, b.Length, null, 0);
                 }
                 sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
@@ -63,11 +65,13 @@ namespace GoF2Remake.Modding
             {
                 if (previewTried) return preview;
                 previewTried = true;
-                var bytes = Manifest != null && Source != null ? Source.ReadBytes(Manifest.preview) : null;
+                byte[] bytes = null;
+                try { bytes = Manifest != null && Source != null ? Source.ReadBytes(Manifest.preview) : null; }
+                catch (Exception e) when (ModFileException.IsFileError(e)) { Warnings.Add(e.Message); }
                 if (bytes == null) return null;
-                var t = new Texture2D(2, 2, TextureFormat.RGBA32, true) { name = Id + " preview", wrapMode = TextureWrapMode.Clamp };
-                if (t.LoadImage(bytes, true)) preview = t;
-                else { UnityEngine.Object.Destroy(t); Warnings.Add($"{Manifest.preview}: not a PNG or JPG image"); }
+                var t = ImageImport.Decode(bytes, Manifest.preview, false, true, out string error);   // PNG, JPG, TGA, BMP, DDS, .aei
+                if (t != null) { t.name = Id + " preview"; t.wrapMode = TextureWrapMode.Clamp; t.Apply(true, true); preview = t; }
+                else Warnings.Add($"{Manifest.preview}: {error}");
                 return preview;
             }
         }

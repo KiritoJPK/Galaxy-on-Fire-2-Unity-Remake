@@ -167,7 +167,9 @@ namespace GoF2Remake.UI
                     if (!dragging) { dragging = true; lastPointer = pos.Value; draggingFinger = down == 1 ? 1 : -1; dragTravel = 0f; }
                     delta = (pos.Value - lastPointer) * scale;
                     dragTravel += delta.magnitude;
-                    delta.y = -delta.y;   // screen y up -> the original's y down
+                    // The original turns screen y up into its y down (a drag up takes the camera up); remake (players' request):
+                    // vertical drags inverted, a drag up takes it down (the ship tips up with the finger), like the hangar's
+                    // Inspect ship and the Mod Builder's orbit.
                     lastPointer = pos.Value;
                     fling = delta;
                     held = true;
@@ -245,7 +247,7 @@ namespace GoF2Remake.UI
         /// <summary>rotateAroundTarget(-0.005 py, -0.005 px, 0) at the distance, looking at the ship (MGame::OnUpdate 0x1af324).
         /// The game's ship frame has +x on the ship's left (Unity's is mirrored, (-x, y, z)), so in Unity the yaw is +0.005 px
         /// and the pitch -0.005 py: a drag right takes the camera to the ship's left (the ship turns with the finger), a drag
-        /// up takes it up. Copied without the mirror, every axis was inverted.</summary>
+        /// up takes it down (remake: inverted, see the drag). Copied without the mirror, every axis was inverted.</summary>
         void Place()
         {
             var rot = Quaternion.Euler(-0.005f * py * Mathf.Rad2Deg, 0.005f * px * Mathf.Rad2Deg, 0f);

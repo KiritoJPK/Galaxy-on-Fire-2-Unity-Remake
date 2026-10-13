@@ -123,6 +123,11 @@ Menu items (from `Scripts/Editor`), grouped in submenus; **GoF2 > Tools Overview
 
 ## Data (`Assets/Resources/GoF2Data`, loaded with `Database.Load()`, JsonUtility)
 
+- `Database.Load()` parses every table again (~6 ms and several MB of garbage): use it once per scene (the levels keep
+  their own, `level.Database`) or where the result is changed; read-only lookups that run more often (UI rebuilds, spawns,
+  multiplayer mirrors, the Mod Builder) take `Database.Shared`, made again only when the economy or the mods change, and
+  never write to it.
+
 - `ships`, `items`, `systems`, `stations`: the economy and universe.
   - `items[].statList` has named stats (damage, range, boostSpeed, agility…).
   - `items[].rawAttributes` has the original attribute IDs.
@@ -183,7 +188,7 @@ The game stores every object as several meshes (hull, `_lights_add`, `_emissive`
   `BackdropPass` right after the skybox, LightMode `GoF2Backdrop`, so they are in the opaque texture the cloak and the shield
   bubble refract: in URP's transparent pass the cloak showed black over a planet); the sun at the texture's own brightness (additive, like the original), only its near-white core lifted into HDR (×1.6, `_CoreGlow`) under the remake's bloom; sun swells + streak near the screen centre (the supernova system, system 27 before 0x9e: the sun keeps game +x as its up and its size (also at Tadram 113 / Naneroh 109, whose sun slot 6 lies 0.02 deg off game x: a float "parallel" test gave them the camera's up, so it rolled with the view; `Backdrop.SupernovaSunRotation`), and a sn_sun_011 glow of 0.3 × the sun + the swell rolls with the camera and makes the streak; `StarSystem::render` with +0xc); planets mirrored so their lit rim faces the sun. Mission 0 (the prologue and the main menu's backdrop after `Status::resetGame`) halves the orbit planet unless a texture size rule replaces it; no camera zoom on the orbit planet in the planet ring orbits and the alien orbit; the alien orbit has its sun straight ahead and `planet_void_big` at yaw 5.2347 (60 deg to the right), unseeded size; K'ontrr (system 20) swaps 58's and 62's planet textures like the original (textures by the stations' file order, roles by the system's list).
 - **Lights:** LIGHT0 toward the sun (`clamp(15 * sunColour, 0, 2)`), LIGHT1 from the orbit planet (Unity +Z), linear fog in 6 systems. Camera: vertical FOV 1.22 rad, near 1 m, far 15 km, chase offsets (0, 600, -1338) / (0, 600, -650) game units.
-- **Main menu background** (`MenuBackground`, like the original: `ModMainMenu::OnInitialize` 0x1a46dc, CutScene(2), Level type 2): `Status::resetGame` (`Session.ResetNewGame`; not while the ending is pending) and a random main-game station 0..99 (`Galaxy::getStation(nextInt(100))`; the ending keeps its station) on every menu entry, its orbit built with `OrbitBuilder` like a flight level, with the ordinary free-flight traffic (`Traffic` / `TrafficPlan` / `NpcShip` on the empty mission: patrols in the box in front of the station, raiders fighting the locals, freighters 1-4 km beside it, the static Terran battleship, jumpers, respawns) and the station / gate volumes (`OrbitBuilder.AddObstacles`) the fighters turn away from; the player exists but inactive at the origin (an untargetable dead `Target`). Camera (`MenuCamera`, CutScene::process mode 2): fixed at (rnd(20000) − 20000, 0, rnd(60000) + 40000), yaw from −π/4 by dt·5e-5 (a turn every ~126 s), fov 0.92, near 200, far 200000; the station is only in view for part of each turn. Remake: full-detail station; the stations are 1-5 km across (Tornard 57 reaches 3.4 km out in front), so a camera spot inside or against the hull backs straight out (along game +z) until it is clear by a third of the station's size, at least 800 m (for the nearest spots about half the stations; at most ~5 km out); no asteroid within 150 m of the camera, measured from its surface (the biggest reach 390 m from their centre, Void crystals 670 m; a centre test put the camera inside one); no traffic music under the menu theme (`Traffic.MenuBackdrop`).
+- **Main menu background** (`MenuBackground`, like the original: `ModMainMenu::OnInitialize` 0x1a46dc, CutScene(2), Level type 2): `Status::resetGame` (`Session.ResetNewGame`; not while the ending is pending) and a random main-game station 0..99 (`Galaxy::getStation(nextInt(100))`; the ending keeps its station) on every menu entry, its orbit built with `OrbitBuilder` like a flight level, with the ordinary free-flight traffic (`Traffic` / `TrafficPlan` / `NpcShip` on the empty mission: patrols in the box in front of the station, raiders fighting the locals, freighters 1-4 km beside it, the static Terran battleship, jumpers, respawns) and the station / gate volumes (`OrbitBuilder.AddObstacles`) the fighters turn away from; the player exists but inactive at the origin (an untargetable dead `Target`). Camera (`MenuCamera`, CutScene::process mode 2): fixed at (rnd(20000) − 20000, 0, rnd(60000) + 40000), yaw from −π/4 by dt·5e-5 (a turn every ~126 s), fov 0.92, near 200, far 200000; the station is only in view for part of each turn. Remake: full-detail station; the stations are 1-5 km across (Tornard 57 reaches 3.4 km out in front), so a camera spot inside or against the hull backs straight out (along game +z) until it is clear by a third of the station's size, at least 800 m (for the nearest spots about half the stations; at most ~5 km out); no asteroid within 150 m of the camera, measured from its surface (the biggest reach 390 m from their centre, Void crystals 670 m; a centre test put the camera inside one); no capital ship (battleship, carrier, Vossk battleship, a fleet battle's) with the camera inside or within 60 m of its boxes: its point is rolled again (`TrafficPlan.MenuCamera`, `AtMenuCamera`; a placement put the menu camera inside the battleship's hull); no traffic music under the menu theme (`Traffic.MenuBackdrop`).
 - **Docking / launch:** within 16000 units of the station (`PlayerEgo::collidesWithStation`), the HUD offers **Dock** (tap, F / Enter, or controller X). It only appears after the player has left that range once, because the undock spawn is inside it; the original requires the autopilot instead. Inside the range Dock beats a lock on the station or on a planet behind it (`FlightHud.DockBeforeLock`, #24: the action after the Dock prompt showed was a planet jump when that lock completed meanwhile, which looked like a launch). Docking loads `Station` straight away with no animation, like `MGame::dockEvent`. Launching from the station sets `Session.LaunchedFromStation`: a fixed camera 9000 units ahead watches the ship fly past for 7 s (`LevelScript`), then the chase camera eases in. The player has no control meanwhile (`ShipController.inputLocked`, weapons blocked); any key, button, stick, click or tap except Esc / Menu and the flight menus' keys (Q / E / V / K, View, D-pad left) skips it (`LevelScript::skipSequence`: the fly-in ends like its natural end, the chase camera eases in; with the launch camera option off it snaps); the menu keys do nothing until the fly-in ends (players' report: the menu opened under the hidden HUD and its pause looked like a frozen game). Same for the arrival fly-in. Meanwhile the HUD, the radar and its ship markers are hidden, only the orbit information shows (`MGame::OnRender2D` skips `Hud::draw` / `Radar::draw` while the fly-in holds LevelScript's cutscene flag; `.hud-launch`).
 - The HUD has one action prompt (tap, F / Enter, controller X): Autopilot / Jump / Autopilot off (see "Navigation"), Mine / Abort / Stop mining (see "Mining"), else Dock.
 - Music: the system race's space track, battle tracks by the number of hostile ships (see "NPCs and combat").
@@ -545,7 +550,7 @@ Research: `Reference/research/mining.md` (+ `Reference/tools/mining/mining_table
 - Missions (129, unlocks with the Map) and Status (169): see "Bar and freelance".
 - **System menu** (`StationMenu`, `SysPage` Main / Save / Load / Options): 30 Save game, 29 Load (the slot list), 28 New game (the main menu's campaign panel, `MainMenu.OpenPanelOnStart`), 31 Options (the `OptionControl` rows), 43 About (text 45), 522 Back to Main Menu.
 - **New medals** (`ShowNextMedal`, `checkForNewMedal`): the reward 5000 / 2500 / 1000 by grade (none on Extreme); remake: instead of the original's ChoiceWindow per medal that waits for OK, a toast at the top centre (`.medal-toast` in StationMenu.uss: the plate `StatusWindow.MedalPlate`, 353, the name, the reward; border, top band and title in the grade's colour `StatusWindow.MedalTint`; drops in and grows with a short flash; the remake's own sound `Resources/GoF2Sfx/MedalToast`, synthesized by `Reference/tools/audio/medal_sound`) for 4 / 5 / 6 / 7 s (bronze / silver / gold / elite; 3 s while more medals wait, the last one its full time; the pointer resting on it pauses the countdown), then it fades and the next medal follows; it doesn't hold up the station's other checks; a tap / click opens the Status window on that medal (`OpenMedal`, `StatusWindow.SelectMedal`); medal hints 649 / 650 / 651 and the blueprint hints 232 / 3233 (`CheckMedalHints`); first-visit hints (622 hangar, 627 lounge, 635 missions, 640 phones, 628 / 631 on the map via `StarMap.ShowHint`); the hangar's selection hints 587-589.
-- **Inspect ship** (remake, the side menu's "Inspect ship" under Status (hangar view only, not in VR), keys 6 / I, the controller's right stick press; `World.HangarInspect` (plain C#) + `StationLevel.BeginInspect` / `EndInspect`, input in `StationMenu.UpdateInspect`): the camera leaves its drifting hangar spot and orbits the player's ship like the flight's Action Freeze (`PhotoMode`): yaw / pitch around the hull's centre (its meshes' box in the ship's own frame, no glow layers), starting where the hangar camera is and zooming in to 2.1x the hull's radius (1.15x..4x), a 0.9 s eased blend in and back out, the pitch kept above the pad (the hull's lowest point + 1.5 m), the near plane pulled in to stay in front of the hull; drag / one finger turns (0.005 rad per 1080p pixel, the fling x0.9 a 30 fps frame), the wheel, a pinch, + / - (Page Up / Down) and the triggers zoom, the arrows / W A S D and both sticks turn. The menu flies out meanwhile (the UI animation, `UiBlocked`), a footer keeps Back and the hints row at the top right the controls; Hide UI (H, the controller's Y; a short click / tap or H / Y brings it back, a drag still turns) and Screenshot (Enter / P, the controller's A: `PhotoMode.Store`, no UI in it, 55 / 56) are clickable hints (taps on touch). Back: Esc, Backspace, B, 6 / I, the right stick press. The depth of field focuses on the hull's centre through a 50 mm lens meanwhile (300 mm at f/2 kept ~6 m sharp up close). Leaving the hangar view drops it (`HangarInspect.Reset`); a take-off ends it. The rooms are only modelled where the original camera looks, so some angles see past them.
+- **Inspect ship** (remake, the side menu's "Inspect ship" under Status (hangar view only, not in VR), keys 6 / I, the controller's right stick press; `World.HangarInspect` (plain C#) + `StationLevel.BeginInspect` / `EndInspect`, input in `StationMenu.UpdateInspect`): the camera leaves its drifting hangar spot and orbits the player's ship like the flight's Action Freeze (`PhotoMode`): yaw / pitch around the hull's centre (its meshes' box in the ship's own frame, no glow layers), starting where the hangar camera is and zooming in to 2.1x the hull's radius (1.15x..4x), a 0.9 s eased blend in and back out, the pitch kept above the pad (the hull's lowest point + 1.5 m), the near plane pulled in to stay in front of the hull; drag / one finger turns (0.005 rad per 1080p pixel, the fling x0.9 a 30 fps frame), the wheel, a pinch, + / - (Page Up / Down) and the triggers zoom, the arrows / W A S D and both sticks turn. The menu flies out meanwhile (the UI animation, `UiBlocked`), a footer keeps Back and the hints row at the top right the controls; Hide UI (H, the controller's Y; a short click / tap or H / Y brings it back, a drag still turns) and Screenshot (Enter / P, the controller's A: `PhotoMode.Store`, no UI in it, 55 / 56) are clickable hints (taps on touch). Back: Esc, Backspace, B, 6 / I, the right stick press. The depth of field focuses on the hull's centre meanwhile and turns Gaussian (also in the Mod Builder's orbit): sharp to a little past the hull, the room behind blurred (300 mm at f/2 kept ~6 m sharp up close, a 50 mm lens at the orbit's ~80 m blurred nothing). Leaving the hangar view drops it (`HangarInspect.Reset`); a take-off ends it. The rooms are only modelled where the original camera looks, so some angles see past them.
 - The turret (`CutScene::checkForTurret`): the item's `hangar_turret_item_N` assembly on the turntable ship's slot-2 mount, turned (0, pi, 0) except the plasma collectors, still; rebuilt when the turret item changes (`StationLevel.RefreshTurret`).
 - **Hangar flights** (remake-only, option "Hangar arrival and take-off", `Settings.HangarFlights`; the original cuts straight between space and the parked ship): `HangarFlight` (plain C#) flies a ship along its hangar's lane (`StationTables.HangarLanes`, Unity metres measured on the room meshes: the forcefield's centre and outward direction, the height span it can be passed at, a cruise height above the parked ships; Vossk: the emblem portal on −x, bays facing the ring's centre, so the ships swing through the centre (every bend is a wide fillet) and fly into the bay 5 m up). Arrival: from 450 m outside (growing from nothing, so nothing pops in where the opening shows space) through the forcefield, level, at up to 200 m/s, braking hard, then gently over the last 25 m through a rounded corner with a slight flare to a stop over the pad, a turn on the spot (65 deg/s, a little bank) to the parking yaw, straight down. Departure: the reverse (straight up, the turn at the top, the corner, out, shrinking away; the ship stays hidden at the end, not back at full size for the frame before Space loads). Where the path leaves (enters) the hangar camera's view the ship shrinks to nothing over the last (grows over the first) 160 m in view (at most 60 % of the lane in view), so it never crosses the screen edge at full size (a pad just outside the view, the Midorian hangar's right one, isn't such an edge: the ship takes off there at full size and flies into the view; it vanished over the pad and crossed the hangar unseen); the engine loop takes the space engines' rolloff (`EngineVoices.Setup3D`, to 500 m) and fades with the ship's size. Landings and take-offs are always vertical. The camera keeps the original framing (the rooms are only modelled where the 16:9 hangar camera looks). Only the player's own docking flies in (`SpaceLevel.Dock(true)`: the autopilot, touching the station, the Dock prompt, `Session.DockedFromSpace`); the story's moves into a station (the rescue, arrests, "docked at ...") and loads don't. `Launch` / `Depart` take off first (the story's direct launches into a story orbit don't). The station menu is away meanwhile: it flies / fades out as the take-off starts and back in once the ship has landed (`StationMenu.UpdateUiAnimation`, 450 ms, ease-out cubic: the top bar slides up, Launch right, the ticker down, the safe area fades, and the side panel's entries (the station information, then each shown button) come in one by one like the main menu's buttons: 40 px from the left, 180 ms each, 50 ms apart, the last one first going away; while it is away or moving nothing takes input: a blocker over the panel, the navigation events stopped, `Update` returns early (`UiBlocked`); the station's first frame takes the state as it is, so a fly-in starts with the menu away and a ship simply on its pad shows it at once); its conversations, fines, medals and hints wait until the ship has landed; any key / tap / button skips the flight. `HangarTraffic`: the parked ships (the original's 0..max) come and go every 12-35 s (landings likelier the emptier the hangar, at a random parking yaw like the parked ones; not in the owned Kaamo Club, none at the battlestation, max 0); one flight in the air at a time, the player's included, so nothing collides: the traffic waits for the player, and a departing player holds over its pad while an NPC flight finishes.
 - **Parking heights** (remake, `StationTables.PadPivotY`, `Resources/GoF2Data/hangar_heights.json` from **GoF2 > Build > Hangar Heights**): the original's floor y + ShipY, lifted only where the hull would cut into the pad, per hangar, slot (the
@@ -630,6 +635,19 @@ Research: `Reference/research/shop.md` (+ `item_icons.json`, reference price cod
 - **Prices** are deterministic per station: `java.util.Random(station)` reseeded per list (cargo, mounted, stock), min + distance factor * (max - min) +- 2 %; verified identical to `prices.py`. Selling pays the buying price; anything sold joins the station's stock. Loma (system 25) always charges the maximum. Remake: an item's price is fixed for the docking (`Hangar.PinPrices`, cleared by `Hangar.NewDocking` in `StationLevel`): an item's price depends on its place in the lists, so a trade moving it between the stock and the hold could shift it by up to ±2 %, and in multiplayer, where the window is priced again after every trade, buying and selling at once made money with every click.
 - **Stock** (`Generator::getItemBuyList`) and **dealer ships** (`getShipBuyList`) are rolled with `UnityEngine.Random` when docking at a station that isn't among the last 3 visited; re-docking after > 30 s nibbles 0-2 units off each row.
 - **Cargo:** every unit is 1 t, mounted items weigh nothing; buying never checks space, launching is refused while overloaded.
+- **Unknown item numbers** (a Windows crash report, 2026-10-12: `ItemInfo.Category` on a null item from `HangarWindow.AddRow`
+  after every trade; where the number came from is not known yet): `Shop.AddToCargo` refuses an item `Database.Shared` lacks
+  (a warning with the caller's stack), `Hangar.ShopItems` leaves one already in the hold or stock out of the list (a warning
+  once per number), `ItemInfo.Category(null)` is "", and `SaveGame.Load` drops such items from the save (after
+  `ModSaves.Fix`, `DropUnknownItems`: hold, equipment, shop memory and its bar offers, the Kaamo Club, the parked ship,
+  blueprints, the production queue; a warning each). A second report (Android, 2026-10-10) had it at docking.
+- **Blueprint states** (`Blueprints.Fit`, from `State` and the readers): the per-ingredient list is made as long as the
+  product's current recipe; one saved under another recipe (Default economy, a mod, an empty one for a then-unknown
+  product) was shorter and the Blueprints tab read past its end (an Android crash report, 2026-10-11).
+- **Cloud Diagnostics**: `Bootstrap.Init` switches exception capture off in the Editor
+  (`CrashReportHandler.enableCaptureExceptions`): contributors' clones reported their Editors' errors.
+- **ScrollTo** from a scheduled callback checks `contentContainer.Contains` first (`CheatsCatalog`'s icon grid,
+  `HangarWindow.ScrollToSelected`): the list can be rebuilt before it runs, and ScrollView.ScrollTo throws then.
 - **Sell all / Buy all** (remake, players' suggestion; Store all / Take all in the Kaamo Club's storage; `HangarWindow.TradeAll`, buttons under the trade arrows, or Shift + left / right, or a controller's LT / RT, shown on the buttons and in the hint row): every unit of the selected item: what the hold has of it, or the station's stock as far as the hold has room and the credits reach (no "not enough credits" after some units). In a session one stock message carries the count (`Hangar.BeginBatch` / `EndBatch`; `NetState.StockItemRpc` takes up to 10 000 units, grants what the host's row has and refuses the rest in one `ItemRefusedRpc` with the count, the faction tax on the granted units).
 - **List after a trade** (remake, `HangarWindow.Rebuild`; after a mount, demount or swap too, #45: they reset the selection to the top): the same row stays selected; when it is gone (missiles of a mounted
   type bought out: they go onto the mounted stack, not the hold) the row that took its place (or the one before it at the
@@ -1588,7 +1606,8 @@ now takes an option right after another (a dash and a letter) as no value). `Boo
   piped input stays line by line. Verified on Windows; the Linux terminal path is untested. Linux quits hard (`DedicatedServer.ExitNow` on `Application.quitting`: the
   web admin and Netcode down, the log flushed, the terminal's settings from the start put back with `tcsetattr`, then libc
   `_exit`): the key reader blocked in `Console.ReadKey` kept Unity's teardown from ever ending after "CodeReloadManager
-  destroyed"; the exit code is `DedicatedServer.Quit`'s (1 = failed). Verified: the Windows build headless with the Editor as the client (join, chat, say,
+  destroyed"; the exit code is `DedicatedServer.Quit`'s (1 = failed). Windows the same (`ExitProcess` after the flush, 2026-10-12): the key reader in `ReadConsoleInputW` held IL2CPP's
+  `Runtime::Shutdown` (AbortAllThreads -> Thread::Join), and a player's "Stopping the server..." was reported as a native crash. Verified: the Windows build headless with the Editor as the client (join, chat, say,
   kick, stop; over Relay, listed, with a password; the console window, no menu).
 - **Persistent hosted world** (the Host card's World Fresh / Persistent segments, `mp_persistent`,
   `NetGame.HostWantsPersistent` -> `PersistentHost`): `StartHost` configures `NetProfiles` on
@@ -1713,6 +1732,15 @@ Player-made content as data (no code: the game is IL2CPP), in `Scripts/Runtime/M
 guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/gof2-modding/SKILL.md` with it: an Agent Skill / paste-in guide for Claude and ChatGPT, with `reference.md` from **GoF2 > Build > Modding AI Reference** and the how-to `Modding/ai/README.md`), the examples `Modding/Examples/plasma_arsenal` (items) and `frontier_systems`
 (systems / stations). Items, ships, systems and stations, quests and bar missions (event graphs), voice-over, music.
 
+- **Unreadable mod files** (Android crash reports, 2026-10: "A local file header is corrupt" / "Corrupted data ReadInternal"
+  on single GLBs of the GoF3 Ships zip): `ZipSource` reads one entry at a time under its gate, `Dispose` takes the gate too
+  (a Mod Browser rescan, `ModManager.Scan`, released the archives while the background loaders still read them), checks
+  the length and the CRC-32 (`Crc32`, slicing-by-8, ~2.4 GB/s on the desktop: the inflater doesn't, and a damaged entry
+  inflated without an error into wrong bytes) and tries once more on the archive opened afresh; then a `ModFileException`
+  ("X is damaged in Y.zip: download or import the mod again"). The loaders (`ModShips`, `ModStations`, `ModWeapons`,
+  `ModCharacters`, `ModMaterials.Texture`, `ModJson.Read` as a ModJsonException, `ModInfo`, `EventRunner`) make it the mod's
+  warning and never `Debug.LogException` a file error (`ModFileException.IsFileError`): the cloud diagnostics count every
+  logged exception as an unhandled one; a load the mods changed under says nothing (a newer one runs).
 - **A mod** = a folder or a `.zip` (files at its root or in one top folder, `ZipSource`) with `mod.json`
   (`ModManifest`: id (a-z 0-9 _ -, the lasting name), name / description (a string or per language), version, author,
   website, preview image (default preview.png), dependencies). Mod JSON is read with Newtonsoft's JToken (`ModJson`: comments
@@ -1743,13 +1771,15 @@ guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/go
 - **Ship models** (`ModShips`, `ModShipBuilder`, `ModMaterials`, `ModGltfMaterials`; glTFast 6.20, `com.unity.cloud.gltfast`):
   each new ship's GLB loads with glTFast (asynchronous: `Preload` from the main menu, the menu's Leave and `NetGame.EnterWorld`
   wait for `Ready` / `WhenReady`, at most 30 s) into an AssembledObject template under a hidden DontDestroyOnLoad holder
-  (the run-time port of PR #34's CustomShipBuilder: hull turned by modelYaw and scaled to modelLength, engine glow discs at the
+  (the run-time port of PR #34's CustomShipBuilder: hull turned by modelYaw and scaled to modelLength (a skinned mesh baked into a plain one in its drawn pose first,
+  `ModShipBuilder.FlattenSkinned`: the sizing, collision, shadows and the Mod Builder read the bind-pose mesh, which the
+  bones drew elsewhere and at another size), engine glow discs at the
   slot-3 mounts on mat_34813 (a mount's `glowSize` [half width, half height, flame length] makes an ellipse; a `glowColor`
   or the ship's `engineGlowColor` switches the glow to `ModAssets.engineGlowTint`, the sprite in white
   (`Resources/GoF2Mods/ModEngineGlowWhite.png`, Build Mod Assets; the glow sprite there made round and soft, its ring of
   dashes averaged away) tinted by vertex colour, white-hot at the centre, and
   `ShipExhaust` tints the exhaust particles with it, on the particles.png cell whose product comes closest and brightest), throttle glows from their masks (`ThrottleGlow` with its trails), one LOD culled at 80000);
-  `AssembledObject.LoadPrefab` hands it out for pack "mod" (the Phantom stands in while loading), `NetProxy` for an
+  `AssembledObject.LoadPrefab` hands it out for pack "mod" (while loading the game's own model of that ship stands in, else the Phantom's, always the original prefab: `Database.ShipAssembly(..., original: true)`; a project replacing the Phantom's model looped Template / LoadPrefab into a stack overflow on the builder's Exit), `NetProxy` for an
   "Assembled/mod/..." path. Materials are always copies of the URP Lit templates in `Resources/GoF2Mods/ModAssets`
   (**GoF2 > Build > Mod Assets**, `ModAssetsBuilder`: opaque / cutout / transparent, with and without detail maps; the
   templates hold placeholder textures and a faint emission so URP keeps their keywords and a build keeps the variants;
@@ -1856,9 +1886,14 @@ guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/go
   memoised per clip (AudioClip.name allocates), a no-op without mod sounds; later mods win; loaded decoded
   (`ModAudio.Load(..., compressed: false)`). Verified: `Target_Lock_v08` replaced.
 - **Textures / skins** (`ModTextures`, a mod's `textures/<game texture name>.png | .jpg`, e.g. `ship_028_terran_diffuse` for
-  the Veteran's hull): replaces that texture on every assembled object using it (`AssembledObject.Awake` -> `Apply`: the
+  the Veteran's hull; `textures/<assembly>/<name>` for one model only, e.g. `textures/ship_028_terran/glow_terran.png`: the
+  shared lights / engine glow on the Veteran alone, before the every-object file; the scope is `AssembledObject.ModScope`,
+  its prefab's name taken in Awake, and such objects get their own material copies, keyed (scope, material); the builder's
+  Skins tab offers "This ship..." / "All ships..." on a shared texture): replaces that texture on every assembled object using it (`AssembledObject.Awake` -> `Apply`: the
   object's renderers get cached copies of their materials with the mod's texture in `_BaseMap` / `_MainTex` / `_BumpMap` /
-  `_MetallicGlossMap` / `_EmissionMap`; the game's material assets are never touched); `_normal` / `_metallic` names load
+  `_MetallicGlossMap` / `_EmissionMap`; the game's material assets are never touched; when the mods change in a scene, the
+  Mod Builder's skins, the objects there get the game's materials back before the copies go and the new textures once
+  loaded, `ModTextures.Revert` / `ReapplyAll`: a cleared skin drew the hangar's other ships of that model magenta); `_normal` / `_metallic` names load
   linear; loaded with the rest (`ModMaterials.PreloadTexture`, `ModLoading`). Verified in Play mode: a BountyBot
   (/make_skin_texture) Veteran skin on the hangar turntable (`Mods/veteran_skin`, git-ignored). The backdrop's planets, suns
   and rings too (#66, `Backdrop.Load` -> `ModTextures.Replace(material)`: their Resources/GoF2Backdrop materials aren't on
@@ -1953,11 +1988,14 @@ guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/go
   else after them by id or name (any language), "x as Name" renaming; the spec is "-3 US rename US key" (`Events.SpeakerSpec`,
   which also parses the others: -1 face, -2 reader, ≥ 0 story). `NetAdmin.SplitSpeaker` finds the speaker's colon by trying
   each colon in turn (a key holds one). Drawn by `Portrait.ShowCharacter` (the PNG covering the 160 x 200 layers, background
-  cover, top-centred; the game's background under it and frame over it unless off; `mirrored` flips): DialogueView
+  cover, top-centred; the game's background under it and frame over it unless off (the "frame" `portrait_frame.png` is a
+  faint full-box scanline overlay, alpha <= 27, not a border; the background a dark half-transparent fill, seen only
+  through a transparent PNG; the builder calls them Scanlines / Dark backdrop); `mirrored` flips): DialogueView
   (`Page.character`), the radio box (`Traffic.Chatter.character`), EventScreen's question and mission card, the lounge
   client and the Missions window (`EventMissions.Offer.character`; the character's race / gender pick the bar figure).
   `replaces` (a story speaker by name / first name / number): `Portrait.ShowSpeaker` draws the character instead, story
-  included. `TextReveal.Names` tints character names as people (rebuilt when `ModManager.Revision` changes). Portraits
+  included, and `StoryTable.SpeakerName` gives its name when it has one (every header, the radio, `%player%`;
+  `OriginalSpeakerName` for lookups: the replacement's own resolution, /dialog names, which find either). `TextReveal.Names` tints character names as people (rebuilt when `ModManager.Revision` changes). Portraits
   through `ModMaterials` (Preload from the main menu). Example: frontier_systems' Captain Vega. Verified in Play mode: a
   dialogue page by id, one by key with a rename, a replaced story speaker (mirrored), a radio call in flight.
 - **Dependencies** (`ModManifest.dependencies`, "id" or "id>=version" → `dependencyVersions`, `VersionAtLeast`): `Active`
@@ -2021,6 +2059,85 @@ guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/go
   phone (S24 Ultra): the 79 GoF3 ships cold in 9.5 s, nothing compressed on the main thread, the hulls
   checked up close. Texture2D.Compress stays for a GPU that reads neither; a phone's old "gpu" cache files are no longer read
   (nothing deletes them).
+- **Mod Builder** (remake, experimental; ships, items, characters and skins): the main menu's Mods button opens a hub
+  (`MainMenu.BuildModsHub`, `modsHubPanel`: Mod Browser / Mod Builder; Back from either returns to it). The projects page
+  (`ModBuilderProjects`, `modBuilderPanel`, styles `.mb-*` in MainMenu.uss): `persistentDataPath/ModProjects/<id>`
+  (`Modding.ModProject`: a mod folder in the normal format, mod.json / ships.json / models / textures, plus builder.json
+  (never exported): each ship's test loadout, the test cheats, the last ship), the field above the list both searches it (every word in the name, id, author or description) and names a new project (Create / Enter), each row with what it holds ("1 ship · 1 skin",
+  else Empty) and a picture (the first ship's icon, its own or the original's, else a skinned ship's, else an item's), New / name / author / version / description,
+  the content kinds (Ships, Items, Characters, Skins open the builder on that kind, `ModBuilder.OpenKind`; the others greyed
+  "Coming soon"), Open in hangar, Export as mod (zips it into the Mods folder as "<project name>.zip"; the mod id follows the name like a GitHub repository's: shown in grey under the Name field ("Mod id: x (was y)"), taken when the name is saved or left (`ModProject.Slug` / `IdFromName` / `ChangeId`: mod.json, the project's own "id:" keys, its folder, the old id kept in builder.json "previousIds" so the next export replaces the mod installed under it and keeps it on); zip mods are opened shared for delete, `ZipSource`, so the Editor no longer locks the old zip,
+  replacing an installed mod of that id after asking, `ModImport.Delete`), Open folder, Delete. Opening one
+  (`Modding.ModBuilder.Begin`): a throwaway free-play game (completed world) docked at the project's station (Dis, 70, until
+  the top bar's Hangar button picks one station per hangar type: Terran Dis, Vossk, Nivelian, Midorian Var Hastra, deep
+  science; builder.json "station", `ModBuilder.SwitchStation` reloads the scene, `CanHost` leaves out empty orbits, the Kaamo
+  Club, the pirate bases and Loma; the test flights fly from that orbit), the project the only active
+  mod (`ModManager.SetBuilderProject`: Active = the project and its dependencies, the enabled mods aside), nothing saved
+  (`SaveGame.Save` / `AutoSave` refuse while `ModBuilder.Active`). The Station scene then shows `ModBuilderView`
+  (`Resources/GoF2ModBuilder/ModBuilder.uss`) instead of the station menu (StationMenu hides its children and hands Update
+  over): ships list (+ new ship from .glb via `ModImport.Pick(title, filter, exts)`, + change a game ship, remove), tabs
+  Ship (name, description, race, stats, equipment slots, model; its length / scale +-10 %, turns about all three axes
+  (ships.json `modelYaw` + the new `modelPitch` / `modelRoll`, `ModShipBuilder`: Euler(pitch, yaw, roll)), position (the new
+  `modelOffset`, game units in the ship's frame, nudges of 2 % and Centre on pivot; moves and resizes carry the hardpoints
+  along, every change re-measures the hangar height), hangar height + Auto, hull textures: one
+  `materials` entry for all meshes, for GLBs without their own), Hardpoints (add by clicking the hull, list, X / Y / Z, mirror,
+  centre, delete, slot counts following the points, turret upside down, engine flame radius / length / particles), Loadout
+  (per-slot item pickers, Auto-fill, god mode / infinite ammo). The 3D editor is `World.ModBuilderGizmo` (balls drawn over the
+  hull by `Hidden/GoF2/BuilderGizmo`, Unity-style move arrows along the ship's axes (X = game +x = the pilot's left), a drag on
+  a ball slides it over the hull (MeshColliders on layer 22), a flat arrow on the floor toward the nose); the camera is
+  Inspect ship's orbit (`StationLevel.BeginInspect(minRadii)`; a middle-mouse drag pans its point, `HangarInspect.Pan`, at
+  most 2 x the ship's radius off its centre, kept through rebuilds; a middle click centres it again). An Engines slider (off at the left, throttle up to 90 %,
+  then the boost) lights the glow and a standing exhaust plume (`ShipExhaust.stationary` / `stationaryBoost`: a rate over
+  time, the plume normally comes per distance flown). Below 1.58:1 / 1.4:1 the root takes `mbv-narrow` / `mbv-compact`
+  (narrower panels, smaller text); the kinds strip scrolls sideways so Save / Exit stay on screen. The panels fly out as the ship takes off and back in once it
+  has landed, like the station menu (`ModBuilderView.UpdateUiAnimation`: 450 ms, ease-out cubic, each panel to its own
+  edge and fading, one after another; no input meanwhile). Edits save at once; model-shaping ones (model, size, turn,
+  engine points, hangar height, textures) re-read the project (`ModBuilder.Reload`) and rebuild the turntable ship when its
+  model is ready. A new ship without hardpoints gets a first set from its bounds (two guns, a secondary, an engine) and its
+  hangar height. A new ship gets its shop icon rendered once its model is built (`Modding.ShipIconMaker`, the Hull Icons
+  builder's look at runtime: left side from above, orthographic, alpha from a black and a white render, over
+  `Resources/GoF2Icons/frame_ship.png`, which **GoF2 > Build > Ship Icon Frame** / Hull Icons write) into `icons/<id>.png`
+  and ships.json `icon`; builder.json keeps the file and the look it was made from (model file, turn, hull textures), so it
+  is made again only when that changes, and an icon the modder set by hand is never replaced. Test fly: the project read again, the loadout mounted, the cheats granted (`Cheats.Grant`, honoured while
+  `ModBuilder.Active`), the normal take-off (`StationLevel.Depart` now waits for the orbit camera's blend back first: the
+  flight's view-edge shrink is computed from the camera as it starts) into the builder station's orbit: `SpaceLevel` passive (no traffic,
+  wingmen), jumps / gate refused, no tutorial popups, `World.ModBuilderRange` keeps 3 hostile pirates coming (6 s after a
+  death); docking, the pause menu's "Back to Mod Builder" or a death returns to the builder (`ModBuilder.EndTestFlight`).
+  The top bar's Menu (`Localization.Get(172)`, also Esc with nothing else open; `ModBuilderView.ShowMenu`): Resume, Options
+  (the game's `OptionsView` in the builder's modal, Q / E switch tabs, Esc back to the Menu), Save, Exit the Mod Builder
+  (`ModBuilder.End`: the main menu's projects page). The orbit camera turns and pans while the preview rebuilds (only the
+  hardpoints wait for the ship), a re-begun orbit keeps its zoom (`HangarInspect.Begin`), and a drag whose release was missed
+  ends on the next move; `ModTextures.Preload` resets its loading count (an earlier revision's loads left it above 0 for good,
+  so the preview waited forever and the camera refused new drags). The top bar's kinds swap the side panels (`ModBuilderView.SelectKind`;
+  the gizmo only with Ships): **Items** (`ModBuilderViewItems`, items.json as `ProjectItem`): new items from a game item
+  (a copy: type, category, look) or changes to one, name, description, its own icon PNG, tech level, occurrence, prices
+  and the base's stats by readable name (`ItemStats`; a new item's value equal to the base's isn't written), "Fit to the
+  test ship" (every slot of a weapon's kind, equipment in place of its category; a new item waits for the project to be
+  read and numbered: `afterReload`); item edits reach the game when the kind is left or at Test fly. **Characters**
+  (`ModBuilderViewCharacters`, characters.json as `ProjectCharacter`), edited in the station's Space Lounge (no ship,
+  Test fly or Engines there): a new one from a PNG portrait, the conversation-style preview (`Portrait.ShowCharacter`),
+  name, portrait, race, gender, mirrored / frame / background, and the optional story speaker it stands in for (a picker
+  of the speakers' own portraits, `Portrait.ShowSpeaker(..., original: true)`); without one it is the mod's own character
+  for its quests and events. **Skins** (`ModBuilderViewSkins`): the game ships the project re-skins
+  (`ModProject.SkinShips`: builder.json "skins" + any `textures/(v_|sn_)ship_NNN_*` file), the ship on the turntable and
+  in Test fly (`ModBuilder.SkinShip`, its own default loadout), its textures off the model's materials (the lights and engine glow layers too, marked Shared when other ships use them; a freighter's / the battleship's burnt wreck set, `CombatAssets.wreckDamaged`, which `ApplyWreckDamage` now gives the mod's textures through `ModTextures.OriginalOf` / `Replace`),
+  each replaced by a PNG under the texture's exact name (`textures/<name>.png`, ModTextures; the project is
+  read again) or saved as a template (`templates/`, never exported: blitted off the GPU, a normal map decoded from its
+  BC5 / DXT5nm-style X Y to an RGB normal map). Overrides missing stats or slots get the game ship's when a project opens
+  (`ProjectShip.FillFromGame`: a hand-written one had no slots). `ModProject.AddFile` never hands out a name twice in a
+  run (ModMaterials keeps textures by path until the project is read again). Verified in Play mode: projects, open, a .glb ship (auto hardpoints,
+  textures), a Phantom override, placing / dragging points, the loadout, test flight, dock back, exit, export. Not yet: a
+  real file-picker run, touch / controller use of the gizmo.
+- Orbit drags (remake, players' request): a vertical drag takes the camera down / up the other way round (a drag up tips the
+  ship up) in Inspect ship, Action Freeze (`PhotoMode`, the original's y flip dropped) and the Mod Builder; keys and sticks
+  unchanged.
+- **Image formats** (`ImageImport`): every mod image (ModMaterials' `Texture` and background `PreloadTexture`, so skins,
+  portraits, icons, hull textures, planets / suns / skies; ModInfo's preview; ModTextures' file list) and the Mod Builder's
+  pickers (which store a picked image as PNG) read PNG / JPG by Unity's decoders and TGA (plain / RLE), BMP (8 / 24 / 32-bit),
+  DDS (DXT1 / 3 / 5, uncompressed; not DX10) and the game's `.aei` (raw RGBA, the phone's ETC1, DXT1 / DXT5 by the data's size:
+  the PC version's type 0x24 is DXT5) by its own decoders (`DecodePixels`, worker-thread safe, by magic; TGA by extension).
+  Verified: each format against a reference image (size, orientation, colours, alpha), a PC `.aei` skin identical to an
+  independent decode and shown on the turntable through the background loader.
 - **Mod browser** (`ModBrowser`, the main menu's Mods button and `modsPanel`; styles `.mods-*` in MainMenu.uss): the list in
   load order (thumbnail, name, version · author, On / Off / Error / Can't load), a click or keyboard / controller focus selecting a row (the mouse's hover focus doesn't: passing over the rows on the way to Turn on changed the mod it acted on), the selected mod's preview, name, meta,
   description and credits (mod.json `credits`), where it is installed, errors and warnings, Turn on / off (also the

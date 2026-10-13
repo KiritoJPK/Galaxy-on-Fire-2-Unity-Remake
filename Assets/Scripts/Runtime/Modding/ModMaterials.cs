@@ -6,7 +6,8 @@
 //     normal, metallic (R) / smoothness (A) mask, emission, detail maps, alpha clip or glass; it replaces the model's
 //     material on the renderers / submeshes it names.
 // Textures load once per mod and file (Texture), compressed, with mipmaps. ModShips decodes them first in the background
-// (PreloadTexture: UnityWebRequestTexture decodes the PNG / JPG off the main thread, ModTextureEncoder compresses it to
+// (PreloadTexture: UnityWebRequestTexture decodes the PNG / JPG off the main thread, ImageImport a TGA / BMP / DDS / .aei
+// on a worker thread, ModTextureEncoder compresses it to
 // DXT with its mipmaps on a worker thread where the GPU reads DXT; elsewhere Texture2D.Compress, one texture per frame), so
 // the builder's Texture calls find them made. The result is kept on disk (ModTextureCache): a later start reads it back on
 // a worker thread instead of decoding and compressing again. A GLB's embedded images come the same way (PreloadImage, by
@@ -129,10 +130,15 @@ namespace GoF2Remake.Modding
             if (mod == null || string.IsNullOrEmpty(path)) return null;
             string key = Key(mod, path, linear, readable, normal);
             if (textures.TryGetValue(key, out var t)) return t;
-            var bytes = mod.Source.ReadBytes(path);
+            byte[] bytes;
+            try { bytes = mod.Source.ReadBytes(path); }
+            catch (System.Exception e) when (ModFileException.IsFileError(e)) { Warn(mod, e.Message); textures[key] = null; return null; }
             if (bytes == null) { Warn(mod, $"{path}: file not found"); textures[key] = null; return null; }
-            t = new Texture2D(2, 2, TextureFormat.RGBA32, true, linear) { name = mod.Id + ":" + path, wrapMode = TextureWrapMode.Repeat };
-            if (!t.LoadImage(bytes, false)) { Object.Destroy(t); Warn(mod, $"{path}: not a PNG or JPG image"); textures[key] = null; return null; }
+            // PNG / JPG by Unity's decoder, TGA / BMP / DDS / the game's .aei by ImageImport.
+            t = ImageImport.Decode(bytes, path, linear, true, out string decodeError);
+            if (t == null) { Warn(mod, $"{path}: {decodeError}"); textures[key] = null; return null; }
+            t.name = mod.Id + ":" + path;
+            t.wrapMode = TextureWrapMode.Repeat;
             if (normal && NormalsInAlpha) t = NormalToAlpha(t);
             t.anisoLevel = 8;
             t.filterMode = FilterMode.Trilinear;
@@ -283,16 +289,36 @@ namespace GoF2Remake.Modding
             {
                 if (file == null) file = await Task.Run(localFile);   // a GLB image's file: only now that it is decoded
                 if (rev != revision || textures.ContainsKey(key) || file == null) return;
-                var p = UnityEngine.Networking.DownloadedTextureParams.Default;
-                p.mipmapChain = !encode;
-                p.linearColorSpace = linear;
-                p.readable = true;   // the pixels for the encoder / Compress; Apply(.., true) drops them afterwards
-                using var req = UnityEngine.Networking.UnityWebRequestTexture.GetTexture(new System.Uri(file).AbsoluteUri, p);
-                var op = req.SendWebRequest();
-                while (!op.isDone) await Awaitable.NextFrameAsync();
-                if (req.result != UnityEngine.Networking.UnityWebRequest.Result.Success || rev != revision || textures.ContainsKey(key)) return;
-                var t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
-                if (t == null) return;
+                Texture2D t;
+                // A TGA / BMP / DDS / .aei (ImageImport): decoded on a worker thread, made into a texture here; PNG / JPG by
+                // Unity's decoder below. A file that can't be read is left to Texture, which warns with the reason.
+                var other = await Task.Run(() =>
+                {
+                    var head = new byte[4];
+                    using (var f = System.IO.File.OpenRead(file)) f.Read(head, 0, head.Length);
+                    if (ImageImport.IsNative(head)) return null;
+                    bool ok = ImageImport.DecodePixels(System.IO.File.ReadAllBytes(file), path ?? file, out int w, out int h, out var px, out _);
+                    return ok ? new System.Tuple<int, int, Color32[]>(w, h, px) : new System.Tuple<int, int, Color32[]>(0, 0, null);
+                });
+                if (rev != revision || textures.ContainsKey(key)) return;
+                if (other != null)
+                {
+                    if (other.Item3 == null) return;
+                    t = ImageImport.MakeTexture(other.Item1, other.Item2, other.Item3, linear, !encode);
+                }
+                else
+                {
+                    var p = UnityEngine.Networking.DownloadedTextureParams.Default;
+                    p.mipmapChain = !encode;
+                    p.linearColorSpace = linear;
+                    p.readable = true;   // the pixels for the encoder / Compress; Apply(.., true) drops them afterwards
+                    using var req = UnityEngine.Networking.UnityWebRequestTexture.GetTexture(new System.Uri(file).AbsoluteUri, p);
+                    var op = req.SendWebRequest();
+                    while (!op.isDone) await Awaitable.NextFrameAsync();
+                    if (req.result != UnityEngine.Networking.UnityWebRequest.Result.Success || rev != revision || textures.ContainsKey(key)) return;
+                    t = UnityEngine.Networking.DownloadHandlerTexture.GetContent(req);
+                    if (t == null) return;
+                }
                 t.name = name;
                 // The encoder converts it for its role on the worker threads too; the main thread only when it can't take it.
                 var work = encode ? ModTextureEncoder.Start(t, linear, (ModTextureEncoder.Remap)remap, metal, rough, target) : null;

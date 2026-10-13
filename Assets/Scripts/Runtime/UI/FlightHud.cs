@@ -1317,6 +1317,11 @@ namespace GoF2Remake.UI
                 gameOverText.text = Localization.Extra("hardcoreDead", "Hardcore: your pilot is lost and this game's saves are deleted. Tap to return to the main menu.");
                 return;
             }
+            if (Modding.ModBuilder.TestFlying)   // a Mod Builder test flight: back to the builder's hangar
+            {
+                gameOverText.text = Localization.Extra("mbTestDead", "Tap to return to the Mod Builder.");
+                return;
+            }
             gameOverText.text = GoF2Remake.Events.EventRespawn.Active
                 ? Localization.Extra("mpRespawnEvent", "Respawning in space...")      // an event's respawn point (EventRespawn)
                 : GoF2Remake.Multiplayer.NetGame.Active
@@ -1346,6 +1351,7 @@ namespace GoF2Remake.UI
             if (gameOverMs < 7000f) return;
             gameOverMs = -1f;
             if (hardcoreDead) { BackToMenu(); return; }   // hardcore: nothing to load
+            if (Modding.ModBuilder.TestFlying) { Modding.ModBuilder.EndTestFlight(false); return; }
             // Multiplayer: back in this orbit's station (a faction member: the faction's home, NetFactions), repaired (docking
             // repairs), everything else kept.
             if (GoF2Remake.Multiplayer.NetGame.Active)

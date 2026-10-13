@@ -147,7 +147,10 @@ namespace GoF2Remake.UI
                     if (campaign != null && campaign.CanSkipCutscene) Item(T(395), () => { Close(); campaign.SkipCutscene(); });
                     // MGame::setCinematicMode: not while a cutscene holds the camera.
                     if (Photo != null && level != null && !level.Cutscene) Item(T(59), () => Show(Page.Photo));
-                    Item(T(522), () => Show(Page.Quit));
+                    // Remake: a Mod Builder test flight goes back to the builder's hangar instead (Modding.ModBuilder).
+                    if (Modding.ModBuilder.TestFlying)
+                        Item(Localization.Extra("mbBackToBuilder", "Back to Mod Builder").ToUpperInvariant(), () => { Close(); Modding.ModBuilder.EndTestFlight(false); });
+                    else Item(T(522), () => Show(Page.Quit));
                     break;
                 case Page.Photo:
                     backdrop.RemoveFromClassList("pause-backdrop--shown");

@@ -27,8 +27,16 @@ namespace GoF2Remake.Visuals
             return prefab;
         }
 
+        /// <summary>Remake mods: the assembly this object was made from (its prefab's name: Awake runs inside Instantiate,
+        /// before any code renames the copy), the scope of a mod's per-object textures (textures/&lt;scope&gt;/).</summary>
+        public string ModScope { get; private set; }
+
         // Remake mods: texture replacements (skins) on this object's renderers.
-        void Awake() => Modding.ModTextures.Apply(gameObject);
+        void Awake()
+        {
+            ModScope = name.EndsWith("(Clone)") ? name.Substring(0, name.Length - "(Clone)".Length).Trim() : name;
+            Modding.ModTextures.Apply(gameObject, ModScope);
+        }
 
         [Tooltip("Resource id of the root (LOD 0) mesh.")]
         public int rootMeshId;

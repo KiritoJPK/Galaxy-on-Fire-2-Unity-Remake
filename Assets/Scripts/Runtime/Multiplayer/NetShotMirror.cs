@@ -59,7 +59,7 @@ namespace GoF2Remake.Multiplayer
             Refresh();
             if (fxRoot == null) { fxRoot = new GameObject("NetShots").transform; rootGeneration++; generation = rootGeneration; }
             if (mirrors.TryGetValue(item, out var m)) return m;
-            var data = Database.Load().Item(item);
+            var data = Database.Shared.Item(item);
             if (data == null) return null;
             var gun = new Gun(data, Vector3.zero, false) { Ignores = ignores };
             var fx = WeaponFx.Load(item);

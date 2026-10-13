@@ -420,7 +420,7 @@ namespace GoF2Remake.Multiplayer
         {
             if (model != null) Destroy(model);
             if (index < 0 || NetGame.Dedicated) return;   // a dedicated server shows nobody
-            var prefab = AssembledObject.LoadPrefab(Database.Load().ShipAssembly(index));
+            var prefab = AssembledObject.LoadPrefab(Database.Shared.ShipAssembly(index));
             if (prefab == null) return;
             model = Instantiate(prefab, transform, false);
             model.GetComponent<AssembledObject>()?.SetPlayerVariant(true);
@@ -440,12 +440,12 @@ namespace GoF2Remake.Multiplayer
             // Its look and sound: the exhaust, the cloak, the engine loop (3D, at space distances).
             asm = model.GetComponent<AssembledObject>();
             if (exhaust != null) Destroy(exhaust);
-            exhaust = ShipExhaust.AttachRemote(gameObject, Database.Load(), model.transform, index, () => shown && engine.Value && cloak.Value < 25f,
+            exhaust = ShipExhaust.AttachRemote(gameObject, Database.Shared, model.transform, index, () => shown && engine.Value && cloak.Value < 25f,
                                                () => boost.Value, () => cloak.Value);
             cloakLook?.Dispose();
             cloakLook = new World.NpcCloak(model.transform, keepEngine: true);
             if (engineLoop != null) Destroy(engineLoop);
-            engineLoop = World.HangarFlight.AddEngine(model, true, Database.Load(), index, out engineVolume);
+            engineLoop = World.HangarFlight.AddEngine(model, true, Database.Shared, index, out engineVolume);
             if (engineLoop != null) EngineVoices.Setup3D(engineLoop);   // the engine events' rolloff (0.05 .. 500 m) in space
         }
 

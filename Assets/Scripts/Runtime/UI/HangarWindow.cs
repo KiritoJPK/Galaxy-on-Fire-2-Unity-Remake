@@ -912,6 +912,7 @@ namespace GoF2Remake.UI
             int i = parent != null ? parent.IndexOf(e) : -1;
             VisualElement top = e;
             while (i > 0 && parent[i - 1].ClassListContains("list-header")) top = parent[--i];
+            if (!list.contentContainer.Contains(e)) return;   // the list was rebuilt since (ScrollTo throws on a stranger)
             if (top != e) list.ScrollTo(top);
             list.ScrollTo(e);
         }

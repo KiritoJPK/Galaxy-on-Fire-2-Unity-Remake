@@ -228,7 +228,9 @@ namespace GoF2Remake.UI
                     cells[pick].AddToClassList("debug-item-cell--picked");
                     shownPick = pick;
                     var target = cells[pick];
-                    grid.schedule.Execute(() => grid.ScrollTo(target));   // once it is laid out
+                    // Once it is laid out; the grid may have been rebuilt meanwhile (a player build's report, 2026-10-11:
+                    // ScrollTo on a cell no longer in the grid threw).
+                    grid.schedule.Execute(() => { if (grid.contentContainer.Contains(target)) grid.ScrollTo(target); });
                 }
                 grid.schedule.Execute(Sync).Every(100);
                 // The stepper hides; its focus (the station's menu) frames the grid like the pause menu's row selection.

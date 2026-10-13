@@ -287,7 +287,8 @@ namespace GoF2Remake.Modding
                 made[d.item] = fx;
                 Debug.Log($"Mods: {d.mod.Id}: weapon fx for \"{d.label}\" (item {d.item})");
             }
-            catch (System.Exception e) { Warn(d.mod, $"{d.where}: {e.Message}"); Debug.LogException(e); }
+            catch (System.Exception e) when (rev == ModManager.Revision) { Warn(d.mod, $"{d.where}: {e.Message}"); if (!ModFileException.IsFileError(e)) Debug.LogException(e); }
+            catch (System.Exception) { }   // a stale load (the mods changed meanwhile)
             finally { if (rev == ModManager.Revision) Done++; }
         }
 

@@ -170,7 +170,9 @@ namespace GoF2Remake.Data
         }
 
         /// <summary>A cheat flag: its saved value, off while a session doesn't allow the Debug tools.</summary>
-        static bool On(string key) => (Allowed && Get(key)) || (GoF2Remake.Multiplayer.NetGame.Active && granted.Contains(key));
+        // Granted flags: an admin's /cheat in a session, the Mod Builder's test-flight toggles (Modding.ModBuilder).
+        static bool On(string key) => (Allowed && Get(key))
+                                      || ((GoF2Remake.Multiplayer.NetGame.Active || Modding.ModBuilder.Active) && granted.Contains(key));
 
         static bool Get(string key) { try { return PlayerPrefs.GetInt("cheat_" + key, 0) != 0; } catch { return false; } }
         static void Set(string key, bool on) { PlayerPrefs.SetInt("cheat_" + key, on ? 1 : 0); PlayerPrefs.Save(); }

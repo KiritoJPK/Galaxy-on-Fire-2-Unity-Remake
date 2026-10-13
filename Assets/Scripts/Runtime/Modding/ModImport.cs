@@ -101,16 +101,22 @@ namespace GoF2Remake.Modding
 
         /// <summary>Opens the picker; the returned poll is called until it answers (non-null): at once for the modal
         /// dialogs (the Editor, Windows), when the activity / program / picker is done elsewhere.</summary>
-        public static Func<Picked> Pick()
+        public static Func<Picked> Pick() => Pick(Title, "Galaxy on Fire 2 mods", Extensions);
+
+        /// <summary>The picker for any file kind (the Mod Builder's models): 'title', the filter's name and its extensions
+        /// (without the dot). The Android picker shows every file (its activity takes any type).</summary>
+        public static Func<Picked> Pick(string title, string filterName, string[] extensions)
         {
             string folder = ImportFolder;   // temporaryCachePath: main thread only
+            string Title = title;
+            string firstExtension = extensions.Length > 0 ? extensions[0] : "*";
 #if UNITY_EDITOR
             string p = UnityEditor.EditorUtility.OpenFilePanelWithFilters(Title,
-                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { "Mods", "zip", "All files", "*" });
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), new[] { filterName, string.Join(",", extensions), "All files", "*" });
             var result = string.IsNullOrEmpty(p) ? new Picked { cancelled = true } : CopyIn(p, folder);
             return () => result;
 #elif UNITY_STANDALONE_WIN
-            string p = Data.FileDialog.Open(Title, "Galaxy on Fire 2 mods", Extensions);
+            string p = Data.FileDialog.Open(Title, filterName, extensions);
             var result = string.IsNullOrEmpty(p) ? new Picked { cancelled = true } : CopyIn(p, folder);
             return () => result;
 #elif UNITY_STANDALONE_LINUX
@@ -119,11 +125,11 @@ namespace GoF2Remake.Modding
             {
                 try
                 {
-                    return RunPicker("zenity", $"--file-selection --title=\"{Title}\" --file-filter=\"Mods | *.zip\" --file-filter=\"All files | *\"");
+                    return RunPicker("zenity", $"--file-selection --title=\"{Title}\" --file-filter=\"{filterName} | *.{firstExtension}\" --file-filter=\"All files | *\"");
                 }
                 catch (System.ComponentModel.Win32Exception)   // no zenity: KDE's kdialog
                 {
-                    try { return RunPicker("kdialog", $"--title \"{Title}\" --getopenfilename \"{home}\" \"*.zip|Mods\""); }
+                    try { return RunPicker("kdialog", $"--title \"{Title}\" --getopenfilename \"{home}\" \"*.{firstExtension}|{filterName}\""); }
                     catch (System.ComponentModel.Win32Exception)
                     {
                         throw new Exception("no file picker found (install zenity or kdialog), or copy the mod into " + ModManager.MainFolder);
@@ -146,7 +152,7 @@ namespace GoF2Remake.Modding
                         SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads,
                         ViewMode = Windows.Storage.Pickers.PickerViewMode.List,
                     };
-                    foreach (var ext in Extensions) picker.FileTypeFilter.Add("." + ext);
+                    foreach (var ext in extensions) picker.FileTypeFilter.Add("." + ext);
                     var file = await picker.PickSingleFileAsync();
                     if (file == null) r = new Picked { cancelled = true };
                     else

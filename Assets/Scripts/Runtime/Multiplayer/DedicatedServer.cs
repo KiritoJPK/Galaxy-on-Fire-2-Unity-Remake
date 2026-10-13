@@ -127,6 +127,8 @@ namespace GoF2Remake.Multiplayer
 #if UNITY_STANDALONE_LINUX && !UNITY_EDITOR
             SaveTerminal();
             Application.quitting += ExitNow;
+#elif UNITY_STANDALONE_WIN && !UNITY_EDITOR
+            Application.quitting += ExitNow;
 #endif
 #if !UNITY_EDITOR
             // The log (-logFile -: the terminal) without a call stack under every info line and warning ("NetLobby: listed
@@ -330,6 +332,21 @@ namespace GoF2Remake.Multiplayer
             try { LibcFlush(IntPtr.Zero); } catch (Exception) { }   // the native log's buffered stdout (_exit skips it)
             try { if (savedTerminal != null) TcSetAttr(0, 0, savedTerminal); } catch (Exception) { }   // TCSANOW: echo back
             LibcExit(exitCode);
+        }
+#elif UNITY_STANDALONE_WIN && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern void ExitProcess(uint exitCode);
+
+        /// <summary>Windows: the same hard exit as Linux. The console thread sits in ReadConsoleInputW (WinConsole.ReadKey)
+        /// and IL2CPP's shutdown (Runtime::Shutdown, AbortAllThreads -> Thread::Join) waited for it: the "Stopping the
+        /// server..." of a player's server ended as a native crash report (2026-10-11).</summary>
+        static void ExitNow()
+        {
+            try { WebAdmin.Stop(); } catch (Exception) { }
+            try { NetGame.ShutdownNow(); } catch (Exception) { }
+            Debug.Log($"Server: exiting ({exitCode}).");
+            try { Console.Out.Flush(); Console.Error.Flush(); } catch (Exception) { }
+            ExitProcess((uint)exitCode);
         }
 #endif
 

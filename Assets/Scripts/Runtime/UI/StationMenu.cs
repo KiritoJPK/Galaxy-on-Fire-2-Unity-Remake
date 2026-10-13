@@ -242,7 +242,18 @@ namespace GoF2Remake.UI
             OnViewChanged();
             ApplyInputMode();
             UpdateLayout();
+
+            // Remake: the Mod Builder's hangar (Modding.ModBuilder): its own screen instead of the station menu's.
+            if (Modding.ModBuilder.Active && builderView == null)
+            {
+                foreach (var child in root.Children()) child.style.display = DisplayStyle.None;
+                builderView = new ModBuilderView(level, root, push => Play(push ? buttonPush : buttonRelease));
+            }
         }
+
+        /// <summary>The Mod Builder's screen while a project is open (it runs this scene; the station menu stays hidden).</summary>
+        ModBuilderView builderView;
+
 
         Button Bind(string name, System.Action action)
         {
@@ -852,6 +863,7 @@ namespace GoF2Remake.UI
         {
             GoF2Remake.Multiplayer.NetStock.Changed -= OnSharedStock;
             GoF2Remake.Multiplayer.NetNews.Changed -= OnNews;
+            builderView?.Dispose();
             if (runtimePanel != null) Destroy(runtimePanel);   // the per-scene clone: its panel (atlas, GPU buffers) goes with it
         }
 
@@ -2011,6 +2023,7 @@ namespace GoF2Remake.UI
                 {
                     if (!inspectDragging) { inspectDragging = true; inspectLast = pos.Value; inspectDragTravel = 0f; }
                     delta = (pos.Value - inspectLast) * scale;
+                    delta.y = -delta.y;   // remake (players' request): a drag up takes the camera down, as in Action Freeze
                     inspectDragTravel += delta.magnitude;
                     inspectLast = pos.Value;
                     inspectFling = delta;
@@ -2167,6 +2180,7 @@ namespace GoF2Remake.UI
         void Update()
         {
             if (root == null || level == null) return;
+            if (builderView != null) { builderView.Update(); return; }   // the Mod Builder's hangar
             if (lastScreen != ScreenSize() || lastSafeArea != Screen.safeArea) UpdateLayout();
             UpdateTicker();   // scrolls on under dialogs and windows (it used to wait, then fly in again)
             // Remake hangar flights: the menu hides while the ship flies in or out; the conversations, windows and hints

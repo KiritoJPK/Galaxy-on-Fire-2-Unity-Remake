@@ -147,6 +147,7 @@ namespace GoF2Remake.Data
             // Multiplayer: a session is a separate free-play game; it never overwrites the single-player saves (also not
             // after its connection went, while its game is still loaded).
             if (GoF2Remake.Multiplayer.NetGame.SessionGame) return false;
+            if (Modding.ModBuilder.Active) return false;   // the Mod Builder's throwaway game
             // Hardcore: only the auto-save (no slot to go back to after a death).
             if (Session.Hardcore && slot != AutoSaveSlot) return false;
             var s = Capture();
@@ -206,7 +207,7 @@ namespace GoF2Remake.Data
         {
             // Multiplayer: a server that keeps profiles gets the docked game instead (NetProfileClient; a no-op without).
             if (GoF2Remake.Multiplayer.NetGame.SessionGame) { GoF2Remake.Multiplayer.NetProfileClient.Upload(); return; }
-            if (Session.PlaySeconds <= 0f) return;
+            if (Session.PlaySeconds <= 0f || Modding.ModBuilder.Active) return;
             Save(AutoSaveSlot);
         }
 
@@ -216,8 +217,43 @@ namespace GoF2Remake.Data
             var s = Preview(slot);
             if (s == null) return false;
             Modding.ModSaves.Fix(s);   // modded items moved to their numbers now, or removed and refunded (mods turned off)
+            DropUnknownItems(s, Database.Shared);
             Apply(s);
             return true;
+        }
+
+        /// <summary>Remake: what is left of item numbers the item table doesn't have (after ModSaves.Fix: no mod accounts
+        /// for them) goes, with a warning each: the hold, the equipment, the shop memory, the Kaamo Club, the parked ship,
+        /// blueprints and the production queue. Crash reports (2026-10-10 / 12, Android and Windows) had the hangar throw on
+        /// such an item at every trade; its source isn't known yet (Shop.AddToCargo now refuses one and logs the caller).</summary>
+        static void DropUnknownItems(SaveData s, Database db)
+        {
+            bool Known(int item) => db.Item(item) != null;
+            int Drop(List<ItemStack> list, string where)
+            {
+                if (list == null) return 0;
+                int n = list.RemoveAll(st => st == null || !Known(st.item) && Warn(st.item, st.amount, where));
+                return n;
+            }
+            bool Warn(int item, int amount, string where)
+            {
+                Debug.LogWarning($"SaveGame: {amount} of item {item} in the {where} isn't in the item table of {db.Items.Count}: dropped");
+                return true;
+            }
+            if (Drop(s.equipment, "equipment") > 0) s.selectedSecondary = -1;
+            Drop(s.cargo, "hold");
+            Drop(s.kaamoItems, "Kaamo Club storage");
+            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) Drop(k.equipment, "Kaamo Club ship's equipment");
+            if (s.parkedShip != null) { Drop(s.parkedShip.equipment, "parked ship's equipment"); Drop(s.parkedShip.cargo, "parked ship's hold"); }
+            if (s.recentStations != null)
+                foreach (var rs in s.recentStations)
+                {
+                    if (rs == null) continue;
+                    Drop(rs.items, $"shop memory of station {rs.station}");
+                    rs.agents?.RemoveAll(ag => ag != null && ag.sellItem != -1 && !Known(ag.sellItem) && Warn(ag.sellItem, 0, "bar's offers"));
+                }
+            s.blueprints?.RemoveAll(bp => bp == null || !Known(bp.item) && Warn(bp.item, 0, "blueprints"));
+            s.pendingProducts?.RemoveAll(pp => pp == null || !Known(pp.item) && Warn(pp.item, pp.quantity, "production queue"));
         }
 
         /// <summary>Multiplayer (NetProfileClient): the game as a server profile: a save without the shop memory (the session's

@@ -17,10 +17,11 @@ namespace GoF2Remake.UI
     {
         static readonly int[] DrawOrder = { 2, 1, 0, 3 };
 
-        /// <summary>A story speaker's portrait (its layers resolved through the image ids, StoryTable).</summary>
-        public static void ShowSpeaker(VisualElement box, int speaker, bool mirrored)
+        /// <summary>A story speaker's portrait (its layers resolved through the image ids, StoryTable); 'original': the game's
+        /// own, not a mod character that replaces the speaker (the Mod Builder's speaker picker).</summary>
+        public static void ShowSpeaker(VisualElement box, int speaker, bool mirrored, bool original = false)
         {
-            var replacement = Modding.ModCharacters.ReplacementFor(speaker);
+            var replacement = original ? null : Modding.ModCharacters.ReplacementFor(speaker);
             if (replacement != null) { ShowCharacter(box, replacement, mirrored); return; }
             box.Clear();
             box.EnableInClassList("portrait--mirrored", mirrored);
