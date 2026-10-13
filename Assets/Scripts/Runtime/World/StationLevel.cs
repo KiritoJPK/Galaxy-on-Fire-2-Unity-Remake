@@ -209,6 +209,10 @@ namespace GoF2Remake.World
 
             OrbitBuilder.SetupSky(Layout);   // the system's sky shows through the openings of both rooms
             OrbitBuilder.SpawnBackdrop(Layout, mainCamera);
+            // Remake: the orbit's sky layers outside too, as in space: the planet ring sky (stations 120, 126, 130, 132), the
+            // supernova flares (the stronger "nasty" ones from mission 106) and the storms in the supernova system, the asteroid
+            // belt of systems 24-26 (Skavac, Loma, Shima) lit by the system's sun.
+            SkyLayers.Spawn(Layout, mainCamera);
             BuildHangar();
             BuildBar();
             // Remake: ships now and then flying past outside the bar's windows (not at an evacuated station).

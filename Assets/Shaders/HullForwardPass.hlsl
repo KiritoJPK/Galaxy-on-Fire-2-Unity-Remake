@@ -17,6 +17,26 @@
 half _GoF2HullReflection;
 half3 _GoF2HullRimColor;
 
+// Remake: the distance fog by the real distance to the camera, as the original (computeLinearFogFactor(eyeDist), the
+// eye-to-vertex distance). URP's fog goes by the view depth (clip z), which is shorter for the same distance toward the
+// screen's edges: a fogged station in the middle of the screen came out clear and close-looking at the edge, though the
+// ship hadn't moved. unity_FogParams: x = density / sqrt(ln 2), y = density / ln 2, z = -1 / (end - start), w = end / (end - start).
+half3 GoF2RadialFog(half3 color, float d)
+{
+#if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+    #if defined(FOG_LINEAR)
+        half f = saturate(d * unity_FogParams.z + unity_FogParams.w);
+    #elif defined(FOG_EXP)
+        half f = saturate(exp2(-unity_FogParams.y * d));
+    #else
+        float x = unity_FogParams.x * d;
+        half f = saturate(exp2(-x * x));
+    #endif
+    color = lerp(unity_FogColor.rgb, color, f);
+#endif
+    return color;
+}
+
 void HullPassFragment(
     Varyings input
     , out half4 outColor : SV_Target0
@@ -70,7 +90,9 @@ void HullPassFragment(
     }
 #endif
 
-    color.rgb = ClampExposed(inputData.preExposureMultiplier * BlendDistanceFog(color.rgb, input.positionCS));
+    // The distance along the pixel's ray: its view depth over the ray's cosine to the camera's forward axis.
+    float fogDist = LinearEyeDepth(input.positionCS.z, _ZBufferParams) / max(dot(-inputData.viewDirectionWS, -UNITY_MATRIX_V[2].xyz), 1e-4);
+    color.rgb = ClampExposed(inputData.preExposureMultiplier * GoF2RadialFog(color.rgb, fogDist));
 #if defined(_TRANSPARENT_RECEIVE_FOG)
     if (IsSurfaceTypeTransparent())
         color.rgb = MixVolumetricFog(color.rgb, color.a, _Blend, UseAlphaPremultiply(), input.positionCS);

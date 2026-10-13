@@ -55,6 +55,26 @@ Shader "GoF2/EmissiveCube"
             half _GoF2HullReflection;
             half3 _GoF2HullRimColor;
 
+            // Remake: the distance fog by the real distance to the camera, as the original (computeLinearFogFactor(eyeDist), the
+            // eye-to-vertex distance). URP's fog goes by the view depth (clip z), which is shorter for the same distance toward the
+            // screen's edges: a fogged station in the middle of the screen came out clear and close-looking at the edge, though the
+            // ship hadn't moved. unity_FogParams: x = density / sqrt(ln 2), y = density / ln 2, z = -1 / (end - start), w = end / (end - start).
+            half3 GoF2RadialFog(half3 color, float d)
+            {
+            #if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+                #if defined(FOG_LINEAR)
+                    half f = saturate(d * unity_FogParams.z + unity_FogParams.w);
+                #elif defined(FOG_EXP)
+                    half f = saturate(exp2(-unity_FogParams.y * d));
+                #else
+                    float x = unity_FogParams.x * d;
+                    half f = saturate(exp2(-x * x));
+                #endif
+                color = lerp(unity_FogColor.rgb, color, f);
+            #endif
+                return color;
+            }
+
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -117,7 +137,7 @@ Shader "GoF2/EmissiveCube"
                 half3 env = DecodeHDREnvironment(SAMPLE_TEXTURECUBE(unity_SpecCube0, samplerunity_SpecCube0, r), unity_SpecCube0_HDR);
                 color += (env * reflectivity + rim * reflectTex * _GoF2HullRimColor) * _GoF2HullReflection;
 
-                color = MixFog(color, i.fogFactor);
+                color = GoF2RadialFog(color, distance(i.positionWS, GetCameraPositionWS()));   // as GoF2/Hull
                 return half4(color, 1);
             }
             ENDHLSL

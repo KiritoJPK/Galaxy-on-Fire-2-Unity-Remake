@@ -111,6 +111,13 @@ namespace GoF2Remake.EditorTools
             a.flaresNastyMaterial = Mat("sky_supernova_flares_nasty", $"{T}/supernova/skyboxes/sn_skybox_015_flares_nasty.png", BlendMode.One, BlendMode.One, true, false);
             a.asteroidBelt = Prefab("main/skyboxes/skybox_asteroid_belt_alpha");
             a.asteroidBeltMaterial = Mat("sky_asteroid_belt", $"{T}/main/skyboxes/skybox_asteroid_belt_diffuse.png", BlendMode.SrcAlpha, BlendMode.OneMinusSrcAlpha, false, true);
+            // Remake: the belt's normal map and specular (material 27160, bump shader 28).
+            if (a.asteroidBeltMaterial != null)
+            {
+                a.asteroidBeltMaterial.SetTexture("_BumpMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{T}/main/skyboxes/skybox_asteroid_belt_normal_specular.png"));
+                a.asteroidBeltMaterial.SetTexture("_SpecMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{T}/main/skyboxes/skybox_asteroid_belt_metallic_smoothness.png"));
+                EditorUtility.SetDirty(a.asteroidBeltMaterial);
+            }
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();
             Debug.Log("GoF2: sky layers built");

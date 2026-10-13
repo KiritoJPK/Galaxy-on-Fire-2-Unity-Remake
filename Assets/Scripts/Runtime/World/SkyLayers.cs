@@ -46,19 +46,7 @@ namespace GoF2Remake.World
             if (a == null) { Debug.LogWarning($"SkyLayers: missing Resources/{SkyLayerAssets.ResourcePath}"); return; }
             int mission = Session.WorldIndex;
             bool supernova = layout.systemIndex == 27;
-
-            if (InPlanetRingOrbit(layout.stationIndex))
-            {
-                // Remake: the ring is a thin slab (its top and bottom faces 4.3 units apart, 76 under the camera): both faces
-                // drawn, the two copies of the bands sat a little apart and their alpha blend changed with the triangles'
-                // order (top first in some of the 64 segments, bottom first in others), short bright dashes along the
-                // rings at the segments' edges. Only the face toward the camera is drawn now.
-                var ring = Add(a.ringSky, a.ringSkyMaterial, RingQueue, 1f);
-                if (ring != null)
-                    foreach (var r in ring.GetComponentsInChildren<Renderer>(true))
-                        if (r.sharedMaterial != null) r.sharedMaterial.SetFloat("_Cull", (float)CullMode.Back);
-                PolarRing(ring);
-            }
+            if (InPlanetRingOrbit(layout.stationIndex)) AddRing(a);
             if (supernova && mission != 89 && mission < 158)
             {
                 var mat = mission < 106 ? a.flaresMaterial : a.flaresNastyMaterial;
@@ -81,19 +69,34 @@ namespace GoF2Remake.World
                 stormAnim = stormRoot != null ? stormRoot.GetComponentInChildren<PartAnimation>() : null;
                 if (stormRoot != null) stormRoot.rotation = RandomRotation();
             }
-            if (layout.systemIndex >= 24 && layout.systemIndex <= 26)
+            if (layout.systemIndex >= 24 && layout.systemIndex <= 26) AddBelt(layout, a);
+        }
+
+        void AddRing(SkyLayerAssets a)
+        {
+            // Remake: the ring is a thin slab (its top and bottom faces 4.3 units apart, 76 under the camera): both faces
+            // drawn, the two copies of the bands sat a little apart and their alpha blend changed with the triangles'
+            // order (top first in some of the 64 segments, bottom first in others), short bright dashes along the
+            // rings at the segments' edges. Only the face toward the camera is drawn now.
+            var ring = Add(a.ringSky, a.ringSkyMaterial, RingQueue, 1f);
+            if (ring != null)
+                foreach (var r in ring.GetComponentsInChildren<Renderer>(true))
+                    if (r.sharedMaterial != null) r.sharedMaterial.SetFloat("_Cull", (float)CullMode.Back);
+            PolarRing(ring);
+        }
+
+        void AddBelt(OrbitLayout layout, SkyLayerAssets a)
+        {
+            var belt = Add(a.asteroidBelt, a.asteroidBeltMaterial, BeltQueue, 1f);
+            if (belt != null)
             {
-                var belt = Add(a.asteroidBelt, a.asteroidBeltMaterial, BeltQueue, 1f);
-                if (belt != null)
-                {
-                    // Blend 8 + light 0: lit by LIGHT0 (toward the sun, clamp(15 * sun colour, 0, 2)) plus the sun-colour ambient.
-                    var block = new MaterialPropertyBlock();
-                    var c = layout.sunColor;
-                    block.SetVector("_LightDir", OrbitLayout.DirToUnity(layout.lightDirection).normalized);
-                    block.SetColor("_LightColor", new Color(Mathf.Clamp(15f * c.r, 0f, 2f), Mathf.Clamp(15f * c.g, 0f, 2f), Mathf.Clamp(15f * c.b, 0f, 2f)));
-                    block.SetColor("_Ambient", c);
-                    foreach (var r in belt.GetComponentsInChildren<Renderer>()) r.SetPropertyBlock(block);
-                }
+                // Blend 8 + light 0: lit by LIGHT0 (toward the sun, clamp(15 * sun colour, 0, 2)) plus the sun-colour ambient.
+                var block = new MaterialPropertyBlock();
+                var c = layout.sunColor;
+                block.SetVector("_LightDir", OrbitLayout.DirToUnity(layout.lightDirection).normalized);
+                block.SetColor("_LightColor", new Color(Mathf.Clamp(15f * c.r, 0f, 2f), Mathf.Clamp(15f * c.g, 0f, 2f), Mathf.Clamp(15f * c.b, 0f, 2f)));
+                block.SetColor("_Ambient", c);
+                foreach (var r in belt.GetComponentsInChildren<Renderer>()) r.SetPropertyBlock(block);
             }
         }
 
