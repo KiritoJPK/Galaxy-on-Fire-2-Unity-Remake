@@ -187,7 +187,16 @@ namespace GoF2Remake.World
             var go = Spawn(db, name, Vector3.zero, OrbitLayout.RotationToUnity(new Vector3(0f, Mathf.PI, 0f)), "Station", parent);
             // Remake: the station's opacity keys play like the engine's (the blinking lights of the Nivelian, Midorian, pirate,
             // Loma and Supernova-era stations, the Kaamo Club's lit panels and glows); they were left out, the lights stayed on.
-            if (go != null) foreach (var pa in go.GetComponentsInChildren<PartAnimation>(true)) pa.applyMaterialChannels = true;
+            if (go != null)
+                foreach (var pa in go.GetComponentsInChildren<PartAnimation>(true))
+                {
+                    pa.applyMaterialChannels = true;
+                    // Remake: the light layers (station_0xx_nivelian / _midorian_lights_add, station_pirates_lights_add, the Loma
+                    // stations' lights, sn_station_1xx_add) are no "_anim" models, so the import left them stopped (play off):
+                    // their blink keys never ran and the lights stayed on. PlayerStation::update advances them with the rest.
+                    string n = pa.gameObject.name;
+                    if (n.Contains("_lights_add") || n.EndsWith("_add") || n.EndsWith("_add(Clone)")) pa.play = true;
+                }
             // PlayerStation::update advances the station's animation every frame except at 101 and in the alien orbit: the
             // battlestation's arms hold their first frame there, or their last once step 78 unfolded them (the ctor's
             // Transform::Update(the length): station 0x65 from campaign 0x50 0x1473c2, the alien orbit after the Valkyrie
@@ -277,6 +286,11 @@ namespace GoF2Remake.World
         {
             if (!layout.hasJumpgate) return null;
             var go = Spawn(db, layout.JumpgateAssembly, layout.jumpgate, OrbitLayout.RotationToUnity(new Vector3(0f, Mathf.PI, 0f)), "Jumpgate", parent);
+            // Remake: the idle light layer's blink (`extra` keys) on every gate: jumpgate_nivelian_anim_add parts 0 / 2, the
+            // Midorian ring's 1-9 (only the Terran gate had it, PlayTerranGateRing).
+            if (go != null)
+                foreach (var pa in go.GetComponentsInChildren<PartAnimation>(true))
+                    if (pa.gameObject.name.EndsWith("_anim_add") && !pa.gameObject.name.EndsWith("_jump_anim_add")) pa.applyMaterialChannels = true;
             if (go != null && layout.JumpgateAssembly == TerranGate) PlayTerranGateRing(go);
             return go;
         }
