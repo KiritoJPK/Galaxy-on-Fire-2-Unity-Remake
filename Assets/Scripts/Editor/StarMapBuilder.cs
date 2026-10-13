@@ -45,6 +45,11 @@ namespace GoF2Remake.EditorTools
                 if (guid != null) a.sunMaterials[tex] = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
                 if (a.sunMaterials[tex] == null) Debug.LogWarning($"GoF2: no sun material for texture index {tex} (material {row.materialId})");
             }
+            // Remake: Ginoya (texture index 15, the supernova system) shows the supernova glow the add-on made for the map and
+            // never used: sn_map_sun_011's corner of sn_galaxymap_planets (UV 0.0039..0.248) through its additive material
+            // 27307 (its tiling / offset set to that corner), instead of sun_005's plane.
+            var supernova = AssetDatabase.LoadAssetAtPath<Material>($"{Root}/Materials/mat_27307_sn_galaxymap_planets.mat");
+            if (supernova != null && a.sunMaterials.Length > 15) a.sunMaterials[15] = supernova;
             a.khadorJump = AssetDatabase.LoadAssetAtPath<GameObject>($"{Root}/Prefabs/main/fx/khador_jump.prefab");
 
             a.selectSystem = Clip("SFX_STATION_MAINVIEW/Select_System_04.ogg");

@@ -27,8 +27,8 @@ Material:
     m_TexEnvs:
     - _MainTex:
         m_Texture: {fileID: 2800000, guid: 2d7f20779bd173146afff3a9a0102cbd, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
+        m_Scale: {x: 0.2441, y: 0.2441}
+        m_Offset: {x: 0.0039, y: 0.0039}
     - unity_Lightmaps:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
