@@ -6,6 +6,9 @@
 // it, a release over 3 px keeps turning x0.9 per 30 fps frame and stops at 1 px.
 // Used by the full-screen item window (ItemInfoWindow) and (remake, #82) the hangar's details panel, which also spins it
 // slowly while it isn't dragged (AutoSpin) and opens the item window on a click / tap (Clicked).
+// Remake: the camera isn't rolled (the original's -0.1 rad left the ships leaning left over the level floor), and the
+// item window's floor moves under the ship (FloorUnderShip): the centre of its inner ring below the turning axis, at the
+// ship's lowest point, so the ship stands on it like on a platform.
 
 using System;
 using GoF2Remake.Data;
@@ -30,8 +33,21 @@ namespace GoF2Remake.UI
         public bool Shown => model != null;
         /// <summary>The ship shown, -1 = none.</summary>
         public int Ship { get; private set; } = -1;
+        /// <summary>Remake: the floor glow is placed under the ship (the item window) instead of at its fixed place.</summary>
+        public bool FloorUnderShip;
+        /// <summary>Remake: the box keeps the rendered image's proportions (its height follows its width), like the item window.</summary>
+        public bool KeepAspect;
+        /// <summary>Remake (FloorUnderShip): the floor's height against the box's (0 = the stylesheet's).</summary>
+        public float FloorHeightRatio;
+        /// <summary>info_floor's inner ring centre: its height in the texture (0 = top).</summary>
+        const float FloorRingCentre = 0.355f;
 
-        readonly VisualElement image;
+        readonly VisualElement image, floorLeft, floorRight;
+        Vector3 footWorld;   // where the ship stands: under its turning axis, at its lowest point
+        bool hasFoot;
+        Camera cam;
+        readonly System.Collections.Generic.List<Material> previewMaterials = new System.Collections.Generic.List<Material>();
+        static Shader previewAdditive;
         readonly Vector3 stagePosition;
         readonly int rtWidth, rtHeight;
         readonly float framing;
@@ -53,9 +69,9 @@ namespace GoF2Remake.UI
             this.framing = framing;
             Element = new VisualElement();
             Element.AddToClassList("ship-preview");
-            var floorLeft = new VisualElement { pickingMode = PickingMode.Ignore };
+            floorLeft = new VisualElement { pickingMode = PickingMode.Ignore };
             floorLeft.AddToClassList("info-floor");
-            var floorRight = new VisualElement { pickingMode = PickingMode.Ignore };
+            floorRight = new VisualElement { pickingMode = PickingMode.Ignore };
             floorRight.AddToClassList("info-floor");
             floorRight.AddToClassList("info-floor--mirrored");
             var floor = Hud("info_floor");
@@ -96,6 +112,7 @@ namespace GoF2Remake.UI
             });
             Element.RegisterCallback<PointerCancelEvent>(e => { if (e.pointerId == pointer) EndDrag(); });
             Element.RegisterCallback<PointerCaptureOutEvent>(_ => pointer = -1);
+            Element.RegisterCallback<GeometryChangedEvent>(_ => { FitAspect(); FitTexture(); PlaceFloor(); });
             // Ticks itself while the panel updates (the fling and the spin).
             Element.schedule.Execute(Tick).Every(0);
             Element.style.display = DisplayStyle.None;
@@ -124,12 +141,13 @@ namespace GoF2Remake.UI
             go.GetComponent<AssembledObject>()?.SetPlayerVariant(true);
             foreach (var lg in go.GetComponentsInChildren<LODGroup>(true)) lg.ForceLOD(0);
             foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = PreviewLayer;
+            UsePreviewAdditive(go);
             model = go.transform;
             // The camera: (1362, 1690, -5257) game units at 1920 x 1080 -> Unity (x, y, -z) * 0.05, looking at the ship.
             var camGo = new GameObject("Ship preview camera");
             camGo.transform.SetParent(stage.transform, false);
             camGo.transform.localPosition = new Vector3(1362f, 1690f, 5257f) * M;
-            var cam = camGo.AddComponent<Camera>();
+            cam = camGo.AddComponent<Camera>();
             cam.cullingMask = 1 << PreviewLayer;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -146,7 +164,11 @@ namespace GoF2Remake.UI
             cam.farClipPlane = dist + radius * 4f;
             cam.nearClipPlane = Mathf.Max(0.1f, dist - radius * 2f);
             camGo.transform.LookAt(bounds.center);
-            camGo.transform.Rotate(0f, 0f, -0.1f * Mathf.Rad2Deg, Space.Self);
+            // Remake: no roll. The original turns its camera -0.1 rad about its view axis; here that leant every ship to the
+            // left of the level floor beneath it.
+            // Where the ship stands: below its turning axis (the model's origin, which the yaw keeps) at its lowest point.
+            footWorld = new Vector3(model.position.x, bounds.min.y, model.position.z);
+            hasFoot = true;
             rt = new RenderTexture(rtWidth, rtHeight, 24, RenderTextureFormat.ARGB32) { antiAliasing = Application.isMobilePlatform ? 2 : 4 };
             cam.targetTexture = rt;
             var lightGo = new GameObject("Ship preview light");
@@ -160,6 +182,105 @@ namespace GoF2Remake.UI
             yawPx = 260f;   // ListItemWindow: starts at 260 px
             flingPx = 0f;
             ApplyYaw();
+            FitTexture();
+            PlaceFloor();
+        }
+
+        /// <summary>Remake: the texture at the game's own resolution: as tall as the screen (1080 at 1080p, 2160 at 4K) and at
+        /// least twice the box's height in screen pixels, as wide as the box's proportions make it. The fixed 1268 x 636 one was stretched over the box (soft in the big view).
+        /// Same vertical field of view, so the ship keeps its size in the box; the UI scales it down, which keeps it sharp.</summary>
+        void FitTexture()
+        {
+            if (cam == null || rt == null) return;
+            float w = Element.resolvedStyle.width, h = Element.resolvedStyle.height;
+            if (float.IsNaN(w) || float.IsNaN(h) || w <= 0f || h <= 0f) return;
+            float ph = Mathf.Max(16f, Screen.height), pw;
+            // At least twice the box's height on screen: the UI's trilinear sampling then reads a mip level at or above the
+            // screen's own detail (a big box at only ~1.5x read half of it from the half-size level, the item window's view
+            // looked low-resolution).
+            float panelH = Element.panel != null ? Element.panel.visualTree.layout.height : float.NaN;
+            if (!float.IsNaN(panelH) && panelH > 0f) ph = Mathf.Max(ph, 2f * h * Screen.height / panelH);
+            pw = ph * w / h;
+            float fit = Mathf.Min(1f, 4096f / Mathf.Max(pw, ph));   // the texture size limit
+            int tw = Mathf.Max(16, Mathf.RoundToInt(pw * fit)), th = Mathf.Max(16, Mathf.RoundToInt(ph * fit));
+            int pwI = tw, phI = th;
+            if (Mathf.Abs(rt.width - pwI) <= 2 && Mathf.Abs(rt.height - phI) <= 2) return;
+            var old = rt;
+            // Mipmapped: shown smaller than it is, the UI samples a matching level instead of skipping pixels (no shimmer);
+            // the extra resolution is the anti-aliasing (MSAA can't be mipmapped).
+            rt = new RenderTexture(pwI, phI, 24, RenderTextureFormat.ARGB32) { useMipMap = true, autoGenerateMips = true, filterMode = FilterMode.Trilinear };
+            cam.targetTexture = rt;
+            cam.ResetAspect();
+            image.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
+            old.Release();
+            Object.Destroy(old);
+        }
+
+        /// <summary>Remake: the ship's additive lights (the Additive Shader Graph) drawn with GoF2/PreviewAdditive, which
+        /// leaves the texture's alpha to their brightness: the graph's alpha blend left each light's whole sprite in it, a
+        /// black star around the light once the UI laid the texture over the floor.</summary>
+        void UsePreviewAdditive(GameObject go)
+        {
+            if (previewAdditive == null) previewAdditive = Shader.Find("GoF2/PreviewAdditive");
+            if (previewAdditive == null) return;
+            foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                bool changed = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || m.shader == null || !m.shader.name.EndsWith("Additive")) continue;
+                    var pm = new Material(previewAdditive) { name = m.name + " (preview)", renderQueue = m.renderQueue };
+                    if (m.HasProperty("_MainTex")) { pm.SetTexture("_MainTex", m.GetTexture("_MainTex")); pm.SetTextureScale("_MainTex", m.GetTextureScale("_MainTex")); pm.SetTextureOffset("_MainTex", m.GetTextureOffset("_MainTex")); }
+                    if (m.HasProperty("_Color")) pm.SetColor("_Color", m.GetColor("_Color"));
+                    if (m.HasProperty("_Glow")) pm.SetFloat("_Glow", m.GetFloat("_Glow"));
+                    if (m.HasProperty("_UseVertexColor")) pm.SetFloat("_UseVertexColor", m.GetFloat("_UseVertexColor"));
+                    previewMaterials.Add(pm);
+                    mats[i] = pm;
+                    changed = true;
+                }
+                if (changed) r.sharedMaterials = mats;
+            }
+        }
+
+        /// <summary>Remake (KeepAspect): the height that keeps the rendered image's proportions at the box's width.</summary>
+        void FitAspect()
+        {
+            if (!KeepAspect) return;
+            float w = Element.resolvedStyle.width, h = Element.resolvedStyle.height;
+            if (float.IsNaN(w) || w <= 0f) return;
+            float want = Mathf.Round(w * rtHeight / rtWidth);
+            if (float.IsNaN(h) || Mathf.Abs(want - h) > 1f) Element.style.height = want;
+        }
+
+        /// <summary>Remake (FloorUnderShip): the floor's inner ring centre under the ship's foot, as the rendered image shows
+        /// it (scale-and-crop: the texture scaled to cover the box, centred). Otherwise the stylesheet's place.</summary>
+        void PlaceFloor()
+        {
+            if (!FloorUnderShip || model == null || !hasFoot || cam == null || rt == null) return;
+            var vp = cam.WorldToViewportPoint(footWorld);
+            if (vp.z <= 0f) return;
+            float w = Element.resolvedStyle.width, h = Element.resolvedStyle.height;
+            float floorH = floorLeft.resolvedStyle.height, floorW = floorLeft.resolvedStyle.width;
+            if (float.IsNaN(w) || float.IsNaN(h) || w <= 0f || h <= 0f) return;
+            if (FloorHeightRatio > 0f)
+            {
+                floorH = Mathf.Round(h * FloorHeightRatio);
+                floorLeft.style.height = floorH;
+                floorRight.style.height = floorH;
+            }
+            if (float.IsNaN(floorH) || floorH <= 0f) return;
+            float texW = rt.width, texH = rt.height;
+            float s = Mathf.Max(w / texW, h / texH);
+            float x = vp.x * texW * s - (texW * s - w) * 0.5f;
+            float y = (1f - vp.y) * texH * s - (texH * s - h) * 0.5f;
+            if (float.IsNaN(floorW) || floorW <= 0f) floorW = w * 0.5f;
+            float top = y - floorH * FloorRingCentre;
+            floorLeft.style.top = top;
+            floorRight.style.top = top;
+            floorLeft.style.left = x - floorW;
+            floorRight.style.left = x;
         }
 
         /// <summary>Takes the ship, its camera and texture away and hides the box.</summary>
@@ -171,6 +292,10 @@ namespace GoF2Remake.UI
             if (stage != null) Object.Destroy(stage);
             stage = null;
             model = null;
+            cam = null;
+            foreach (var m in previewMaterials) if (m != null) Object.Destroy(m);
+            previewMaterials.Clear();
+            hasFoot = false;
             Ship = -1;
             if (rt != null) { rt.Release(); Object.Destroy(rt); rt = null; }
         }

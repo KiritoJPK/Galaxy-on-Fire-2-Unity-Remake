@@ -108,6 +108,48 @@
 
 .hangar-list > .unity-scroll-view__content-and-vertical-scroll-container > .unity-scroll-view__content-viewport > .unity-scroll-view__content-container {
     padding-bottom: 12px;
+    padding-right: 14px;   /* Remake: the rows clear of the scrollbar along the right edge (list-bar) */
+}
+
+/* Remake: a blueprint ingredient's amount in the blueprint ("BLUEPRINT" over "12 / 40 t") at the row's right edge. */
+.row-bp-amount {
+    flex-shrink: 0;
+    margin-left: 8px;
+    align-items: flex-end;
+}
+
+.row-bp-amount-label {
+    font-size: 15px;
+    letter-spacing: 2px;
+    color: var(--gof-text-dim);
+}
+
+.row-bp-amount-value {
+    font-size: 22px;
+    color: var(--gof-text);
+}
+
+/* Remake: the list's scrollbar (HangarWindow.UpdateListBar; Unity's own scrollers are hidden, GoF2Common): a slim track
+   along the list's right edge and a handle to drag with the mouse. */
+.list-bar {
+    position: absolute;
+    width: 12px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.list-bar-thumb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    min-height: 30px;
+    background-color: rgba(62, 200, 255, 0.45);
+    border-radius: 6px;
+}
+
+.can-hover .list-bar-thumb:hover,
+.list-bar-thumb--dragging {
+    background-color: var(--gof-cyan);
 }
 
 .list-header {
@@ -153,6 +195,11 @@
     margin-left: 34px;
 }
 
+/* Remake: a shop row the player has in the hold: the description title's blue, in its place (no outline or indent). */
+.list-row--owned {
+    background-color: rgba(33, 152, 255, 0.12);
+}
+
 .list-row--cargo .row-icon {
     opacity: 0.75;
 }
@@ -166,6 +213,35 @@
     background-color: var(--gof-cyan-faint);
     border-left-color: var(--gof-amber);
 }
+
+/* Remake: Autocomplete as a button centred in the list (no row look of its own): after the rows' hover / selected
+   backgrounds, which drew the grey box around it. */
+.list-row--autocomplete,
+.list-row--autocomplete.list-row--selected,
+.can-hover .list-row--autocomplete:hover,
+.can-hover .list-row--autocomplete.list-row--selected:hover {
+    height: auto;
+    padding: 10px 0;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+}
+
+.list-row--autocomplete .row-autocomplete {
+    margin: 0;
+    padding: 12px 28px;
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+.list-row--selected .row-autocomplete {
+    background-color: rgba(255, 166, 48, 0.38);
+}
+
+.list-row--autocomplete .row-autocomplete--expensive {
+    color: #FF6B5E;
+}
+
 
 .row-icon {
     width: 148px;
@@ -238,6 +314,63 @@
     -unity-text-align: middle-right;
 }
 
+/* Remake: the price beside the name; a shop item's amounts at the row's edges (station left, ship right). */
+.row-name-line {
+    flex-direction: row;
+    align-items: center;
+}
+
+.row-name-line .row-name {
+    flex-shrink: 1;
+}
+
+.row-price-sep {
+    flex-shrink: 0;
+    margin-left: 12px;
+    font-size: 22px;
+    color: var(--gof-text-dim);
+}
+
+.row-price--inline {
+    min-width: 0;
+    flex-shrink: 0;
+    margin-left: 12px;
+    font-size: 22px;
+    -unity-text-align: middle-left;
+}
+
+.row-qty {
+    width: 76px;
+    flex-shrink: 0;
+    font-size: 22px;
+    color: var(--gof-text);
+}
+
+.row-qty--station {
+    margin-right: 6px;
+    -unity-text-align: middle-left;
+}
+
+.row-qty--ship {
+    margin-left: 6px;
+    -unity-text-align: middle-right;
+}
+
+/* Remake: an ingredient's SOLD HERE | amount badge opens the shop on it. */
+.can-hover .row-badge--link:hover {
+    background-color: #A6F08F;
+}
+
+.row-sub--badges .row-badge {
+    margin-left: 0;
+    margin-right: 8px;
+}
+
+.row-sub--trailing .row-badge {
+    margin-left: 8px;
+    margin-right: 0;
+}
+
 .row-price--expensive {
     color: #FF6B5E;
 }
@@ -261,11 +394,54 @@
     -unity-background-scale-mode: scale-to-fit;
 }
 
-/* Remake (#82): a ship's details turn it in 3D under the name (ShipPreview; a click opens the item window). */
-.detail-preview {
-    height: 230px;
+/* Remake: a ship's stats (left) beside its 3D view (right, half the panel). */
+.detail-preview-row {
+    flex-direction: row;
+    align-items: flex-start;
     margin-top: 10px;
     flex-shrink: 0;
+}
+
+.detail-preview-side {
+    width: 50%;
+    flex-shrink: 0;
+    align-self: stretch;
+}
+
+/* Remake: the space under a ship's view; its buttons centred in it both ways. */
+.detail-action-area {
+    flex-grow: 1;
+    justify-content: center;
+    align-items: center;
+}
+
+/* Remake: the item window's hint in place of a ship's name and race, as a title bar like "Description". */
+.detail-help {
+    white-space: normal;
+}
+
+/* Remake: a ship's buy / use buttons centred under its view, as wide as their text (FitActions wraps the price). */
+.detail-action--side {
+    align-self: center;
+    margin-top: 0;
+    max-width: 100%;
+    white-space: normal;
+    -unity-text-align: middle-center;
+}
+
+.detail-preview-stats {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    margin-right: 16px;
+}
+
+/* Remake (#82): a ship's details turn it in 3D under the name (ShipPreview; a click opens the item window).
+   Remake: opaque like the item window's box; its height follows its width (ShipPreview.KeepAspect). */
+.detail-preview {
+    height: 230px;
+    flex-shrink: 0;
+    background-color: rgb(4, 16, 32);
     border-width: 1px;
     border-color: rgba(33, 152, 255, 0.3);
     overflow: hidden;
@@ -343,8 +519,9 @@
 }
 
 .trade-arrow {
-    width: 116px;
+    /* Remake: as wide as its text (was 116px; "COMPRAR" didn't fit). */
     height: 64px;
+    padding: 0 18px;
     margin: 0 8px;
     align-items: center;
     justify-content: center;
@@ -353,6 +530,20 @@
     border-color: var(--gof-cyan-soft);
     border-radius: 4px;
     transition-duration: 0.1s;
+}
+
+/* Remake: a blueprint ingredient's sides as wide as their text (the fixed 110px broke "12 / 40 t" and ADD in two),
+   up to half the box before they wrap. */
+.trade-box--ingredient .trade-side {
+    width: auto;
+    max-width: 50%;
+    flex-shrink: 0;
+}
+
+/* Remake: a blueprint ingredient's ADD, under the blueprint's amount (right side). */
+.trade-arrow--under {
+    height: 48px;
+    margin: 8px 0 0 0;
 }
 
 .trade-arrow--buy {
@@ -401,8 +592,25 @@
     border-radius: 2px;
 }
 
-.trade-all:first-child {
+/* Remake: USS has no :first-child, so Sell all kept the 8px left margin and sat off to the right: the gap is split
+   between the two by name instead. */
+#sellAllButton {
     margin-left: 0;
+    margin-right: 4px;
+}
+
+#buyAllButton {
+    margin-left: 4px;
+}
+
+/* Remake: the hold-to-confirm bar filling the button (HoldToConfirm). */
+.trade-all-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background-color: rgba(255, 166, 48, 0.35);
 }
 
 .trade-all--buy {
@@ -496,6 +704,29 @@
     margin-top: 16px;
 }
 
+/* Remake: any other item's stats (left) beside its description (right), filling the panel's bottom. */
+.detail-item-row {
+    flex-grow: 1;
+    flex-direction: row;
+    margin-top: 16px;
+}
+
+.detail-item-stats {
+    flex-grow: 1;
+    flex-basis: 0;
+    margin-right: 16px;
+}
+
+.detail-item-right {
+    flex-grow: 1;
+    flex-basis: 0;
+}
+
+.detail-scroll--side {
+    flex-grow: 1;
+    margin-top: 0;
+}
+
 .stat-row {
     flex-direction: row;
     justify-content: space-between;
@@ -560,6 +791,17 @@
     border-top-color: var(--gof-line);
 }
 
+/* Remake: the hold's load (left) and the credits (right) each in a box of their own, in the footer's corners on every tab. */
+.footer-cargo,
+.footer-credits {
+    padding: 8px 18px;
+    background-color: rgba(4, 10, 18, 0.6);
+    border-width: 2px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+    -unity-text-align: middle-center;
+}
+
 .footer-cargo {
     font-size: 23px;
     letter-spacing: 1px;
@@ -568,11 +810,13 @@
 
 .footer-cargo--over {
     color: #FF6B5E;
+    border-color: #FF6B5E;
 }
 
 .footer-credits {
     font-size: 25px;
     color: var(--gof-amber);
+    border-color: var(--gof-amber);
 }
 
 /* ---- messages (sold, mounted, not enough credits ...) ------------------------------------ */
@@ -832,6 +1076,30 @@
     margin-top: 6px;
 }
 
+/* Remake: the ship alone in the box (ItemInfoWindow.ShowShipView, a click on the hangar details' view). */
+.info-box--view .info-header,
+.info-box--view .info-help,
+.info-box--view .info-left,
+.info-box--view .info-desc-title,
+.info-box--view .info-text-scroll {
+    display: none;
+}
+
+.info-box--view .info-right {
+    width: 100%;
+}
+
+.info-box--view .info-preview {
+    flex-grow: 1;
+    height: auto;
+    margin-bottom: 0;
+}
+
+/* Remake: the hangar details' description title (the item window's), under a ship's view. */
+.detail-desc-title {
+    margin-top: 4px;
+}
+
 .info-text {
     font-size: 21px;
     white-space: normal;
@@ -846,7 +1114,19 @@
 }
 
 .info-back {
-    min-width: 220px;
-    height: 54px;
+    /* Remake: as wide and tall as its text (was min-width 220px, height 54px). */
     font-size: 24px;
+    /* Remake: drawn like the hangar's close button (outline, amber on hover). */
+    padding: 10px 20px;
+    letter-spacing: 3px;
+    color: var(--gof-text);
+    background-color: rgba(4, 10, 18, 0.55);
+    border-width: 2px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+}
+
+.can-hover .info-back:hover {
+    border-color: var(--gof-amber);
+    color: #FFFFFF;
 }

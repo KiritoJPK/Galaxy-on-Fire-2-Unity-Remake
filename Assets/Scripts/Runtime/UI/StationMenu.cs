@@ -2276,11 +2276,8 @@ namespace GoF2Remake.UI
                     hangarWindow.Action();
                 else if ((kb != null && kb.xKey.wasPressedThisFrame) || (pad != null && pad.buttonWest.wasPressedThisFrame))
                     hangarWindow.SecondaryAction();   // Sell a stored hull (Kaamo Club)
-                // Remake: LT / RT = Sell all / Buy all (Store all / Take all), the keyboard's Shift + left / right.
-                else if (pad != null && pad.leftTrigger.wasPressedThisFrame)
-                    hangarWindow.TradeAll(-1);
-                else if (pad != null && pad.rightTrigger.wasPressedThisFrame)
-                    hangarWindow.TradeAll(1);
+                // Remake: LT / RT = Sell all / Buy all (Store all / Take all), the keyboard's Shift + left / right: held for a
+                // second, like the buttons (HangarWindow.Update polls them).
                 else if ((kb != null && kb.qKey.wasPressedThisFrame) || (pad != null && pad.leftShoulder.wasPressedThisFrame))
                 {
                     Play(buttonPush);

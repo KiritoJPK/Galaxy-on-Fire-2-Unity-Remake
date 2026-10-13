@@ -54,6 +54,9 @@ namespace GoF2Remake.UI
         readonly StationLevel level;
         readonly VisualElement window, details, detailIcon, detailStats, tradeBox, sellButton, buyButton, tradeAllRow;
         readonly Button sellAllButton, buyAllButton;
+        /// <summary>Remake: where the buy arrow sits in the trade box (an ingredient moves it under the blueprint's amount).</summary>
+        readonly VisualElement buyHome;
+        readonly int buyHomeIndex;
         readonly ScrollView list, detailScroll;
         readonly VisualElement detailMods = ItemInfo.NewModBlock();   // a ship's Kaamo Club mods, under its description
         readonly Label detailName, detailSub, detailText, tradeStock, tradeCargo, tradeMounted, tradePrice, cargoLabel, creditsLabel, tradeStockLabel, tradeCargoLabel, sellLabel, buyLabel;
@@ -67,6 +70,13 @@ namespace GoF2Remake.UI
         Hangar hangar;
         Row selected;
         Tab tab = Tab.Shop;   // HangarWindow's static lastTab starts at 1 (Shop)
+        // Remake: each tab keeps its own scroll and selected row while the window is open (switching tabs carried the list's
+        // scroll over to the other tab, opened part-way down); forgotten on Open.
+        readonly Dictionary<Tab, float> tabScroll = new Dictionary<Tab, float>();
+        readonly Dictionary<Tab, Row> tabSelected = new Dictionary<Tab, Row>();
+        readonly Dictionary<Tab, int> tabSelectedIndex = new Dictionary<Tab, int>();
+        float? pendingScroll;
+        int? pendingKeepIndex;
 
         // Held trade arrow or key (HangarWindow::update 0x172626); heldPointer -2 = a key / the D-pad.
         int heldDirection, heldPointer = -1;
@@ -85,6 +95,18 @@ namespace GoF2Remake.UI
             this.level = level;
             window = root.Q("hangarWindow");
             list = root.Q<ScrollView>("hangarList");
+            // Remake: a scrollbar along the list's right edge, outside the list (its DragScroll takes the list's own presses).
+            listBar = new VisualElement();
+            listBar.AddToClassList("list-bar");
+            listThumb = new VisualElement();
+            listThumb.AddToClassList("list-bar-thumb");
+            listBar.Add(listThumb);
+            list.parent.Add(listBar);
+            listBar.RegisterCallback<PointerDownEvent>(OnListBarDown);
+            listBar.RegisterCallback<PointerMoveEvent>(OnListBarMove);
+            listBar.RegisterCallback<PointerUpEvent>(OnListBarUp);
+            listBar.RegisterCallback<PointerCaptureOutEvent>(_ => { listBarPointer = -1; listThumb.RemoveFromClassList("list-bar-thumb--dragging"); });
+            listBar.schedule.Execute(UpdateListBar).Every(16);
             details = root.Q("hangarDetails");
             detailIcon = root.Q("detailIcon");
             detailStats = root.Q("detailStats");
@@ -95,6 +117,8 @@ namespace GoF2Remake.UI
             tradeBox = root.Q("tradeBox");
             sellButton = root.Q("sellButton");
             buyButton = root.Q("buyButton");
+            buyHome = buyButton.parent;
+            buyHomeIndex = buyHome.IndexOf(buyButton);
             tradeAllRow = root.Q("tradeAllRow");
             sellAllButton = root.Q<Button>("sellAllButton");
             buyAllButton = root.Q<Button>("buyAllButton");
@@ -128,26 +152,94 @@ namespace GoF2Remake.UI
             if (actionButton2 != null) actionButton2.clicked += SecondaryAction;
             HookArrow(sellButton, -1);
             HookArrow(buyButton, 1);
-            if (sellAllButton != null) { sellAllButton.focusable = false; sellAllButton.clicked += () => TradeAll(-1); }
-            if (buyAllButton != null) { buyAllButton.focusable = false; buyAllButton.clicked += () => TradeAll(1); }
+            // Remake: Sell all / Buy all are held for a second (a bar fills the button) instead of a click: one slip of the
+            // pointer emptied the hold or the account.
+            if (sellAllButton != null) { sellAllButton.focusable = false; sellAllFill = HoldToConfirm(sellAllButton, -1); }
+            if (buyAllButton != null) { buyAllButton.focusable = false; buyAllFill = HoldToConfirm(buyAllButton, 1); }
             // Remake: with a controller the buttons show their triggers (LT / RT, StationMenu), placed left of the text.
             AddPadGlyph(sellAllButton, PadButton.LeftTrigger);
             AddPadGlyph(buyAllButton, PadButton.RightTrigger);
             foreach (var b in new VisualElement[] { tabShip, tabShop, tabBlueprints, actionButton, actionButton2 }) if (b != null) b.focusable = false;
             list.focusable = detailScroll.focusable = false;
             detailText.parent?.Insert(detailText.parent.IndexOf(detailText) + 1, detailMods);
+            // Remake: a ship's description under its view gets the item window's title bar (280 "Description").
+            detailDescTitle = new Label { pickingMode = PickingMode.Ignore };
+            detailDescTitle.AddToClassList("info-desc-title");
+            detailDescTitle.AddToClassList("gof-semibold");
+            detailDescTitle.AddToClassList("detail-desc-title");
+            detailDescTitle.style.display = DisplayStyle.None;
+            detailText.parent?.Insert(detailText.parent.IndexOf(detailText), detailDescTitle);
             // Remake (#82): a ship's details show it turning in 3D under the name (the item window's view, which a click /
             // tap on it still opens, as "i" does); the shop icon gives it the room.
+            // Remake: a row under the name, the ship's stats on the left and its view on the right (half the panel).
             var head = detailIcon.parent;
-            head.parent.Insert(head.parent.IndexOf(head) + 1, shipPreview.Element);
+            previewRow = new VisualElement();
+            previewRow.AddToClassList("detail-preview-row");
+            previewStats = new VisualElement { pickingMode = PickingMode.Ignore };
+            previewStats.AddToClassList("detail-preview-stats");
+            previewRow.Add(previewStats);
+            // Remake: the view's column, with a ship's buy / use buttons centred under it.
+            previewSide = new VisualElement();
+            previewSide.AddToClassList("detail-preview-side");
+            previewSide.Add(shipPreview.Element);
+            actionArea = new VisualElement();
+            actionArea.AddToClassList("detail-action-area");
+            previewSide.Add(actionArea);
+            // Remake: for a ship the head shows the item window's hint (643) instead of its name and race, drawn like the
+            // description's title bar.
+            detailHelp = new Label { pickingMode = PickingMode.Ignore };
+            detailHelp.AddToClassList("info-desc-title");
+            detailHelp.AddToClassList("gof-semibold");
+            detailHelp.AddToClassList("detail-help");
+            detailHelp.style.display = DisplayStyle.None;
+            detailName.parent?.Add(detailHelp);
+            previewSide.RegisterCallback<GeometryChangedEvent>(_ => FitActions());
+            previewRow.Add(previewSide);
+            previewRow.style.display = DisplayStyle.None;
+            head.parent.Insert(head.parent.IndexOf(head) + 1, previewRow);
+            // Remake: any other item's stats (left) beside its description (right), at the bottom where the description was.
+            detailsPanel = detailScroll.parent;
+            itemRow = new VisualElement();
+            itemRow.AddToClassList("detail-item-row");
+            itemStats = new ScrollView();
+            itemStats.AddToClassList("detail-item-stats");
+            itemStats.focusable = false;
+            itemRow.Add(itemStats);
+            // Remake: the right half: the description, then the item's action (Mount / Demount / Edit ...) under all of it.
+            itemRight = new VisualElement();
+            itemRight.AddToClassList("detail-item-right");
+            itemRow.Add(itemRight);
+            itemRow.style.display = DisplayStyle.None;
+            detailsPanel?.Add(itemRow);
             shipPreview.Element.AddToClassList("detail-preview");
+            // Remake: framed like the item window's view (its proportions, distance and floor under the ship).
+            shipPreview.KeepAspect = true;
+            shipPreview.FloorUnderShip = true;
+            shipPreview.FloorHeightRatio = 160f / 318f;   // the item window's floor against its box
             shipPreview.AutoSpin = 1.2f;   // 0.3 rad/s
-            shipPreview.Clicked += OpenInfo;
+            shipPreview.Clicked += OpenShipView;   // Remake: the ship alone, big (the "i" button still opens the full info)
             shipPreview.Hide();
         }
 
         /// <summary>The details panel's turning ship (a stage of its own beside the item window's).</summary>
-        readonly ShipPreview shipPreview = new ShipPreview(new Vector3(0f, -24000f, 0f), 1400, 460, 0.6f);
+        readonly ShipPreview shipPreview = new ShipPreview(new Vector3(0f, -24000f, 0f), 1268, 636, 0.9f);   // Remake: the item window's view (was 1400 x 460, 0.6)
+        /// <summary>Remake: the ship's stats (left) beside its view (right).</summary>
+        readonly VisualElement previewRow, previewStats, previewSide, actionArea;
+        readonly Label detailHelp;
+        readonly Label detailDescTitle;
+        /// <summary>Remake: the details panel; any other item's row of stats (left) and description (right).</summary>
+        readonly VisualElement detailsPanel, itemRow;
+        readonly ScrollView itemStats;
+        readonly VisualElement itemRight;
+
+        /// <summary>Remake: a click / tap on the turning ship shows it alone in the item window's box.</summary>
+        void OpenShipView()
+        {
+            int ship = PreviewShip();
+            if (ship < 0 || menu.InfoWindow == null) return;
+            menu.InfoWindow.ShowShipView(level.Database, ship);
+            menu.PlayClip(Flight.CombatAudio.Load()?.buttonInfo);
+        }
 
         /// <summary>The ship the selected row shows in 3D (a ship row or a mod's ship blueprint), -1 = the icon.</summary>
         int PreviewShip()
@@ -163,6 +255,42 @@ namespace GoF2Remake.UI
             int ship = PreviewShip();
             if (ship >= 0) shipPreview.Show(level.Database, ship); else shipPreview.Hide();
             detailIcon.style.display = shipPreview.Shown ? DisplayStyle.None : DisplayStyle.Flex;
+            // Remake: a ship's stats sit beside its view and its description right under them, above the trade / buy
+            // controls; other items keep both at the bottom.
+            bool ship3d = shipPreview.Shown;
+            previewRow.style.display = ship3d ? DisplayStyle.Flex : DisplayStyle.None;
+            detailDescTitle.text = Localization.Get(280).ToUpperInvariant();
+            detailDescTitle.style.display = DisplayStyle.Flex;
+            detailHelp.text = Localization.Get(643).ToUpperInvariant();
+            if (detailHelp.parent != null) detailHelp.parent.style.marginLeft = ship3d ? new StyleLength(0f) : new StyleLength(StyleKeyword.Null);   // flush with the title below
+            detailHelp.style.display = ship3d ? DisplayStyle.Flex : DisplayStyle.None;
+            detailName.style.display = ship3d ? DisplayStyle.None : DisplayStyle.Flex;
+            detailSub.style.display = ship3d ? DisplayStyle.None : DisplayStyle.Flex;
+            // Remake: the stats beside the ship's view, or beside any other item's description (left of it).
+            var statsHome = ship3d ? previewStats : itemStats.contentContainer;
+            if (detailStats.parent != statsHome) statsHome.Add(detailStats);
+            var panel = detailsPanel;
+            if (panel != null)
+            {
+                // The description: under the ship's row, or the right half of the item's row at the bottom.
+                if (ship3d)
+                {
+                    int at = panel.IndexOf(previewRow) + 1;
+                    if (detailScroll.parent != panel || panel.IndexOf(detailScroll) != at) panel.Insert(at, detailScroll);
+                }
+                else if (detailScroll.parent != itemRight) itemRight.Insert(0, detailScroll);
+                itemRow.style.display = ship3d ? DisplayStyle.None : DisplayStyle.Flex;
+                detailScroll.EnableInClassList("detail-scroll--side", !ship3d);
+                // The action buttons: centred in the space under the ship's view, else back above the item's row.
+                foreach (var b in new[] { actionButton, actionButton2 })
+                {
+                    if (b == null) continue;
+                    if (ship3d && b.parent != actionArea) actionArea.Add(b);
+                    else if (!ship3d && b.parent != itemRight) itemRight.Add(b);
+                    b.EnableInClassList("detail-action--side", ship3d);
+                }
+            }
+            FitActions();
         }
 
         // ---- open / close ------------------------------------------------------------------------------------
@@ -173,6 +301,9 @@ namespace GoF2Remake.UI
             hangar = new Hangar(level.Database, level.Stock);   // prices are recomputed on every open, like the original
             tabShop.text = Localization.Get(hangar.Storage ? 186 : 185).ToUpperInvariant();   // "Store" at the owned club
             selected = null;
+            tabScroll.Clear();
+            tabSelected.Clear();
+            tabSelectedIndex.Clear();
             Rebuild();
         }
 
@@ -239,11 +370,97 @@ namespace GoF2Remake.UI
             if (tab == t && rows.Count > 0 && editing < 0) return;
             if (HasPending) { Commit(() => SetTab(t)); return; }
             AutoEquip();
+            if (editing < 0)   // Remake: this tab's place
+            {
+                tabScroll[tab] = list.scrollOffset.y;
+                tabSelected[tab] = selected;
+                tabSelectedIndex[tab] = selected != null ? rows.IndexOf(selected) : -1;
+            }
             tab = t;
             editing = -1;
-            selected = null;
+            // Remake: the new tab where it was left (its first visit: the top), not at the old tab's scroll.
+            selected = tabSelected.TryGetValue(t, out var keepRow) ? keepRow : null;
+            pendingScroll = tabScroll.TryGetValue(t, out float keepScroll) ? keepScroll : 0f;
+            // Its row gone meanwhile (the last unit sold or bought): the nearest one, as within a tab (same category).
+            pendingKeepIndex = tabSelectedIndex.TryGetValue(t, out int keepIndexOfTab) ? keepIndexOfTab : -1;
             CatchUpStock();
             Rebuild();
+        }
+
+        /// <summary>Remake: an ingredient's SOLD HERE badge: the Shop tab on that item (the blueprint's pending units are
+        /// committed first, as on any tab switch).</summary>
+        int focusShopItem = -1;
+        void GoToShopItem(int item)
+        {
+            focusShopItem = item;
+            SetTab(Tab.Shop);
+        }
+
+        // ---- the list's scrollbar (remake) ----
+        readonly VisualElement listBar, listThumb;
+        int listBarPointer = -1;
+        float listBarGrab;   // where on the handle it was grabbed (panel units from its top)
+
+        float ListScrollMax => Mathf.Max(0f, list.contentContainer.layout.height - list.contentViewport.layout.height);
+
+        /// <summary>Along the list's right edge; the handle's size and place follow the list's scroll (hidden when it fits).</summary>
+        void UpdateListBar()
+        {
+            var lr = list.layout;
+            float content = list.contentContainer.layout.height, view = list.contentViewport.layout.height;
+            if (!IsOpen || float.IsNaN(lr.height) || float.IsNaN(content) || float.IsNaN(view) || content <= view + 1f)
+            {
+                listBar.style.display = DisplayStyle.None;
+                return;
+            }
+            listBar.style.display = DisplayStyle.Flex;
+            listBar.style.left = lr.xMax - 14f;
+            listBar.style.top = lr.y + 4f;
+            listBar.style.height = lr.height - 8f;
+            float track = lr.height - 8f;
+            float thumb = Mathf.Max(30f, track * view / content);
+            float t = Mathf.Clamp01(list.scrollOffset.y / Mathf.Max(1f, ListScrollMax));
+            listThumb.style.height = thumb;
+            listThumb.style.top = t * (track - thumb);
+        }
+
+        void OnListBarDown(PointerDownEvent e)
+        {
+            if (listBarPointer >= 0) return;
+            listBarPointer = e.pointerId;
+            listBar.CapturePointer(listBarPointer);
+            listThumb.AddToClassList("list-bar-thumb--dragging");
+            float y = e.localPosition.y, top = listThumb.layout.y, h = listThumb.layout.height;
+            // On the handle: drag it from where it was grabbed; on the track: the handle's middle jumps there.
+            listBarGrab = y >= top && y <= top + h ? y - top : h * 0.5f;
+            ScrollListTo(y);
+            e.StopPropagation();
+        }
+
+        void OnListBarMove(PointerMoveEvent e)
+        {
+            if (e.pointerId != listBarPointer) return;
+            ScrollListTo(e.localPosition.y);
+            e.StopPropagation();
+        }
+
+        void OnListBarUp(PointerUpEvent e)
+        {
+            if (e.pointerId != listBarPointer) return;
+            if (listBar.HasPointerCapture(listBarPointer)) listBar.ReleasePointer(listBarPointer);
+            listBarPointer = -1;
+            listThumb.RemoveFromClassList("list-bar-thumb--dragging");
+            e.StopPropagation();
+        }
+
+        /// <summary>The list scrolled so the handle's grabbed point is at 'y' on the track.</summary>
+        void ScrollListTo(float y)
+        {
+            float track = listBar.layout.height, thumb = listThumb.layout.height;
+            if (float.IsNaN(track) || track - thumb <= 0f) return;
+            float t = Mathf.Clamp01((y - listBarGrab) / (track - thumb));
+            list.scrollOffset = new Vector2(list.scrollOffset.x, t * ListScrollMax);
+            UpdateListBar();
         }
 
         public void NextTab() => SetTab(tab == Tab.Ship ? Tab.Shop : tab == Tab.Shop ? Tab.Blueprints : Tab.Ship);
@@ -258,8 +475,10 @@ namespace GoF2Remake.UI
             tabShop.EnableInClassList("hangar-tab--active", tab == Tab.Shop);
             tabBlueprints.EnableInClassList("hangar-tab--active", tab == Tab.Blueprints);
             var keep = selected;
-            int keepIndex = keep != null ? rows.IndexOf(keep) : -1;
-            float scroll = list.scrollOffset.y;
+            int keepIndex = pendingKeepIndex ?? (keep != null ? rows.IndexOf(keep) : -1);
+            pendingKeepIndex = null;
+            float scroll = pendingScroll ?? list.scrollOffset.y;
+            pendingScroll = null;
             rows.Clear();
             list.Clear();
             string T(int id) => Localization.Get(id).ToUpperInvariant();
@@ -337,6 +556,20 @@ namespace GoF2Remake.UI
             // The same row again; when it is gone (its last unit bought or sold) the row that took its place, or the one
             // before it at the end of the list, so the list stays where it was instead of jumping to the top.
             selected = rows.FirstOrDefault(r => r.Same(keep)) ?? NearestSelectable(keepIndex) ?? rows.FirstOrDefault(r => r.Selectable);
+            // Remake: the shop opened from an ingredient's SOLD HERE badge lands on that item.
+            if (focusShopItem >= 0 && tab == Tab.Shop)
+            {
+                var focus = rows.FirstOrDefault(r => r.kind == RowKind.ShopItem && r.item == focusShopItem);
+                focusShopItem = -1;
+                if (focus != null)
+                {
+                    selected = focus;
+                    // Scrolled to once its row is laid out (the list's scroll below runs before that on a fresh list).
+                    EventCallback<GeometryChangedEvent> onLaidOut = null;
+                    onLaidOut = _ => { focus.element.UnregisterCallback(onLaidOut); if (selected == focus) ScrollToSelected(); };
+                    focus.element.RegisterCallback(onLaidOut);
+                }
+            }
             foreach (var r in rows) r.element.EnableInClassList("list-row--selected", r == selected);
             list.schedule.Execute(() => { list.scrollOffset = new Vector2(0f, scroll); ScrollToSelected(); });
             ShowDetails();
@@ -370,7 +603,7 @@ namespace GoF2Remake.UI
             var db = level.Database;
             var e = new VisualElement();
             e.AddToClassList("list-row");
-            if (row.kind == RowKind.CargoItem) e.AddToClassList("list-row--cargo");
+            // Remake: the Ship tab's hold items in the plain grey (were outlined and indented).
             if (row.kind == RowKind.Slot && row.equipment >= 0) e.AddToClassList("list-row--mounted");   // remake: tinted, a cyan edge
             var icon = new VisualElement { pickingMode = PickingMode.Ignore };
             icon.AddToClassList("row-icon");
@@ -387,6 +620,7 @@ namespace GoF2Remake.UI
             price.AddToClassList("gof-semibold");
 
             Texture2D tex = null;
+            VisualElement bpAmount = null;   // Remake: an ingredient's blueprint amount, at the row's right edge
             switch (row.kind)
             {
                 case RowKind.ShopItem:
@@ -400,11 +634,12 @@ namespace GoF2Remake.UI
                     // so their own goods stand out from the station's.
                     if (hangar.CargoOf(row.item) > 0)
                     {
-                        e.AddToClassList("list-row--cargo");
+                        e.AddToClassList("list-row--owned");   // Remake: tinted blue in place (the cargo outline shifted it right)
                         sub.Add(Badge(Localization.Extra("shopInCargo", "IN CARGO"), "row-badge--cargo"));
                     }
-                    // The trade mode's two amounts with their labels (136 "Station", 183 "Ship"), on every row.
-                    subText.text = $"{ItemInfo.Category(it)}  ·  {Localization.Get(136)} {hangar.StockOf(row.item)} t  |  {Localization.Get(183)} {hangar.CargoOf(row.item)} t";
+                    // The trade mode's two amounts: Remake, the station's at the row's left edge and the ship's at its right
+                    // (the original's columns), under the name only the category.
+                    subText.text = ItemInfo.Category(it);
                     int mountedUnits = hangar.MountedOf(row.item);
                     if (mountedUnits > 0) subText.text += "  " + MountedNote(mountedUnits);
                     if (hangar.Storage) break;   // the storage draws no prices
@@ -430,7 +665,9 @@ namespace GoF2Remake.UI
                     name.text = ItemInfo.ShipName(row.ship);
                     subText.text = ItemInfo.ShipRaceText(row.ship) + (hangar.Stock.ModsOf(row.ship).Count > 0 ? "  (+)" : "");
                     int delta = hangar.ShipPrice(row.ship) - hangar.ShipPrice(Session.ShipIndex);   // trade-in difference
-                    price.text = ItemInfo.Credits(delta);
+                    // Remake: the ship's own price on the row (the buy button still shows what it costs after the trade-in);
+                    // red while the trade-in difference is more than the credits.
+                    price.text = ItemInfo.Credits(hangar.ShipPrice(row.ship));
                     price.EnableInClassList("row-price--expensive", delta > Session.Credits);
                     break;
                 }
@@ -458,8 +695,7 @@ namespace GoF2Remake.UI
                 case RowKind.CargoItem:
                 {
                     tex = ItemInfo.ItemIcon(row.item);
-                    int n = hangar.CargoOf(row.item);
-                    name.text = ItemInfo.ItemName(row.item) + (n > 1 ? $" ({n})" : "");
+                    name.text = ItemInfo.ItemName(row.item);   // Remake: the amount at the row's right edge (was "(n)" here)
                     subText.text = ItemInfo.Category(db.Item(row.item));   // the sub-header says "Available in cargo"
                     sub.Insert(0, Badge(Localization.Extra("shopInCargo", "IN CARGO"), "row-badge--cargo"));
                     break;
@@ -501,7 +737,18 @@ namespace GoF2Remake.UI
                     var st = Blueprints.State(db, editing);
                     int total = Blueprints.Total(db, editing, row.type);
                     int invested = Blueprints.Invested(db, st, row.type) + Pending(row.item);
-                    subText.text = $"{Localization.Get(183)} {hangar.CargoOf(row.item)} t   |   {Localization.Get(271)} {invested} / {total} t";
+                    // Remake: the blueprint's amount (271 + invested / total) at the row's right edge, the badges alone under
+                    // the name, the hold's amount at its left.
+                    subText.text = "";
+                    bpAmount = new VisualElement { pickingMode = PickingMode.Ignore };
+                    bpAmount.AddToClassList("row-bp-amount");
+                    var bpLabel = new Label(Localization.Get(271).ToUpperInvariant()) { pickingMode = PickingMode.Ignore };
+                    bpLabel.AddToClassList("row-bp-amount-label");
+                    var bpValue = new Label($"{invested} / {total} t") { pickingMode = PickingMode.Ignore };
+                    bpValue.AddToClassList("row-bp-amount-value");
+                    bpValue.AddToClassList("gof-semibold");
+                    bpAmount.Add(bpLabel);
+                    bpAmount.Add(bpValue);
                     if (invested >= total) sub.Insert(0, Badge("✓", "row-badge--mounted"));
                     else
                     {
@@ -509,8 +756,13 @@ namespace GoF2Remake.UI
                         int stock = hangar.StockOf(row.item);
                         if (stock > 0)
                         {
-                            sub.Insert(0, Badge(Localization.Extra("bpSoldHere", "SOLD HERE"), "row-badge--stock"));
-                            subText.text += $"   |   {Localization.Get(136)} {stock} t";
+                            // Remake: "SOLD HERE | 120t" (the station's amount); a click / tap opens the shop on it.
+                            var soldHere = Badge($"{Localization.Extra("bpSoldHere", "SOLD HERE")} | {stock}t", "row-badge--stock");
+                            soldHere.AddToClassList("row-badge--link");
+                            soldHere.pickingMode = PickingMode.Position;
+                            int shopItem = row.item;
+                            soldHere.RegisterCallback<ClickEvent>(ev => { ev.StopPropagation(); menu.PlayPush(); GoToShopItem(shopItem); });
+                            sub.Insert(0, soldHere);
                         }
                     }
                     break;
@@ -522,26 +774,77 @@ namespace GoF2Remake.UI
                     price.EnableInClassList("row-price--expensive", Blueprints.AutoCompletePrice(db, row.item) > Session.Credits);
                     break;
             }
+            // Remake: Autocomplete as the game's button, centred in the list: its name, the price on a second line (no item
+            // name, no "|"). A click selects it and asks (195) like the details' button.
+            if (row.kind == RowKind.Autocomplete)
+            {
+                e.AddToClassList("list-row--autocomplete");
+                var button = new Label($"{name.text.ToUpperInvariant()}\n{price.text}") { pickingMode = PickingMode.Position };
+                button.AddToClassList("detail-action");
+                button.AddToClassList("gof-semibold");
+                button.AddToClassList("row-autocomplete");
+                button.EnableInClassList("row-autocomplete--expensive", price.ClassListContains("row-price--expensive"));
+                button.RegisterCallback<ClickEvent>(ev =>
+                {
+                    ev.StopPropagation();
+                    Select(row, true);
+                    if (selected == row) Action();
+                });
+                e.Add(button);
+                e.RegisterCallback<ClickEvent>(_ => Select(row, true));
+                row.element = e;
+                list.Add(e);
+                rows.Add(row);
+                return;
+            }
             if (tex != null) icon.style.backgroundImage = new StyleBackground(tex);
-            sub.Add(subText);
-            texts.Add(name);
+            // Remake: the station's and the hold's amounts at the row's edges for what can be traded (shop items, the Ship
+            // tab's hold, blueprint ingredients).
+            bool amounts = row.kind == RowKind.ShopItem || row.kind == RowKind.CargoItem || row.kind == RowKind.Ingredient;
+            // Remake: the badges (NEW, MOUNTED, IN CARGO, SOLD HERE, ✓) after the category, on every tab; the Ship tab's
+            // mounted items keep MOUNTED in front of it.
+            if (row.kind == RowKind.Slot) sub.Add(subText);
+            else if (subText.text.Length == 0) sub.AddToClassList("row-sub--badges");   // badges alone (ingredients): flush with the name
+            else
+            {
+                sub.Insert(0, subText);
+                sub.AddToClassList("row-sub--trailing");
+            }
+            // Remake: the price beside the name ("Name | 354$") instead of at the row's right edge; ships keep it there.
+            bool shipPrice = row.kind == RowKind.ShopShip || row.kind == RowKind.StoredShip;
+            if (price.text.Length > 0 && !shipPrice)
+            {
+                var nameLine = new VisualElement { pickingMode = PickingMode.Ignore };
+                nameLine.AddToClassList("row-name-line");
+                price.AddToClassList("row-price--inline");
+                var priceSep = new Label("|") { pickingMode = PickingMode.Ignore };
+                priceSep.AddToClassList("row-price-sep");
+                nameLine.Add(name);
+                nameLine.Add(priceSep);
+                nameLine.Add(price);
+                texts.Add(nameLine);
+            }
+            else texts.Add(name);
             texts.Add(sub);
+            Label Amount(int t, string side)
+            {
+                var l = new Label($"{t}t") { pickingMode = PickingMode.Ignore };
+                l.AddToClassList("row-qty");
+                l.AddToClassList(side);
+                l.AddToClassList("gof-semibold");
+                return l;
+            }
+            // The station's (or the storage's) left, the hold's right; the Ship tab's hold items only the hold's (right), a
+            // blueprint's ingredients only the hold's, on the left (the station's is in their SOLD HERE badge).
+            if (row.kind == RowKind.Ingredient) e.Add(Amount(hangar.CargoOf(row.item), "row-qty--station"));
+            else if (amounts && row.kind != RowKind.CargoItem) e.Add(Amount(hangar.StockOf(row.item), "row-qty--station"));
             e.Add(icon);
             e.Add(texts);
-            if (price.text.Length > 0) e.Add(price);
-            // ListItemWindow's "i" (image 0x470) on the selected row.
-            if (row.kind != RowKind.Header && row.kind != RowKind.Autocomplete && (row.item >= 0 || row.ship >= 0 || row.equipment >= 0))
-            {
-                var info = new Button(() => { Select(row, false); OpenInfo(); }) { text = "i", focusable = false };
-                info.AddToClassList("row-info");
-                info.AddToClassList("gof-semibold");
-                // Remake: with a controller the button shows its Y (StationMenu opens the info with it) instead of the "i".
-                var padY = new Label("Y") { pickingMode = PickingMode.Ignore };
-                padY.AddToClassList("row-info-pad");
-                padY.AddToClassList("gof-semibold");
-                info.Add(padY);
-                e.Add(info);
-            }
+            if (amounts && row.kind != RowKind.Ingredient) e.Add(Amount(hangar.CargoOf(row.item), "row-qty--ship"));   // the ship's hold
+            if (shipPrice && price.text.Length > 0) e.Add(price);
+            if (bpAmount != null) e.Add(bpAmount);
+            // ListItemWindow's "i" (image 0x470) on the selected row: Remake, left out (the details panel shows it all; the
+            // keyboard's I / the controller's Y still open the item window).
             e.RegisterCallback<ClickEvent>(ev =>
             {
                 Select(row, true);
@@ -639,6 +942,11 @@ namespace GoF2Remake.UI
             actionButton.AddToClassList("detail-action--hidden");
             actionButton.RemoveFromClassList("detail-action--disabled");
             actionButton2?.AddToClassList("detail-action--hidden");
+            // Remake: the trade arrows back in place (an ingredient moves ADD under the blueprint's amount, hides the left one).
+            sellButton.style.display = DisplayStyle.Flex;
+            if (buyButton.parent != buyHome) buyHome.Insert(Mathf.Min(buyHomeIndex, buyHome.childCount), buyButton);
+            buyButton.RemoveFromClassList("trade-arrow--under");
+            tradeBox.RemoveFromClassList("trade-box--ingredient");
             if (selected == null) return;
             string T(int id) => Localization.Get(id);
 
@@ -720,7 +1028,7 @@ namespace GoF2Remake.UI
                     ShowAction(T(332).ToUpperInvariant(), selected.ship != Session.ShipIndex);
                     if (actionButton2 != null)
                     {
-                        actionButton2.text = $"{T(330).ToUpperInvariant()}   {ItemInfo.Credits(hangar.StoredPrice(selected.equipment))}";
+                        SetActionText(actionButton2, $"{T(330).ToUpperInvariant()}   {ItemInfo.Credits(hangar.StoredPrice(selected.equipment))}");
                         actionButton2.RemoveFromClassList("detail-action--hidden");
                     }
                     ItemInfo.FillModLines(detailMods, Session.KaamoShips[selected.equipment].mods);
@@ -768,7 +1076,7 @@ namespace GoF2Remake.UI
                     ShowAction(T(283).ToUpperInvariant(), true);   // Edit
                     break;
                 case RowKind.Autocomplete:
-                    ShowAction($"{Localization.Extra("bpAutocomplete", "Autocomplete").ToUpperInvariant()}   {ItemInfo.Credits(Blueprints.AutoCompletePrice(db, editing))}", true);
+                    // Remake: no second button here: the list's Autocomplete is the button (Enter / A still do it).
                     break;
                 case RowKind.Ingredient:
                 {
@@ -780,8 +1088,12 @@ namespace GoF2Remake.UI
                     tradeBox.RemoveFromClassList("trade-box--hidden");
                     tradeStockLabel.text = T(183).ToUpperInvariant();
                     tradeCargoLabel.text = T(271).ToUpperInvariant();
-                    sellLabel.text = "‹";
-                    buyLabel.text = Localization.Extra("bpAdd", "ADD") + " ›";
+                    // Remake: no left arrow (invested goods can't be taken back); ADD under the blueprint's amount.
+                    sellButton.style.display = DisplayStyle.None;
+                    tradeBox.AddToClassList("trade-box--ingredient");
+                    tradeCargo.parent?.Add(buyButton);
+                    buyButton.AddToClassList("trade-arrow--under");
+                    buyLabel.text = Localization.Extra("bpAdd", "ADD").ToUpperInvariant();
                     tradeStock.text = $"{cargo} t";
                     tradeCargo.text = $"{invested} / {total} t";
                     tradePrice.text = "";
@@ -951,9 +1263,38 @@ namespace GoF2Remake.UI
             });
         }
 
+        /// <summary>Remake: a button's text, kept whole for FitActions.</summary>
+        void SetActionText(Button b, string text)
+        {
+            b.userData = text;
+            b.text = text;
+            FitActions();
+        }
+
+        /// <summary>Remake: the buttons under a ship's view fit their text, centred; one wider than the view's column breaks
+        /// before its last word (the price), so only the amount goes to a second line.</summary>
+        void FitActions()
+        {
+            foreach (var b in new[] { actionButton, actionButton2 })
+            {
+                if (b == null || !(b.userData is string full)) continue;
+                string shown = full;
+                float avail = previewSide.resolvedStyle.width;
+                if (b.parent == actionArea && !float.IsNaN(avail) && avail > 0f)
+                {
+                    var size = b.MeasureTextSize(full, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined);
+                    var st = b.resolvedStyle;
+                    float frame = st.paddingLeft + st.paddingRight + st.borderLeftWidth + st.borderRightWidth;
+                    int cut = full.TrimEnd().LastIndexOf(' ');
+                    if (size.x + frame > avail && cut > 0) shown = full.Substring(0, cut).TrimEnd() + "\n" + full.Substring(cut + 1).Trim();
+                }
+                if (b.text != shown) b.text = shown;
+            }
+        }
+
         void ShowAction(string text, bool enabled)
         {
-            actionButton.text = text;
+            SetActionText(actionButton, text);
             actionButton.RemoveFromClassList("detail-action--hidden");
             actionButton.EnableInClassList("detail-action--disabled", !enabled);
         }
@@ -1017,6 +1358,96 @@ namespace GoF2Remake.UI
             hangar.BeginBatch();
             try { Trade(direction, true, units, true); }
             finally { hangar.EndBatch(); }
+        }
+
+        /// <summary>Remake: how long Sell all / Buy all are held to go through.</summary>
+        const float TradeAllHoldSeconds = 1f;
+        VisualElement sellAllFill, buyAllFill;
+        int keyAllDirection;
+        float keyAllMs;
+        bool keyAllDone;
+
+        /// <summary>Remake: LT / RT and Shift + left / right (Sell all / Buy all) held for TradeAllHoldSeconds too, filling the
+        /// button they stand for; one trade per press.</summary>
+        void PollTradeAllHold(float dtMs)
+        {
+            int dir = 0;
+            var pad = UnityEngine.InputSystem.Gamepad.current;
+            if (pad != null) { if (pad.leftTrigger.isPressed) dir = -1; else if (pad.rightTrigger.isPressed) dir = 1; }
+            var kb = GoF2Remake.Multiplayer.NetChat.Keys;
+            if (dir == 0 && kb != null && kb.shiftKey.isPressed)
+            {
+                bool left = kb.aKey.isPressed || kb.leftArrowKey.isPressed, right = kb.dKey.isPressed || kb.rightArrowKey.isPressed;
+                if (left != right) dir = left ? -1 : 1;
+            }
+            if (dir != keyAllDirection)
+            {
+                SetAllFill(keyAllDirection, 0f);
+                keyAllDirection = dir;
+                keyAllMs = 0f;
+                keyAllDone = false;
+            }
+            if (dir == 0) return;
+            var button = dir < 0 ? sellAllButton : buyAllButton;
+            if (button == null || tradeAllRow == null || tradeAllRow.ClassListContains("trade-box--hidden") || button.ClassListContains("trade-all--disabled"))
+            {
+                SetAllFill(dir, 0f);
+                return;
+            }
+            keyAllMs += dtMs;
+            float f = Mathf.Clamp01(keyAllMs / (TradeAllHoldSeconds * 1000f));
+            SetAllFill(dir, f);
+            if (f >= 1f && !keyAllDone) { keyAllDone = true; TradeAll(dir); }
+        }
+
+        void SetAllFill(int direction, float f)
+        {
+            var fill = direction < 0 ? sellAllFill : direction > 0 ? buyAllFill : null;
+            if (fill != null) fill.style.width = Length.Percent(f * 100f);
+        }
+
+        /// <summary>Remake: 'b' trades all (TradeAll(direction)) once held for TradeAllHoldSeconds; a fill shows the hold, letting
+        /// go earlier cancels it. One trade per press.</summary>
+        VisualElement HoldToConfirm(Button b, int direction)
+        {
+            b.clickable = null;   // no plain click
+            var fill = new VisualElement { pickingMode = PickingMode.Ignore };
+            fill.AddToClassList("trade-all-fill");
+            b.Insert(0, fill);
+            int pointerId = -1;
+            float start = 0f;
+            bool done = false;
+            IVisualElementScheduledItem tick = null;
+            void EndHold()
+            {
+                if (pointerId >= 0 && b.HasPointerCapture(pointerId)) b.ReleasePointer(pointerId);
+                pointerId = -1;
+                fill.style.width = Length.Percent(0f);
+                tick?.Pause();
+            }
+            b.RegisterCallback<PointerDownEvent>(e =>
+            {
+                if (pointerId >= 0 || b.ClassListContains("trade-all--disabled")) return;
+                pointerId = e.pointerId;
+                start = Time.unscaledTime;
+                done = false;
+                b.CapturePointer(pointerId);
+                menu.PlayPush();
+                if (tick == null)
+                    tick = b.schedule.Execute(() =>
+                    {
+                        if (pointerId < 0) return;
+                        float f = Mathf.Clamp01((Time.unscaledTime - start) / TradeAllHoldSeconds);
+                        fill.style.width = Length.Percent(f * 100f);
+                        if (f >= 1f && !done) { done = true; TradeAll(direction); }
+                    }).Every(16);
+                else tick.Resume();
+                e.StopPropagation();
+            });
+            b.RegisterCallback<PointerUpEvent>(e => { if (e.pointerId == pointerId) { EndHold(); e.StopPropagation(); } });
+            b.RegisterCallback<PointerCancelEvent>(e => { if (e.pointerId == pointerId) EndHold(); });
+            b.RegisterCallback<PointerCaptureOutEvent>(_ => { if (pointerId >= 0) EndHold(); });
+            return fill;
         }
 
         static void AddPadGlyph(VisualElement button, PadButton pad)
@@ -1262,7 +1693,7 @@ namespace GoF2Remake.UI
             if (heldPointer == KeyHold) ReleaseArrow();
             if (horizontal == 0 || heldPointer >= 0) return;   // released, or a finger / the mouse holds an arrow
             var kb = GoF2Remake.Multiplayer.NetChat.Keys;
-            if (kb != null && kb.shiftKey.isPressed) { TradeAll(horizontal); return; }   // remake: Shift + left / right = all
+            if (kb != null && kb.shiftKey.isPressed) return;   // remake: Shift + left / right = all, held (PollTradeAllHold)
             heldPointer = KeyHold;
             heldDirection = horizontal;
             heldMs = repeatMs = 0f;
@@ -1273,6 +1704,7 @@ namespace GoF2Remake.UI
         /// <summary>HangarWindow::update: repeat after 200 ms, every 30 ms once held 1.5 s, 5 units per repeat after 4 s.</summary>
         public void Update(float dtMs)
         {
+            if (IsOpen) PollTradeAllHold(dtMs);
             if (!IsOpen || heldDirection == 0) return;
             heldMs += dtMs;
             repeatMs += dtMs;

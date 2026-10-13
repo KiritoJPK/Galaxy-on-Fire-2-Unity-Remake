@@ -180,8 +180,9 @@ namespace GoF2Remake.UI
             if (!lo && !hi) return text;
             string Where(int system) => system == currentSystem ? Localization.Get(215) : db.Systems.Find(s => s.index == system)?.name ?? "";
             text += $"\n\n{Localization.Get(214)}";
-            if (lo) text += $"\n-> {Credits(low.price)} ({Where(low.system)})";
-            if (hi) text += $"\n-> {Credits(high.price)} ({Where(high.system)})";
+            // Remake: "➔" in place of the original's "->".
+            if (lo) text += $"\n➔ {Credits(low.price)} ({Where(low.system)})";
+            if (hi) text += $"\n➔ {Credits(high.price)} ({Where(high.system)})";
             return text;
         }
 

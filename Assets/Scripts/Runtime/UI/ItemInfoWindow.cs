@@ -27,7 +27,7 @@ namespace GoF2Remake.UI
         static readonly Vector3 StagePosition = new Vector3(0f, -20000f, 0f);
 
         readonly StationMenu menu;
-        readonly VisualElement backdrop, icon, stats;
+        readonly VisualElement backdrop, box, icon, stats;
         readonly ShipPreview preview = new ShipPreview(StagePosition, 1268, 636, 0.9f);
         readonly Label header, help, nameLabel, subLabel, descTitle, text;
         readonly ScrollView textScroll;
@@ -43,7 +43,7 @@ namespace GoF2Remake.UI
             menu = owner;
             backdrop = new VisualElement();
             backdrop.AddToClassList("info-backdrop");
-            var box = new VisualElement();
+            box = new VisualElement();
             box.AddToClassList("info-box");
             header = new Label { pickingMode = PickingMode.Ignore };
             header.AddToClassList("info-header");
@@ -86,6 +86,8 @@ namespace GoF2Remake.UI
             textScroll.Add(text);
             textScroll.Add(modLines);
             preview.Element.AddToClassList("info-preview");
+            preview.FloorUnderShip = true;   // Remake: the ship stands on the floor's inner ring
+            preview.FloorHeightRatio = 160f / 318f;   // the stylesheet's floor in its box, kept when the view fills the box
             right.Add(preview.Element);
             right.Add(descTitle);
             right.Add(textScroll);
@@ -113,6 +115,7 @@ namespace GoF2Remake.UI
 
         void Begin()
         {
+            box.RemoveFromClassList("info-box--view");
             header.text = T(390).ToUpperInvariant();
             help.text = T(643);
             descTitle.text = T(280).ToUpperInvariant();
@@ -185,6 +188,16 @@ namespace GoF2Remake.UI
             if (showPrice) Row(T(132), ItemInfo.Credits(price));
             text.text = GameNames.ShipDescription(ship);
             if (mine) ItemInfo.FillModLines(modLines, Session.ShipMods);   // the Kaamo Club mods under the description
+            preview.Show(db, ship);
+        }
+
+        /// <summary>Remake: the ship alone, turning over its floor in the whole box (the hangar details' click on its view);
+        /// no header or hint (the hangar details show the hint), Back closes it.</summary>
+        public void ShowShipView(Database db, int ship)
+        {
+            if (db.Ship(ship) == null) return;
+            Begin();
+            box.AddToClassList("info-box--view");
             preview.Show(db, ship);
         }
 
