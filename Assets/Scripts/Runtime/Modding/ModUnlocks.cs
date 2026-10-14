@@ -59,7 +59,8 @@ namespace GoF2Remake.Modding
         public static bool Holds(ModInfo mod, string condition, string where)
         {
             if (string.IsNullOrWhiteSpace(condition)) return true;
-            if (Events.EventRunner.Condition(condition, out string error)) return true;
+            string error = null;
+            if (Data.GameHooks.Condition == null || Data.GameHooks.Condition(condition, out error)) return true;
             if (error != null && mod != null)
             {
                 string message = $"{where}: \"available\" / condition \"{condition}\": {error}";

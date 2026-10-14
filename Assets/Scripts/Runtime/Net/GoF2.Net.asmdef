@@ -1,0 +1,29 @@
+{
+    "name": "GoF2.Net",
+    "rootNamespace": "GoF2Remake.Multiplayer",
+    "references": [
+        "GoF2.Core",
+        "GoF2.Game",
+        "GoF2.TextureEncoder",
+        "Unity.InputSystem",
+        "Unity.Collections",
+        "glTFast",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "GoF2.Space",
+        "Unity.Netcode.Runtime",
+        "Unity.Networking.Transport",
+        "Unity.Services.Core",
+        "Unity.Services.Authentication",
+        "Unity.Services.Multiplayer"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

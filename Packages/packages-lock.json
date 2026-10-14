@@ -61,13 +61,6 @@
       },
       "url": "https://packages.unity.com"
     },
-    "com.unity.collab-proxy": {
-      "version": "2.13.6",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {},
-      "url": "https://packages.unity.com"
-    },
     "com.unity.collections": {
       "version": "6.7.0",
       "depth": 1,
@@ -95,7 +88,7 @@
     },
     "com.unity.entities": {
       "version": "6.7.0",
-      "depth": 2,
+      "depth": 1,
       "source": "builtin",
       "dependencies": {
         "com.unity.nuget.mono-cecil": "1.11.6",
@@ -156,15 +149,14 @@
       "dependencies": {}
     },
     "com.unity.netcode": {
-      "version": "7.1.0",
-      "depth": 1,
-      "source": "registry",
+      "version": "file:com.unity.netcode",
+      "depth": 0,
+      "source": "embedded",
       "dependencies": {
-        "com.unity.entities": "6.7.0",
         "com.unity.transport": "6.7.0",
+        "com.unity.entities": "6.7.0",
         "com.unity.modules.animation": "1.0.0"
-      },
-      "url": "https://packages.unity.com"
+      }
     },
     "com.unity.netcode.gameobjects": {
       "version": "3.1.0",
@@ -242,12 +234,21 @@
       }
     },
     "com.unity.scriptablebuildpipeline": {
-      "version": "4.0.0",
-      "depth": 3,
+      "version": "4.0.1",
+      "depth": 2,
       "source": "registry",
       "dependencies": {
         "com.unity.test-framework": "1.4.5",
         "com.unity.modules.assetbundle": "1.0.0"
+      },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.sdk.linux-arm64": {
+      "version": "1.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.sysroot.base": "1.1.0"
       },
       "url": "https://packages.unity.com"
     },
@@ -376,22 +377,11 @@
     },
     "com.unity.test-framework.performance": {
       "version": "6.7.0",
-      "depth": 3,
+      "depth": 2,
       "source": "builtin",
       "dependencies": {
         "com.unity.test-framework": "1.1.33",
         "com.unity.modules.jsonserialize": "1.0.0"
-      }
-    },
-    "com.unity.timeline": {
-      "version": "6.7.0",
-      "depth": 0,
-      "source": "builtin",
-      "dependencies": {
-        "com.unity.modules.director": "1.0.0",
-        "com.unity.modules.animation": "1.0.0",
-        "com.unity.modules.audio": "1.0.0",
-        "com.unity.modules.particlesystem": "1.0.0"
       }
     },
     "com.unity.toolchain.win-x86_64-linux": {
@@ -534,7 +524,7 @@
     },
     "com.unity.modules.hierarchy": {
       "version": "1.0.0",
-      "depth": 3,
+      "depth": 2,
       "source": "builtin",
       "dependencies": {
         "com.unity.modules.hierarchycore": "1.0.0",

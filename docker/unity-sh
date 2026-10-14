@@ -1,0 +1,11 @@
+#!/bin/dash
+# /bin/sh in the editor image. Unity 7000.0.0a7's sysroot package (com.unity.sysroot.base, SysrootPackage.RunShellCommand)
+# starts /bin/sh -c '<command>' through .NET's Process, whose argument splitting ignores single quotes, so the command
+# arrives cut at its spaces ('mkdir, -p, /path') and the IL2CPP toolchain never unpacks. Put such a command back together.
+if [ "$1" = "-c" ] && [ "${2#\'}" != "$2" ]; then
+  shift
+  cmd="$*"
+  if [ "${cmd%\'}" != "$cmd" ]; then cmd="${cmd#\'}"; exec /bin/dash -c "${cmd%\'}"; fi
+  set -- -c "$@"
+fi
+exec /bin/dash "$@"

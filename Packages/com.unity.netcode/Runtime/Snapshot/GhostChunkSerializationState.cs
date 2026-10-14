@@ -1,0 +1,560 @@
+#if UNITY_EDITOR && !NETCODE_NDEBUG
+#define NETCODE_DEBUG
+#endif
+using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Unity.Entities;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+
+namespace Unity.Netcode.LowLevel.Unsafe
+{
+    /// <summary>A per-connection, per-ghost-chunk state, storing snapshot send reliability info (baselines etc).</summary>
+    unsafe struct GhostChunkSerializationState
+    {
+        public ulong sequenceNumber;
+        public int ghostType;
+        // Cached here for perf.
+        public ushort baseImportance;
+        public ushort maxSendRateAsSimTickInterval;
+        /// <summary>
+        /// The per-ghost-type snapshot history size (resolved and clamped), cached from <see cref="GhostCollectionPrefabSerializer" />.
+        /// </summary>
+        /// <remarks>
+        /// Must be set before <see cref="AllocateSnapshotData" />, as the memory layout depends on it.
+        /// </remarks>
+        public int snapshotHistorySize;
+
+        // the entity and data arrays are 2d arrays (chunk capacity * max snapshots)
+        // Find baseline by finding the largest tick not at writeIndex which has been acked by the other end
+        // Pass in entity, data [writeIndex] as current and entity, data [baseline] as baseline
+        // If entity[baseline] is incorrect there is no delta compression
+        private byte* snapshotData;
+        private int allocatedChunkCapacity;
+        private int allocatedDataSize;
+
+        /// <summary>The subset of this per-chunk state that changes often.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MetaData
+        {
+            /// <summary>Denotes the latest tick that this chunk was sent to this client. Used to bubble up a chunk's relative importance.</summary>
+            public NetworkTick lastUpdate;
+            /// <summary>
+            /// Denotes the entity to start serializing at. Only used for partial chunk sends (i.e. we could only
+            /// fit the first N entities into the snapshot, so our next snapshot should start at entity index N).
+            /// </summary>
+            public int startIndex;
+            /// <summary>The server stores baseline data in the snapshot history buffer. This field tracks the current write index.</summary>
+            public int snapshotWriteIndex;
+            /// <summary>
+            /// Tracks the last order change version, allowing us to "slow-poll" for order change version changes
+            /// (i.e. at a frequency below 'one poll per tick').
+            /// </summary>
+            public uint orderChangeVersion;
+            /// <summary>
+            /// Denotes the FIRST tick where we detected no GhostField changes for any ghost within this chunk.
+            /// Used to allow the SerializeJob to early out.
+            /// </summary>
+            public NetworkTick firstZeroChangeTick;
+            /// <summary>
+            /// Denotes the FIRST chunk order version where we detected no GhostField changes for any ghost within this chunk.
+            /// Used to allow the SerializeJob to early out.
+            /// </summary>
+            public uint firstZeroChangeVersion;
+            /// <summary>Tracks the number of relevant ghosts, for accurate <see cref="GhostCount"/> reporting.</summary>
+            public int numRelevant;
+            /// <summary>Only used to validate that memory has been allocated for this chunk, and that said memory has not been re-purposed.</summary>
+            public NetworkTick lastValidTick;
+            /// <summary>DynamicBuffer data needs to be stored at an offset within the chunk data. This tracks said offset.</summary>
+            public int dynamicDataWriteOffset;
+        }
+
+        // The memory layout of the snapshot data is (all items are rounded up to an even 16 bytes)
+        // MetaData properties which change frequently
+        // uint[snapshotHistorySize] snapshot index, the tick for each history position
+        // uint[snapshotHistorySize+31 / 32] snapshot is acked, one bit per history position
+        // begin array[snapshotHistorySize], the following are interleaved, one of these per history position
+        //     Entity[capacity], the entity which this history position is for, if it does not match current entity the snapshot cannot be used
+        //     byte[capacity * snapshotSize], the raw snapshot data for each entity in the chunk
+        // end array
+        // When a ghost archetype contains buffers, the snapshotData associated with the buffer will contains the following pair:
+        //   uint bufferLen the length of the buffer
+        //   uint bufferContentOffset offset from the beginning of the dynamic history slot wher buffers elements and the masks are stored (see info below)
+
+        // This must match the MetaData struct
+        const int MetaDataSizeInInts = 9;
+        internal static void ValidateMetaDataSize() => UnityEngine.Assertions.Assert.AreEqual(sizeof(MetaData), MetaDataSizeInInts * 4);
+        /// <summary>
+        /// Cached chunk size in bytes.
+        /// Calculated in <see cref="AllocateSnapshotData" /> based on the <see cref="snapshotHistorySize" />.
+        /// </summary>
+        private int dataPerChunkSize;
+
+        // Buffers, due to their dynamic nature, require another history container.
+        // The buffers contents are stored in a dynamic array that can grow to accomodate more data as needed. Also, the snapshot dynamic storage
+        // can handle different kind of DynamicBuffer element type. Each serialized buffer contents size (len * ComponentSnapshotSize) is aligned to 16 bytes
+        // The memory layout is:
+        // begin array[snapshotHistorySize]
+        //     uint dynamicDataSize[capacity]  total buffers data used by each entity in the chunk, aligned to 16 bytes
+        //     beginArray[current buffers in the chunk]
+        //         uints[Len*ChangeBitMaskUintSize] the elements changemask, aligned to 16 bytes
+        //         byte[Len*ComponentSnapshotSize] all the raw elements snapshot data
+        //     end
+        // end
+        private byte* snapshotDynamicData;
+        private int snapshotDynamicCapacity;
+        private int snapshotDynamicSlotStride;
+
+
+        public void AllocateSnapshotData(int serializerDataSize, int chunkCapacity)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (snapshotHistorySize < GhostSystemConstants.MinSnapshotHistorySize || snapshotHistorySize > GhostSystemConstants.MaxSnapshotHistorySize)
+                throw new InvalidOperationException($"snapshotHistorySize ({snapshotHistorySize}) must be set within [{GhostSystemConstants.MinSnapshotHistorySize}, {GhostSystemConstants.MaxSnapshotHistorySize}] before calling AllocateSnapshotData.");
+#endif
+            dataPerChunkSize = (4 * (MetaDataSizeInInts + snapshotHistorySize + ((snapshotHistorySize+31)>>5)) + 15) & (~15);
+            allocatedChunkCapacity = chunkCapacity;
+            allocatedDataSize = serializerDataSize;
+            snapshotData = (byte*) UnsafeUtility.Malloc(
+                CalculateSize(serializerDataSize, chunkCapacity), 16, Allocator.Persistent);
+
+            // Just clear snapshot index
+            UnsafeUtility.MemClear(snapshotData, dataPerChunkSize);
+            snapshotDynamicData = null;
+            snapshotDynamicCapacity = 0;
+            snapshotDynamicSlotStride = 0;
+        }
+
+        public void FreeSnapshotData()
+        {
+            UnsafeUtility.Free(snapshotData, Allocator.Persistent);
+            if(snapshotDynamicData != null)
+                UnsafeUtility.Free(snapshotDynamicData, Allocator.Persistent);
+            snapshotData = null;
+            snapshotDynamicData = null;
+            snapshotDynamicCapacity = 0;
+            snapshotDynamicSlotStride = 0;
+        }
+
+        public bool IsSameSizeAndCapacity(int size, int capacity)
+        {
+            return size == allocatedDataSize && capacity == allocatedChunkCapacity;
+        }
+
+        public int GetNumRelevant() => ((MetaData*)snapshotData)->numRelevant;
+
+        public bool GetAllIrrelevant() => ((MetaData*)snapshotData)->numRelevant == 0;
+
+        public void SetNumRelevant(int numRelevant, in ArchetypeChunk chunk)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            UnityEngine.Debug.Assert(numRelevant >= 0 && numRelevant <= chunk.Count);
+#endif
+            ((MetaData*)snapshotData)->numRelevant = numRelevant;
+        }
+        public NetworkTick GetLastUpdate()
+        {
+            return ((MetaData*)snapshotData)->lastUpdate;
+        }
+        public int GetStartIndex()
+        {
+            return ((MetaData*)snapshotData)->startIndex;
+        }
+        /// <summary>Denotes a full (i.e. non-partial) send occurred.</summary>
+        /// <param name="tick">The tick the send occurred on.</param>
+        public void SetLastFullUpdate(NetworkTick tick)
+        {
+            ((MetaData*)snapshotData)->lastUpdate = tick;
+            ((MetaData*)snapshotData)->startIndex = 0;
+        }
+        public void SetStartIndex(int index)
+        {
+            ((MetaData*)snapshotData)->startIndex = index;
+        }
+        public int GetSnapshotWriteIndex()
+        {
+            return ((MetaData*)snapshotData)->snapshotWriteIndex;
+        }
+        public void SetSnapshotWriteIndex(int index)
+        {
+            ((MetaData*)snapshotData)->snapshotWriteIndex = index;
+            // new write, reset dynamicData offset
+            ((MetaData*)snapshotData)->dynamicDataWriteOffset = 0;
+            // Mark this new thing we are trying to send as not acked
+            ClearAckFlag(index);
+        }
+        public int GetDynamicDataOffset()
+        {
+            return ((MetaData*)snapshotData)->dynamicDataWriteOffset;
+        }
+        public void SetDynamicDataOffset(int value)
+        {
+            ((MetaData*)snapshotData)->dynamicDataWriteOffset = value;
+        }
+        public uint GetOrderChangeVersion()
+        {
+            return ((MetaData*)snapshotData)->orderChangeVersion;
+        }
+        public void SetOrderChangeVersion(uint version)
+        {
+            ((MetaData*)snapshotData)->orderChangeVersion = version;
+        }
+        public NetworkTick GetFirstZeroChangeTick()
+        {
+            return ((MetaData*)snapshotData)->firstZeroChangeTick;
+        }
+        public uint GetFirstZeroChangeVersion()
+        {
+            return ((MetaData*)snapshotData)->firstZeroChangeVersion;
+        }
+        public void SetFirstZeroChange(NetworkTick tick, uint version)
+        {
+            ((MetaData*)snapshotData)->firstZeroChangeTick = tick;
+            ((MetaData*)snapshotData)->firstZeroChangeVersion = version;
+        }
+        public NetworkTick GetLastValidTick()
+        {
+            return ((MetaData*)snapshotData)->lastValidTick;
+        }
+        public void SetLastValidTick(NetworkTick tick)
+        {
+            ((MetaData*)snapshotData)->lastValidTick = tick;
+        }
+        public bool HasAckFlag(int pos)
+        {
+            var idx = snapshotHistorySize + (pos>>5);
+            uint bit = 1u<<(pos&31);
+            return (GetSnapshotIndex()[idx] & bit) != 0;
+        }
+        public void SetAckFlag(int pos)
+        {
+            var idx = snapshotHistorySize + (pos>>5);
+            uint bit = 1u<<(pos&31);
+            GetSnapshotIndex()[idx] |= bit;
+        }
+        public void ClearAckFlag(int pos)
+        {
+            var idx = snapshotHistorySize + (pos>>5);
+            uint bit = 1u<<(pos&31);
+            GetSnapshotIndex()[idx] &= (~bit);
+        }
+
+
+        private int CalculateSize(int serializerDataSize, int chunkCapacity)
+        {
+            int entitySize = (UnsafeUtility.SizeOf<Entity>() * chunkCapacity + 15) & (~15);
+            int dataSize = (serializerDataSize * chunkCapacity + 15) & (~15);
+            return dataPerChunkSize + snapshotHistorySize * (entitySize + dataSize);
+        }
+
+        public uint* GetSnapshotIndex()
+        {
+            // The +MetaDataSizeInInts is the change versions and tick
+            return ((uint*) snapshotData) + MetaDataSizeInInts;
+        }
+
+        public Entity* GetEntity(int serializerDataSize, int chunkCapacity, int historyPosition)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (historyPosition < 0 || historyPosition >= snapshotHistorySize)
+                throw new IndexOutOfRangeException("Reading invalid history position");
+            if (serializerDataSize != allocatedDataSize || chunkCapacity != allocatedChunkCapacity)
+                throw new IndexOutOfRangeException("Chunk capacity or data size changed");
+#endif
+            int entitySize = (UnsafeUtility.SizeOf<Entity>() * chunkCapacity + 15) & (~15);
+            int dataSize = (serializerDataSize * chunkCapacity + 15) & (~15);
+            return (Entity*) (snapshotData + dataPerChunkSize + historyPosition * (entitySize + dataSize));
+        }
+
+        public byte* GetData(int serializerDataSize, int chunkCapacity, int historyPosition)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (historyPosition < 0 || historyPosition >= snapshotHistorySize)
+                throw new IndexOutOfRangeException("Reading invalid history position");
+            if (serializerDataSize != allocatedDataSize || chunkCapacity != allocatedChunkCapacity)
+                throw new IndexOutOfRangeException("Chunk capacity or data size changed");
+#endif
+            int entitySize = (UnsafeUtility.SizeOf<Entity>() * chunkCapacity + 15) & (~15);
+            int dataSize = (serializerDataSize * chunkCapacity + 15) & (~15);
+            return (snapshotData + dataPerChunkSize + entitySize + historyPosition * (entitySize + dataSize));
+        }
+
+        /// <summary>
+        /// Return the pointer to the dynamic data snapshot storage for the given history position or null if the storage
+        /// is not present or not initialized
+        /// </summary>
+        /// <param name="historyPosition"></param>
+        /// <param name="capacity"></param>
+        /// <param name="chunkCapacity"></param>
+        /// <returns></returns>
+        /// <exception cref="InvalidOperationException"></exception>
+        /// <exception cref="IndexOutOfRangeException"></exception>
+        public byte* GetDynamicDataPtr(int historyPosition, int chunkCapacity, out int capacity)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            if (historyPosition < 0 || historyPosition >= snapshotHistorySize)
+                throw new IndexOutOfRangeException("Reading invalid history position");
+#endif
+            //If the chunk state has just been created the dynamic data ptr must be allocated
+            //once we collected the necessary capacity
+            if (snapshotDynamicData == null)
+            {
+                capacity = 0;
+                return null;
+            }
+            var headerSize = GetDynamicDataHeaderSize(chunkCapacity);
+            capacity = snapshotDynamicSlotStride - headerSize;
+            return snapshotDynamicData + snapshotDynamicSlotStride*historyPosition;
+        }
+
+        static public int GetDynamicDataHeaderSize(int chunkCapacity)
+        {
+            return GhostComponentSerializer.SnapshotSizeAligned(sizeof(uint) * chunkCapacity);
+        }
+
+        public void EnsureDynamicDataCapacity(int historySlotCapacity, int chunkCapacity)
+        {
+            var headerSize = GetDynamicDataHeaderSize(chunkCapacity);
+            var wantedSize = GhostComponentSerializer.SnapshotSizeAligned(historySlotCapacity + headerSize);
+            var newSlotStride = math.ceilpow2(wantedSize);
+            var newCapacity = newSlotStride * snapshotHistorySize;
+            if (snapshotDynamicCapacity < newCapacity)
+            {
+                var temp = (byte*)UnsafeUtility.Malloc(newCapacity, 16, Allocator.Persistent);
+                //Copy the old content
+                if (snapshotDynamicData != null)
+                {
+                    var sourcePtr = snapshotDynamicData;
+                    var destPtr = temp;
+                    for (int i = 0; i < snapshotHistorySize; ++i)
+                    {
+                        UnsafeUtility.MemCpy(destPtr, sourcePtr,snapshotDynamicSlotStride);
+                        destPtr += newSlotStride;
+                        sourcePtr += snapshotDynamicSlotStride;
+                    }
+                    UnsafeUtility.Free(snapshotDynamicData, Allocator.Persistent);
+                }
+                snapshotDynamicCapacity = newCapacity;
+                snapshotDynamicSlotStride = newSlotStride;
+                snapshotDynamicData = temp;
+            }
+        }
+
+        public FixedString64Bytes ZeroChangeFixedString()
+        {
+            return $"ZC[{GetFirstZeroChangeTick().ToFixedString()},{GetFirstZeroChangeVersion()}]";
+        }
+    }
+
+    static class ConnectionGhostStateExtensions
+    {
+        public static ref ConnectionStateData.GhostState GetPrespawnGhostState(ref this ConnectionStateData.GhostStateList self, in int ghostId)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            UnityEngine.Debug.Assert(PrespawnHelper.IsPrespawnGhostId(ghostId));
+#endif
+            return ref self.GetGhostState(ghostId, NetworkTick.Invalid);
+        }
+
+        public static ref ConnectionStateData.GhostState GetGhostState(ref this ConnectionStateData.GhostStateList self, in GhostCleanup cleanup)
+            => ref self.GetGhostState(cleanup.ghostId, cleanup.spawnTick);
+
+        public static ref ConnectionStateData.GhostState GetGhostState(ref this ConnectionStateData.GhostStateList self, in int ghostId, NetworkTick spawnTick)
+        {
+            //Map the right index by unmasking the prespawn bit (if present)
+            var index = (int)(ghostId & ~PrespawnHelper.PrespawnGhostIdBase);
+            var isPrespawnGhost = PrespawnHelper.IsPrespawnGhostId(ghostId);
+            var list = isPrespawnGhost ? self.PrespawnList : self.List;
+            ref var state = ref list.ElementAt(index);
+
+            //The initial state for pre-spawned ghosts must be set to relevant, otherwise clients may not receive despawn messages
+            //for prespawn that has been destroyed or marked as irrelevant. It is also mandatory for static optimization since
+            //we never actually send information to the client until the prespawns changed state.
+            if (state.SpawnTick != spawnTick || (state.Flags & ConnectionStateData.GhostStateFlags.Initialized) == 0)
+            {
+                state = new ConnectionStateData.GhostState
+                {
+                    SpawnTick = spawnTick,
+                    Flags = isPrespawnGhost
+                        ? ConnectionStateData.GhostStateFlags.Initialized | ConnectionStateData.GhostStateFlags.IsRelevant
+                        : ConnectionStateData.GhostStateFlags.Initialized,
+                };
+            }
+            return ref state;
+        }
+    }
+    unsafe struct ConnectionStateData : IDisposable
+    {
+        [Flags]
+        public enum GhostStateFlags
+        {
+            /// <summary>
+            /// Denotes only that the ghost is relevant to this connection.
+            /// Note: Prespawns are automatically relevant. Therefore, this flag does not denote that we've sent
+            /// a snapshot about this ghost yet, as, for prespawns, this flag is implied.
+            /// </summary>
+            /// <remarks>
+            /// Example: A prespawn scene is loaded on both client and server.
+            /// The client informs the server that this prespawn scene is loaded, but a "relevancy radius" forces
+            /// most of these newly loaded ghosts to need to be despawned (as they've been spawned on the client,
+            /// but are outside the relevancy radius).
+            /// Therefore, the server need to properly set this flag, so that it knows it needs to send despawn
+            /// messages for those irrelevant ghosts.
+            /// </remarks>
+            IsRelevant = 1,
+            /// <summary>
+            /// Denotes that we have sent this ghost inside a snapshot to this client at least once.
+            /// I.e. It MAY HAVE BEEN spawned on said client.
+            /// </summary>
+            SentWithChanges = 2,
+            /// <summary>
+            /// Prespawned ghosts have a special prespawn baseline, but said baseline is only valid until they've
+            /// been despawned once (as the baseline is now destroyed on clients).
+            /// </summary>
+            HasBeenDespawnedAtLeastOnce = 4,
+            /// <summary>
+            /// Denotes that netcode has set up this ghost.
+            /// </summary>
+            Initialized = 8,
+            /// <summary>
+            /// Denotes that one or more despawn messages are "in-flight" i.e. awaiting client ack.
+            /// I.e. That this ghost has an entry inside the <see cref="ConnectionStateData.PendingDespawns"/> collection.
+            /// </summary>
+            IsDespawning = 16,
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct GhostState
+        {
+            /// <summary>
+            /// Used to determine that the ghost has changed.
+            /// TODO - Do we need this? Consider low NetworkTickRate use-cases.
+            /// </summary>
+            public NetworkTick SpawnTick;
+            /// <summary>Used to find the snapshot history buffer, after structural changes occur.</summary>
+            public int LastIndexInChunk;
+            /// <summary>Used to find the snapshot history buffer, after structural changes occur.</summary>
+            public ArchetypeChunk LastChunk;
+            /// <summary>Tracks initialization, relevancy, and despawn state for this ghost, for this connection.</summary>
+            public GhostStateFlags Flags;
+        }
+        public struct GhostStateList : IDisposable
+        {
+            public ref UnsafeList<GhostState> List
+            {
+                get { return ref m_List[0]; }
+            }
+            public ref UnsafeList<GhostState> PrespawnList
+            {
+                get { return ref m_List[1]; }
+            }
+            /// <summary>
+            /// Denotes the oldest <see cref="GhostCleanup.despawnTick"/> that this client has not yet acked.
+            /// Used to allow netcode to clean up <see cref="GhostCleanup"/> chunks.
+            /// </summary>
+            public NetworkTick OldestPendingDespawnTick
+            {
+                get
+                {
+                    byte* ptr = (byte*)m_List;
+                    ptr += 2*UnsafeUtility.SizeOf<UnsafeList<GhostState>>();
+                    return new NetworkTick{SerializedData = *(uint*)ptr};
+                }
+                set
+                {
+                    byte* ptr = (byte*)m_List;
+                    ptr += 2*UnsafeUtility.SizeOf<UnsafeList<GhostState>>();
+                    *(uint*)ptr = value.SerializedData;
+                }
+            }
+            [NativeDisableUnsafePtrRestriction]
+            // The "list" is 2 UnsafeLists, one for regular and one for pre-spawned ghosts, followed by a uint for AckedDespawnTick
+            UnsafeList<GhostState>* m_List;
+            Allocator m_Allocator;
+
+            //Space that are reserved specifically for prespawn.. Can we remove it ?
+            public GhostStateList(int capacity, int prespawnCapacity, Allocator allocator)
+            {
+                m_Allocator = allocator;
+                m_List = (UnsafeList<GhostState>*)UnsafeUtility.Malloc(2*UnsafeUtility.SizeOf<UnsafeList<GhostState>>() + UnsafeUtility.SizeOf<uint>(), UnsafeUtility.AlignOf<UnsafeList<GhostState>>(), allocator);
+                m_List[0] = new UnsafeList<GhostState>(CalculateStateListCapacity(capacity), allocator, NativeArrayOptions.ClearMemory);
+                m_List[1] = new UnsafeList<GhostState>(CalculateStateListCapacity(prespawnCapacity), allocator, NativeArrayOptions.ClearMemory);
+                OldestPendingDespawnTick = NetworkTick.Invalid;
+            }
+            public void Dispose()
+            {
+                m_List[0].Dispose();
+                m_List[1].Dispose();
+                UnsafeUtility.Free(m_List, m_Allocator);
+            }
+
+            public static int CalculateStateListCapacity(int capacity)
+            {
+                return (capacity + 1023) & (~1023);
+            }
+        }
+
+        public void Dispose()
+        {
+            var chunkStates = SerializationState->GetValueArray(Allocator.Temp);
+            for (int i = 0; i < chunkStates.Length; ++i)
+                chunkStates[i].FreeSnapshotData();
+            SerializationState->Dispose();
+            AllocatorManager.Free(Allocator.Persistent, SerializationState);
+            PendingDespawns->Dispose();
+            AllocatorManager.Free(Allocator.Persistent, PendingDespawns);
+            AckedPrespawnSceneMap.Dispose();
+            UnsafeList<PrespawnHelper.GhostIdInterval>.Destroy(m_NewLoadedPrespawnRanges);
+            GhostStateData.Dispose();
+            UnsafeList<PrioChunk>.Destroy(PrioChunksPtr);
+#if NETCODE_DEBUG
+            NetDebugPacket.Dispose();
+#endif
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        static public ConnectionStateData Create(Entity connection)
+        {
+            var serializationState = AllocatorManager.Allocate<UnsafeHashMap<ArchetypeChunk, GhostChunkSerializationState>>(Allocator.Persistent);
+            *serializationState = new UnsafeHashMap<ArchetypeChunk, GhostChunkSerializationState>(1024, Allocator.Persistent);
+            var pendingDespawns = AllocatorManager.Allocate<UnsafeList<PendingGhostDespawn>>(Allocator.Persistent);
+            *pendingDespawns = new(256, Allocator.Persistent);
+            return new ConnectionStateData
+            {
+                Entity = connection,
+                SerializationState = serializationState,
+                PendingDespawns = pendingDespawns,
+#if NETCODE_DEBUG
+                NetDebugPacket = new PacketDumpLogger(),
+#endif
+                GhostStateData = new GhostStateList(1024, 1024, Allocator.Persistent),
+                AckedPrespawnSceneMap = new UnsafeParallelHashMap<ulong, int>(256, Allocator.Persistent),
+                m_NewLoadedPrespawnRanges = UnsafeList<PrespawnHelper.GhostIdInterval>.Create(32, Allocator.Persistent),
+                PrioChunksPtr = UnsafeList<PrioChunk>.Create(256, Allocator.Persistent),
+            };
+        }
+
+        public Entity Entity;
+        public UnsafeHashMap<ArchetypeChunk, GhostChunkSerializationState>* SerializationState;
+        public ref UnsafeList<PrioChunk> PrioChunks => ref PrioChunksPtr[0];
+        public UnsafeList<PrioChunk>* PrioChunksPtr;
+        public UnsafeList<PendingGhostDespawn>* PendingDespawns;
+#if NETCODE_DEBUG
+        public PacketDumpLogger NetDebugPacket;
+#endif
+        public GhostStateList GhostStateData;
+        public UnsafeParallelHashMap<ulong, int> AckedPrespawnSceneMap;
+        public ref UnsafeList<PrespawnHelper.GhostIdInterval> NewLoadedPrespawnRanges => ref m_NewLoadedPrespawnRanges[0];
+        private UnsafeList<PrespawnHelper.GhostIdInterval>* m_NewLoadedPrespawnRanges;
+
+        public void EnsureGhostStateCapacity(int capacity, int prespawnCapacity)
+        {
+            if (capacity > GhostStateData.List.Length)
+                GhostStateData.List.Resize(GhostStateList.CalculateStateListCapacity(capacity), NativeArrayOptions.ClearMemory);
+
+            if(prespawnCapacity > GhostStateData.PrespawnList.Length)
+                GhostStateData.PrespawnList.Resize(GhostStateList.CalculateStateListCapacity(prespawnCapacity), NativeArrayOptions.ClearMemory);
+        }
+    }
+}

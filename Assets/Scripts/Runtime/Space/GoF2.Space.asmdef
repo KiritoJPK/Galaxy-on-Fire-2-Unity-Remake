@@ -1,0 +1,23 @@
+{
+    "name": "GoF2.Space",
+    "rootNamespace": "GoF2Remake",
+    "references": [
+        "GoF2.Core",
+        "GoF2.Game",
+        "GoF2.TextureEncoder",
+        "Unity.InputSystem",
+        "Unity.Collections",
+        "glTFast",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -227,7 +227,15 @@ namespace GoF2Remake.Modding
             else if (s.station >= 0) s.station = st(s.station);
             if (s.previousStation >= 0) s.previousStation = st(s.previousStation);
             void Ints(List<int> l) { if (l == null) return; for (int i = l.Count - 1; i >= 0; i--) { int n = st(l[i]); if (n >= 0) l[i] = n; else l.RemoveAt(i); } }
-            Ints(s.visitedStations); Ints(s.attackedStations); Ints(s.storyTargets);
+            Ints(s.visitedStations); Ints(s.attackedStations);
+            // Step 59's targets: a negative entry marks a convoy destroyed there (Status+0x90), not a station: kept as it is.
+            if (s.storyTargets != null)
+                for (int i = s.storyTargets.Count - 1; i >= 0; i--)
+                {
+                    if (s.storyTargets[i] < 0) continue;
+                    int n = st(s.storyTargets[i]);
+                    if (n >= 0) s.storyTargets[i] = n; else s.storyTargets.RemoveAt(i);
+                }
             s.recentStations?.RemoveAll(r => r == null || st(r.station) < 0);
             if (s.recentStations != null)
                 foreach (var r in s.recentStations)

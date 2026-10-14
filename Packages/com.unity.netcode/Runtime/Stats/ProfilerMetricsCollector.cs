@@ -1,0 +1,346 @@
+#if (UNITY_EDITOR || NETCODE_DEBUG)
+using System;
+using System.Diagnostics;
+using Unity.Collections;
+using Unity.Entities;
+using Unity.Netcode.LowLevel.Unsafe;
+using Unity.Netcode.NetcodeTime;
+using Unity.Profiling;
+using UnityEngine;
+using UnityEngine.Profiling;
+using Debug = UnityEngine.Debug;
+
+namespace Unity.Netcode
+{
+    // Profiler counters and additional metrics
+    struct ProfilerMetrics : IComponentData
+    {
+        // Size sent by server accumulated over the whole profiler run
+        internal uint TotalSizeSentByServerInBits;
+
+        // Total packet count sent by server over the whole profiler run
+        internal uint TotalSnapshotCountSentByServer;
+
+        // Size received by client accumulated over the whole profiler run
+        internal uint TotalSizeReceivedByClientInBits;
+
+        // Total packet count received by client over the whole profiler run
+        internal uint TotalSnapshotCountReceivedByClient;
+
+        // Server World Counters
+        internal ProfilerCounterValue<uint> ServerGhostInstancesCounter;
+        internal ProfilerCounterValue<uint> ServerGhostSnapshotCounter;
+
+        // Client World Counters
+        internal ProfilerCounterValue<uint> ClientGhostInstancesCounter;
+        internal ProfilerCounterValue<uint> ClientGhostSnapshotCounter;
+        internal ProfilerCounterValue<float> JitterCounter;
+        internal ProfilerCounterValue<float> RttCounter;
+
+        // World configuration flags
+        internal byte IsHostMode; // 1 if world has both client and server flags, 0 otherwise
+        internal byte HasConnectedClients; // 1 if there are connected clients with NetworkStreamInGame, 0 otherwise
+    }
+
+    /// <summary>
+    /// Contains the uncompressed size in bits for each ghost type.
+    /// This is used to calculate the compression efficiency in the N4E profiler modules.
+    /// Only the size of every type in the GhostCollectionPrefab is needed so we just save the snapshot size for each
+    /// entry of the GhostCollectionPrefabSerializer.
+    /// </summary>
+    [InternalBufferCapacity(0)]
+    struct UncompressedSizesPerType : IBufferElementData
+    {
+        internal uint SizeInBytes;
+    }
+
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation | WorldSystemFilterFlags.ClientSimulation)]
+    partial class ProfilerMetricsCollector : SystemBase
+    {
+        static readonly ComponentType[] k_RequiredStatsComponents =
+        {
+            ComponentType.ReadOnly<GhostMetricsMonitor>(),
+            ComponentType.ReadOnly<NetworkMetrics>(),
+            ComponentType.ReadOnly<GhostNames>(),
+            ComponentType.ReadOnly<GhostMetrics>(),
+            ComponentType.ReadOnly<PredictionErrorNames>(),
+            ComponentType.ReadOnly<PredictionErrorMetrics>()
+        };
+
+        // Flag to know if we have already initialized the metrics collection.
+        bool m_MetricsCollectionEnabled;
+        // Flag to know if we are waiting for a connection in order to set the uncompressed sizes per type once we have one.
+        bool m_WaitForConnection;
+        // Flag to know if we need to clean up the profiler metrics.
+        bool m_IsCleanedUp = true;
+        // Flag to track last processed client tick.
+        NetworkTick m_LastClientTick;
+        // Flag to track last processed server tick.
+        NetworkTick m_LastServerTick;
+        // Flag to track if we've emitted session metadata.
+        bool m_SessionMetadataEmitted;
+        // Entity query to get client count.
+        EntityQuery m_ConnectedClientsQuery;
+
+        void Initialize()
+        {
+            m_IsCleanedUp = false;
+
+            m_ConnectedClientsQuery = SystemAPI.QueryBuilder().WithAll<NetworkStreamConnection>().Build();
+
+            if (!SystemAPI.TryGetSingletonEntity<ProfilerMetrics>(out var profilerMetricsSingleton))
+                profilerMetricsSingleton = EntityManager.CreateSingleton<ProfilerMetrics>("ProfilerMetrics");
+
+            if (!SystemAPI.TryGetSingletonEntity<UncompressedSizesPerType>(out _))
+                EntityManager.CreateSingletonBuffer<UncompressedSizesPerType>("UncompressedSizesPerType");
+
+            var profilerMetrics = new ProfilerMetrics
+            {
+                TotalSizeSentByServerInBits = 0,
+                TotalSnapshotCountSentByServer = 0,
+                TotalSizeReceivedByClientInBits = 0,
+                TotalSnapshotCountReceivedByClient = 0
+            };
+
+            if (World.IsServer())
+            {
+                profilerMetrics.ServerGhostInstancesCounter = new ProfilerCounterValue<uint>(ProfilerCategory.Network, ProfilerMetricsConstants.GhostInstancesCounterNameServer, ProfilerMarkerDataUnit.Count, ProfilerCounterOptions.FlushOnEndOfFrame | ProfilerCounterOptions.ResetToZeroOnFlush);
+                profilerMetrics.ServerGhostSnapshotCounter = new ProfilerCounterValue<uint>(ProfilerCategory.Network, ProfilerMetricsConstants.GhostSnapshotsCounterNameServer, ProfilerMarkerDataUnit.Bytes, ProfilerCounterOptions.FlushOnEndOfFrame | ProfilerCounterOptions.ResetToZeroOnFlush);
+            }
+            else
+            {
+                profilerMetrics.ClientGhostInstancesCounter = new ProfilerCounterValue<uint>(ProfilerCategory.Network, ProfilerMetricsConstants.GhostInstancesCounterNameClient, ProfilerMarkerDataUnit.Count, ProfilerCounterOptions.FlushOnEndOfFrame | ProfilerCounterOptions.ResetToZeroOnFlush);
+                profilerMetrics.ClientGhostSnapshotCounter = new ProfilerCounterValue<uint>(ProfilerCategory.Network, ProfilerMetricsConstants.GhostSnapshotsCounterNameClient, ProfilerMarkerDataUnit.Bytes, ProfilerCounterOptions.FlushOnEndOfFrame | ProfilerCounterOptions.ResetToZeroOnFlush);
+                profilerMetrics.JitterCounter = new ProfilerCounterValue<float>(ProfilerCategory.Network, ProfilerMetricsConstants.JitterCounterName, ProfilerMarkerDataUnit.TimeNanoseconds);
+                profilerMetrics.RttCounter = new ProfilerCounterValue<float>(ProfilerCategory.Network, ProfilerMetricsConstants.RTTCounterName, ProfilerMarkerDataUnit.TimeNanoseconds);
+            }
+
+            EntityManager.AddComponentData(profilerMetricsSingleton, profilerMetrics);
+
+            if (!EntityManager.CreateEntityQuery(typeof(GhostMetricsMonitor)).TryGetSingletonEntity<GhostMetricsMonitor>(out var singletonEntity))
+            {
+                // Create a new GhostMetricsMonitor singleton entity if it doesn't exist.
+                CreateGhostMetricsMonitorSingleton();
+            }
+            else
+            {
+                // In this case there was already a GhostMetricsMonitor singleton created by the user.
+                // We will notify the user that their GhostMetricsMonitor will be destroyed and that they need to
+                // recreate it when the profiler is disabled.
+                Debug.LogWarning("A GhostMetricsMonitor singleton already exists in the world.\n " +
+                    "This will be destroyed and recreated by the ProfilerMetricsCollector system.\n " +
+                    "Please recreate your GhostMetricsMonitor after disabling the profiler.");
+
+                EntityManager.DestroyEntity(singletonEntity);
+                CreateGhostMetricsMonitorSingleton();
+            }
+
+            m_MetricsCollectionEnabled = true;
+        }
+
+        void CreateGhostMetricsMonitorSingleton()
+        {
+            var typeList = new NativeArray<ComponentType>(k_RequiredStatsComponents, Allocator.Temp);
+            var metricSingleton = EntityManager.CreateEntity(EntityManager.CreateArchetype(typeList));
+            EntityManager.SetName(metricSingleton, "MetricsMonitor");
+        }
+
+        protected override void OnUpdate()
+        {
+            if (!Profiler.enabled)
+            {
+                // We have no way to get notified when the profiler is disabled, so we clean up the metrics once and set a flag.
+                Cleanup();
+                return;
+            }
+
+            if (!m_MetricsCollectionEnabled)
+                Initialize();
+
+            SetUncompressedSizesPerType();
+
+            var ghostStatsSnapshot = SystemAPI.GetSingleton<GhostStatsSnapshotSingleton>().GetAsyncStatsReader();
+            var profilerMetrics = SystemAPI.GetSingleton<ProfilerMetrics>();
+            UpdateProfilerMetricsAndCounters(ghostStatsSnapshot, ref profilerMetrics);
+
+            SystemAPI.SetSingleton(profilerMetrics);
+
+#if ENABLE_PROFILER
+            // Emit session metadata once per capture session
+            if (!m_SessionMetadataEmitted)
+            {
+                EmitSessionMetadata();
+                m_SessionMetadataEmitted = true;
+            }
+
+            // Serialize component stats.
+            var serializedGhostStatsSnapshot = ghostStatsSnapshot.ToBlittableData(Allocator.Temp);
+
+            var guid = World.IsServer() ? ProfilerMetricsConstants.ServerGuid : ProfilerMetricsConstants.ClientGuid;
+
+            // Send the data to the profiler.
+            EmitNetcodeFrameMetaData(guid, serializedGhostStatsSnapshot, ghostStatsSnapshot.Tick);
+#endif
+        }
+
+        void SetUncompressedSizesPerType()
+        {
+            var uncompressedSizesPerType = SystemAPI.GetSingletonBuffer<UncompressedSizesPerType>();
+
+            // We only set uncompressed sizes at the start and when they change.
+            if (uncompressedSizesPerType.IsEmpty && !m_WaitForConnection)
+            {
+                // Initial setup
+                var serializers = SystemAPI.GetSingletonBuffer<GhostCollectionPrefabSerializer>();
+                if (serializers.IsEmpty)
+                    return;
+
+                uncompressedSizesPerType.Resize(serializers.Length, NativeArrayOptions.ClearMemory);
+                for (var i = 0; i < serializers.Length; i++)
+                {
+                    uncompressedSizesPerType.ElementAt(i).SizeInBytes = (uint)serializers[i].SnapshotSize;
+                }
+
+                return;
+            }
+
+            // Check if we need to rebuild the buffer.
+            if (SystemAPI.QueryBuilder().WithAll<NetworkStreamInGame>().Build().CalculateEntityCount() == 0)
+            {
+                // Wait until we have a connection again so we can rebuild the buffer.
+                m_WaitForConnection = true;
+                uncompressedSizesPerType.Clear();
+            }
+            else
+            {
+                if (m_WaitForConnection)
+                {
+                    m_WaitForConnection = false;
+                    SetUncompressedSizesPerType();
+                }
+            }
+        }
+
+        void UpdateProfilerMetricsAndCounters(UnsafeGhostStatsSnapshot ghostStatsSnapshot, ref ProfilerMetrics profilerMetrics)
+        {
+            var ghostTypeStats = ghostStatsSnapshot.PerGhostTypeStatsListRO;
+            uint instancesCount = 0;
+            for (var i = 0; i < ghostTypeStats.Length; i++)
+            {
+                instancesCount += ghostTypeStats[i].EntityCount;
+            }
+
+            // Update Graph Counters
+            if (World.IsServer())
+            {
+                if (m_LastServerTick != ghostStatsSnapshot.Tick)
+                {
+                    m_LastServerTick = ghostStatsSnapshot.Tick;
+
+                    profilerMetrics.TotalSizeSentByServerInBits += ghostStatsSnapshot.SnapshotTotalSizeInBits;
+                    profilerMetrics.TotalSnapshotCountSentByServer += ghostStatsSnapshot.SnapshotCount;
+
+                    profilerMetrics.ServerGhostInstancesCounter.Value = instancesCount;
+                    profilerMetrics.ServerGhostSnapshotCounter.Value = ghostStatsSnapshot.SnapshotTotalSizeInBits >> 3; // Convert to bytes
+                }
+                else
+                {
+                    profilerMetrics.ServerGhostInstancesCounter.Value = 0;
+                    profilerMetrics.ServerGhostSnapshotCounter.Value = 0;
+                }
+            }
+            else
+            {
+                if (m_LastClientTick != ghostStatsSnapshot.Tick)
+                {
+                    m_LastClientTick = ghostStatsSnapshot.Tick;
+
+                    profilerMetrics.TotalSizeReceivedByClientInBits += ghostStatsSnapshot.SnapshotTotalSizeInBits;
+                    profilerMetrics.TotalSnapshotCountReceivedByClient += ghostStatsSnapshot.SnapshotCount;
+
+                    profilerMetrics.ClientGhostInstancesCounter.Value = instancesCount;
+                    profilerMetrics.ClientGhostSnapshotCounter.Value = ghostStatsSnapshot.SnapshotTotalSizeInBits >> 3; // Convert to bytes
+                }
+                else
+                {
+                    profilerMetrics.ClientGhostInstancesCounter.Value = 0;
+                    profilerMetrics.ClientGhostSnapshotCounter.Value = 0;
+                }
+
+                var networkMetrics = SystemAPI.GetSingleton<NetworkMetrics>();
+                // Profiler expects nanoseconds as base unit
+                profilerMetrics.JitterCounter.Value = networkMetrics.Jitter * 1_000_000f;
+                profilerMetrics.RttCounter.Value = networkMetrics.Rtt * 1_000_000f;
+            }
+
+            // Host mode and connected clients info
+            profilerMetrics.IsHostMode = (byte)(World.IsHost() ? 1 : 0);
+            profilerMetrics.HasConnectedClients = (byte)(m_ConnectedClientsQuery.CalculateEntityCount() > 0 ? 1 : 0);
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        void EmitSessionMetadata()
+        {
+            var guid = World.IsServer() ? ProfilerMetricsConstants.ServerGuid : ProfilerMetricsConstants.ClientGuid;
+            var worldName = new FixedString128Bytes();
+            worldName.Append(World.Name);
+            Profiler.EmitSessionMetaData(guid, ProfilerMetricsConstants.WorldNameTag, new[] { worldName });
+        }
+
+        [Conditional("ENABLE_PROFILER")]
+        void EmitNetcodeFrameMetaData(Guid guid, NativeArray<byte> serializedGhostStatsSnapshot, NetworkTick snapshotTick)
+        {
+            var serializers = SystemAPI.GetSingletonBuffer<GhostCollectionPrefabSerializer>();
+            var serializerStates = SystemAPI.GetSingletonBuffer<GhostComponentSerializer.State>();
+            var ghostCollectionComponentIndices = SystemAPI.GetSingletonBuffer<GhostCollectionComponentIndex>();
+            var commandStats = SystemAPI.GetComponent<GhostStatsCollectionCommand>(SystemAPI.GetSingletonEntity<GhostStatsCollectionCommand>());
+            var targetTick = commandStats.Value[0];
+            var commandStatsSize = commandStats.Value[1];
+            var discardedPackets = commandStats.Value[2];
+            var networkTime = SystemAPI.GetSingleton<NetworkTime>();
+            var serverTick = networkTime.ServerTick;
+            var interpolationTick = networkTime.InterpolationTick;
+
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.NetworkMetricsTag, new[] { SystemAPI.GetSingleton<NetworkMetrics>() });
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.GhostNamesTag, SystemAPI.GetSingletonBuffer<GhostNames>().AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.GhostMetricsTag, SystemAPI.GetSingletonBuffer<GhostMetrics>().AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.PredictionErrorNamesTag, SystemAPI.GetSingletonBuffer<PredictionErrorNames>().AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.PredictionErrorMetricsTag, SystemAPI.GetSingletonBuffer<PredictionErrorMetrics>().AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.ProfilerMetricsTag, new[] { SystemAPI.GetSingleton<ProfilerMetrics>() });
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.UncompressedSizesPerTypeTag, SystemAPI.GetSingletonBuffer<UncompressedSizesPerType>().AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.SerializedGhostStatsSnapshotTag, serializedGhostStatsSnapshot);
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.PrefabSerializersTag, serializers.AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.SerializerStatesTag, serializerStates.AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.ComponentIndicesTag, ghostCollectionComponentIndices.AsNativeArray());
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.CommandStatsTag, new [] { targetTick, commandStatsSize, discardedPackets });
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.SnapshotTickTag, new [] { snapshotTick });
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.ServerTickTag, new [] { serverTick });
+            Profiler.EmitFrameMetaData(guid, ProfilerMetricsConstants.InterpolationTickTag, new [] { interpolationTick });
+        }
+
+        void Cleanup()
+        {
+            if (m_IsCleanedUp)
+                return;
+
+            DestroySingletonEntity<GhostMetricsMonitor>();
+
+            m_MetricsCollectionEnabled = false;
+            m_SessionMetadataEmitted = false;
+            m_IsCleanedUp = true;
+        }
+
+        protected override void OnDestroy()
+        {
+            Cleanup();
+            DestroySingletonEntity<ProfilerMetrics>();
+        }
+
+        void DestroySingletonEntity<T>() where T : unmanaged, IComponentData
+        {
+            if (SystemAPI.TryGetSingletonEntity<T>(out var singletonEntity))
+                EntityManager.DestroyEntity(singletonEntity);
+        }
+    }
+}
+#endif

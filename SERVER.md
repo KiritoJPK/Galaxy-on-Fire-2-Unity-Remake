@@ -13,6 +13,7 @@ arenas, distress calls and their chat commands), see the [README](README.md).
 
 - [Quick start](#quick-start)
 - [Linux server-only build](#linux-server-only-build)
+- [Docker](#docker)
 - [Online or local network](#online-or-local-network)
 - [Command-line options](#command-line-options)
 - [Settings you can change while the server runs](#settings-you-can-change-while-the-server-runs)
@@ -65,17 +66,55 @@ terminal.
 
 ## Linux server-only build
 
-A smaller Linux build that can only be a server: Unity's Dedicated Server build with the game's textures, sound and
-shaders left out. It runs the same server code as the full game's `-server` mode, keeps the same files and serves the
+A smaller Linux build that can only be a server: Unity's Dedicated Server build with the game's textures, shaders and
+sounds left out (about 330 MB unpacked, a 126 MB zip, instead of 3.3 GB). It runs the same server code as the full game's `-server` mode, keeps the same files and serves the
 same game builds (players see no difference).
 
-Making it (in the Unity Editor, once the Unity Hub module **Linux Dedicated Server Build Support** is installed for the
+Releases have it ready to download: `GoF2Remake-LinuxServer-<version>.zip` on the release page, next to the game's
+files. Unzip it on the server machine (`unzip GoF2Remake-LinuxServer-<version>.zip`, the files keep their execute
+permission) and run `GoF2Server/start-server.sh`.
+
+Making it yourself (in the Unity Editor, once the Unity Hub module **Linux Dedicated Server Build Support** is installed for the
 Editor version): **GoF2 > Build > Linux Dedicated Server**. It builds into `Build/LinuxServer/` with
 `GoF2Server.x86_64` and a `start-server.sh` beside it; the Editor switches to the Linux server target for the build and
-back afterwards. Copy the folder to the server machine.
+back afterwards. Copy the folder to the server machine. **GoF2 > Build > Linux Dedicated Server (Release Zip)** builds
+the same and zips it as `Build/Release/GoF2Remake-LinuxServer-<version>.zip`, the file a release carries.
 
 Running it is as above: edit and run `start-server.sh`, or start `./GoF2Server.x86_64` with the same options. It starts
 as a server without `-server`; `-batchmode -nographics` are implied.
+
+## Docker
+
+Every release is also a Docker image of the Linux server-only build: `ghcr.io/joppietoppie/gof2-server`, tagged with
+the release and `latest`. It is the release's own `GoF2Remake-LinuxServer` zip (the same build as the release's game
+files), or, for a release without one, a build of the release's commit, which the release then gets as that zip. With Docker Compose, copy [`docker/compose.yaml`](docker/compose.yaml) and start it in its
+folder:
+
+```
+docker compose up -d
+```
+
+The options are the command line's: edit `command` in the file. As it is, the server is online (`-relay`) and the web
+admin answers on this machine's port 8080. The profiles and the server's other files are in the Docker volume `data`
+(`/data` in the container, its `-profiledir`). The log and the admin token:
+
+```
+docker compose logs -f
+docker compose logs | grep "admin token"
+```
+
+There is no console to type into: use the in-game Admin tab or the web admin. `docker compose stop` stops it like
+`stop`. To update: `docker compose pull`, then `docker compose up -d`.
+
+Building the image yourself from a checkout needs Docker and a Unity account (`UNITY_EMAIL` and `UNITY_PASSWORD`; its
+Personal licence is used for the build and returned). The first build imports every asset.
+
+```
+docker/build-server.sh
+docker compose -f docker/compose.yaml -f docker/compose.dev.yaml up --build
+```
+
+That one runs on the local network (no `-relay`) and isn't listed.
 
 ## Online or local network
 

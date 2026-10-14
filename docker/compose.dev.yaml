@@ -1,0 +1,9 @@
+# The server built from this checkout instead of the published image, on the local network (not listed):
+#   docker/build-server.sh && docker compose -f docker/compose.yaml -f docker/compose.dev.yaml up --build
+services:
+  server:
+    image: gof2-server:dev
+    build:
+      context: ../Build/LinuxServer
+      dockerfile: ../../docker/server.Dockerfile
+    command: ["-name", "Galaxy on Fire 2 dev server", "-web", "8080", "-webbind", "0.0.0.0"]

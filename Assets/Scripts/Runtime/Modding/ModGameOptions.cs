@@ -108,7 +108,7 @@ namespace GoF2Remake.Modding
         {
             var d = Find(key);
             if (d == null) return false;
-            return Multiplayer.NetGame.SessionGame ? d.defaultOn : Session.ModGameOptions.Contains(d.Key);
+            return Data.NetSession.SessionGame ? d.defaultOn : Session.ModGameOptions.Contains(d.Key);
         }
 
         /// <summary>The new game panel's choice (the last one made for this option, else its default).</summary>

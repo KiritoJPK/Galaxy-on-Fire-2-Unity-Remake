@@ -487,7 +487,7 @@ namespace GoF2Remake.Modding
                                 foreach (var m in mats) sm.materials.Add(JsonUtility.FromJson<CustomShipMaterial>(m.ToString()));
                             stationModels[st.index] = sm;
                             if (db.Assemblies.Find(a => a.name == sm.Assembly) == null)
-                                db.Assemblies.Add(new AssemblyData { name = sm.Assembly, pack = ModShips.Pack, category = "stations", origin = "mod " + mod.Id });
+                                db.Assemblies.Add(new AssemblyData { name = sm.Assembly, pack = ModContent.Pack, category = "stations", origin = "mod " + mod.Id });
                         }
                     }
                     catch (ModJsonException e) { Report(mod, e.Message); }

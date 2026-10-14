@@ -1,0 +1,17 @@
+{
+    "name": "GoF2.TextureEncoder",
+    "rootNamespace": "GoF2Remake.Modding",
+    "references": [
+        "Unity.Burst",
+        "Unity.Collections"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

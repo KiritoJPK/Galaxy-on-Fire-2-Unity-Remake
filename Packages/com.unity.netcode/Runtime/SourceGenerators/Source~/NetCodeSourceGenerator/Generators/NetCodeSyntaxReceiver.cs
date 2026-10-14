@@ -1,0 +1,134 @@
+using System.Collections.Generic;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace Unity.Netcode.Generators
+{
+    internal class NetCodeSyntaxReceiver : ISyntaxReceiver
+    {
+        readonly public List<SyntaxNode> Variants;
+        readonly public List<SyntaxNode> Candidates;
+        readonly public List<SyntaxNode> RPCs;
+
+        public NetCodeSyntaxReceiver()
+        {
+            Variants = new List<SyntaxNode>();
+            Candidates = new List<SyntaxNode>();
+            RPCs = new List<SyntaxNode>();
+        }
+
+        ///<summary>
+        /// Analyze the all the nodes and build a list of candidates
+        /// for rcps, commands and components
+        /// The minimal requirement for a type to be considered a potential candidates are:
+        /// - Must be a struct or a class that inherits from something (can't do deep inheritance checks at this stage?)
+        /// - The struct declaration must be public
+        /// - Must implement either RpcCommandData, ICommandData, ComponentData or IBufferElementData
+        /// There are no check at that level for the ghost fields since it would require the ghost modifiers that
+        /// aren't available yet (until we can finally use a real config file in the unity editor that make the workflow cohese)
+        ///
+        /// The check is a little limited at the moment since we can't test here for interface inheritance at syntax level. Witch means that,
+        /// with the current logic, we can't detect the type/category of a component if they implement an interface that inherit from IBufferElementData
+        /// or IComponentData.
+        ///
+        /// This is quite limiting and may be improved by just just collecting the structs that have at least one interface here
+        /// and do the proper checks via semantic model in the second pass. The code for doing that is pretty straightforward since all the utility are
+        /// present.
+        ///</summary>
+        public void OnVisitSyntaxNode(SyntaxNode syntaxNode)
+        {
+            using (new Profiler.Auto("OnVisitSyntaxNode"))
+            {
+                // Functions are allowed if they have the [RPC] attribute
+                if (syntaxNode is MethodDeclarationSyntax methodNode)
+                {
+                    foreach (var list in methodNode.AttributeLists)
+                    {
+                        foreach (var a in list.Attributes)
+                        {
+                            var attr = a.Name.IsKind(SyntaxKind.QualifiedName) ? ((QualifiedNameSyntax)a.Name).Right : a.Name;
+                            if (attr.ToString() is "RPC" or "RPCAttribute")
+                            {
+                                // Add methods with the RPC attribute for consideration too
+                                RPCs.Add(methodNode);
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                if (!(syntaxNode is StructDeclarationSyntax))
+                {
+                    // The node must be either a struct, or a class with a [GhostComponent] attribute
+                    if (!(syntaxNode is ClassDeclarationSyntax))
+                        return;
+
+                    if (!ComponentFactory.HasGhostComponentAttribute((TypeDeclarationSyntax)syntaxNode) &&
+                        syntaxNode is TypeDeclarationSyntax typeSyntax &&
+                        typeSyntax.BaseList == null)
+                    {
+                        return;
+                    }
+                }
+
+                var structNode = (TypeDeclarationSyntax) syntaxNode;
+
+                if(structNode.TypeParameterList != null)
+                    return;
+
+                //Check for Variant and RPC attributes
+                foreach (var list in structNode.AttributeLists)
+                {
+                    foreach (var a in list.Attributes)
+                    {
+                        var attr = a.Name.IsKind(SyntaxKind.QualifiedName) ? ((QualifiedNameSyntax)a.Name).Right : a.Name;
+                        if (attr.ToString() is "GhostComponentVariation" or "GhostComponentVariationAttribute")
+                        {
+
+                            Variants.Add(structNode);
+                            return;
+                        }
+
+                        if (attr.ToString() is "CustomMessage" or "CustomMessageAttribute")
+                        {
+                            RPCs.Add(structNode);
+                            return;
+                        }
+                    }
+                }
+
+                if (structNode.BaseList == null || structNode.BaseList.Types.Count == 0)
+                    return;
+
+                using (new Profiler.Auto("Collect"))
+                {
+                    bool shouldAddType = true;
+                    foreach (var b in structNode.BaseList.Types)
+                    {
+                        var interfaceType = b.Type;
+                        //discard qualification
+                        if(interfaceType.IsKind(SyntaxKind.QualifiedName))
+                            interfaceType = ((QualifiedNameSyntax)interfaceType).Right;
+
+                        if (interfaceType.IsKind(SyntaxKind.GenericName))
+                        {
+                            if (((GenericNameSyntax)interfaceType).TypeArgumentList.Arguments.Count == 0)
+                            {
+                                shouldAddType = false;
+                                break;
+                            }
+                        }
+                        else if (!interfaceType.IsKind(SyntaxKind.IdentifierName))
+                        {
+                            shouldAddType = false;
+                            break;
+                        }
+                    }
+                    if(shouldAddType)
+                        Candidates.Add(structNode);
+                }
+            }
+        }
+    }
+}

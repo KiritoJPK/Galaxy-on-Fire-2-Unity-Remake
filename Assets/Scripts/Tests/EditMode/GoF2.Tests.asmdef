@@ -1,0 +1,29 @@
+{
+    "name": "GoF2.Tests",
+    "rootNamespace": "GoF2Remake.Tests",
+    "references": [
+        "GoF2.Core",
+        "GoF2.Game",
+        "GoF2.Space",
+        "GoF2.Net",
+        "GoF2.App",
+        "GoF2.TestSupport",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

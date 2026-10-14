@@ -1,0 +1,223 @@
+// NetGuardTests.cs
+// Feature: CLAUDE.md "Multiplayer" > Server checks: every client request is checked before the server acts on it:
+// finite numbers in range (positions within 1e6 m per axis, damage positive and up to 1e6, 1e8 only with the debug menu
+// allowed), stations / items / ships that exist, the Void's orbit (-1) as an orbit; command names 32 and arguments 512
+// characters, mission JSON and hangar snapshots 4096; and a token bucket per client and request kind drops a flood, and
+// 1500 weighted drops in a minute (shots 0.1, trades 0.2) kick the client.
+// Expected values: the limits CLAUDE.md states (1e6, 1e8, 32 / 512, 4096, 1500, the weights 0.1 / 0.2), the table sizes
+// of the game's data (items 0..232, ships, stations), hand-picked out-of-range values. Within one edit-mode test
+// Time.unscaledTime doesn't move, so a bucket doesn't refill while it is emptied.
+
+using GoF2Remake.Data;
+using GoF2Remake.Multiplayer;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace GoF2Remake.Tests
+{
+    public class NetGuardTests : SandboxTest
+    {
+        // ---- NetGuard ----
+
+        [Test]
+        public void TheLimits()
+        {
+            Assert.AreEqual(1e6f, NetGuard.MaxCoordinate);
+            Assert.AreEqual(32, NetGuard.MaxCommandName);
+            Assert.AreEqual(512, NetGuard.MaxCommandArgs);
+            Assert.AreEqual(4096, NetGuard.MaxMissionJson);
+            Assert.AreEqual(4096, NetGuard.MaxSnapshot);
+            Assert.AreEqual(1e6f, NetGuard.MaxDamage, "no session: the debug menu isn't allowed");
+        }
+
+        [Test]
+        public void FiniteNumbers()
+        {
+            Assert.IsTrue(NetGuard.Finite(0f));
+            Assert.IsTrue(NetGuard.Finite(-1e30f));
+            Assert.IsFalse(NetGuard.Finite(float.NaN));
+            Assert.IsFalse(NetGuard.Finite(float.PositiveInfinity));
+            Assert.IsFalse(NetGuard.Finite(float.NegativeInfinity));
+            Assert.IsTrue(NetGuard.Finite(new Vector3(1, 2, 3)));
+            Assert.IsFalse(NetGuard.Finite(new Vector3(1, float.NaN, 3)));
+        }
+
+        [Test]
+        public void PositionsWithinAMillionMetres()
+        {
+            Assert.IsTrue(NetGuard.Position(Vector3.zero));
+            Assert.IsTrue(NetGuard.Position(new Vector3(1e6f, -1e6f, 1e6f)));
+            Assert.IsFalse(NetGuard.Position(new Vector3(1.01e6f, 0, 0)));
+            Assert.IsFalse(NetGuard.Position(new Vector3(0, -2e6f, 0)));
+            Assert.IsFalse(NetGuard.Position(new Vector3(0, 0, float.NaN)));
+        }
+
+        [Test]
+        public void Rotations()
+        {
+            Assert.IsTrue(NetGuard.Rotation(Quaternion.identity));
+            Assert.IsFalse(NetGuard.Rotation(new Quaternion(float.NaN, 0, 0, 1)));
+        }
+
+        [Test]
+        public void Damage()
+        {
+            Assert.IsTrue(NetGuard.Damage(0.01f));
+            Assert.IsTrue(NetGuard.Damage(1e6f));
+            Assert.IsFalse(NetGuard.Damage(1.5e6f));
+            Assert.IsFalse(NetGuard.Damage(0f));
+            Assert.IsFalse(NetGuard.Damage(-5f));
+            Assert.IsFalse(NetGuard.Damage(float.NaN));
+            Assert.IsFalse(NetGuard.Damage(float.PositiveInfinity));
+        }
+
+        [Test]
+        public void ItemsShipsStations()
+        {
+            Assert.IsTrue(NetGuard.Item(0));
+            Assert.IsTrue(NetGuard.Item(85), "the Khador Drive");
+            Assert.IsTrue(NetGuard.Item(232), "the last original item");
+            Assert.IsFalse(NetGuard.Item(-1));
+            Assert.IsFalse(NetGuard.Item(100000));
+            Assert.IsTrue(NetGuard.Ship(10), "the Phantom");
+            Assert.IsFalse(NetGuard.Ship(-1));
+            Assert.IsFalse(NetGuard.Ship(100000));
+            Assert.IsTrue(NetGuard.Station(78), "Var Hastra");
+            Assert.IsTrue(NetGuard.Station(70), "Dis");
+            Assert.IsFalse(NetGuard.Station(-1), "the Void is no station");
+            Assert.IsFalse(NetGuard.Station(100000));
+            Assert.IsTrue(NetGuard.Orbit(-1), "but an orbit");
+            Assert.IsTrue(NetGuard.Orbit(78));
+            Assert.IsFalse(NetGuard.Orbit(-2));
+        }
+
+        [Test]
+        public void Shots()
+        {
+            var up = Vector3.up;
+            var v = new Vector3(0, 0, 320f);   // 16 u/ms
+            Assert.IsTrue(NetGuard.Shot(0, Vector3.zero, v, up, 3000f, 0f));
+            Assert.IsTrue(NetGuard.Shot(0, Vector3.zero, v, up, -5000f, 0f), "a coasting rocket's timer below 0");
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, v, up, -5001f, 0f));
+            Assert.IsTrue(NetGuard.Shot(0, Vector3.zero, v, up, NetGuard.MaxLifetimeMs, NetGuard.MaxLifetimeMs));
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, v, up, NetGuard.MaxLifetimeMs + 1f, 0f));
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, v, up, 3000f, -1f), "a homing delay below 0");
+            Assert.IsFalse(NetGuard.Shot(-1, Vector3.zero, v, up, 3000f, 0f), "no such item");
+            Assert.IsFalse(NetGuard.Shot(0, new Vector3(2e6f, 0, 0), v, up, 3000f, 0f));
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, new Vector3(1e7f, 0, 0), up, 3000f, 0f), "too fast");
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, v, new Vector3(float.NaN, 0, 0), 3000f, 0f));
+            Assert.IsFalse(NetGuard.Shot(0, Vector3.zero, v, up, float.NaN, 0f));
+        }
+
+        // ---- NetRateLimit ----
+
+        [SetUp]
+        public void ResetLimits() => NetRateLimit.Reset();
+
+        [TearDown]
+        public void ClearLimits() => NetRateLimit.Reset();
+
+        /// <summary>Requests until the first drop: the burst a client may send at once.</summary>
+        static int Burst(ulong client, NetRateLimit.Kind kind)
+        {
+            int n = 0;
+            while (NetRateLimit.Allow(client, kind) && n < 100000) n++;
+            return n;
+        }
+
+        [Test]
+        public void ABurstThenDrops()
+        {
+            int chat = Burst(1001, NetRateLimit.Kind.Chat);
+            Assert.Greater(chat, 1, "a few lines at once are fine");
+            Assert.Less(chat, 100, "a flood isn't");
+            Assert.IsFalse(NetRateLimit.Allow(1001, NetRateLimit.Kind.Chat), "still empty");
+        }
+
+        [Test]
+        public void EachKindHasItsOwnBucket()
+        {
+            Burst(1002, NetRateLimit.Kind.Chat);
+            Assert.IsTrue(NetRateLimit.Allow(1002, NetRateLimit.Kind.Command));
+            Assert.IsTrue(NetRateLimit.Allow(1002, NetRateLimit.Kind.Shot));
+        }
+
+        [Test]
+        public void EachClientHasItsOwnBuckets()
+        {
+            Burst(1003, NetRateLimit.Kind.Chat);
+            Assert.IsTrue(NetRateLimit.Allow(1004, NetRateLimit.Kind.Chat));
+        }
+
+        [Test]
+        public void ForgetGivesAFreshBucket()
+        {
+            int first = Burst(1005, NetRateLimit.Kind.Invite);
+            NetRateLimit.Forget(1005);
+            Assert.AreEqual(first, Burst(1005, NetRateLimit.Kind.Invite));
+        }
+
+        [Test]
+        public void BusyPlayIsWellBelowTheLimits()
+        {
+            // CLAUDE.md: the limits are above real play: a held shop arrow's units, a battle's shots, a busy orbit's ships.
+            Assert.GreaterOrEqual(Burst(1006, NetRateLimit.Kind.Trade), 100);
+            Assert.GreaterOrEqual(Burst(1006, NetRateLimit.Kind.Shot), 200);
+            Assert.GreaterOrEqual(Burst(1006, NetRateLimit.Kind.Hit), 200);
+            Assert.GreaterOrEqual(Burst(1006, NetRateLimit.Kind.ProxySpawn), 40, "a busy orbit's 40 ships at once");
+        }
+
+        /// <summary>Drops of one kind until the client is kicked (then every request is refused, a kind with a full bucket
+        /// too), probed every 10 drops with a kind whose burst outlasts the probes; -1 = never within 'max'.</summary>
+        static int DropsUntilKicked(ulong client, NetRateLimit.Kind kind, NetRateLimit.Kind probe, int max)
+        {
+            Burst(client, kind);
+            for (int drops = 1; drops <= max; drops++)
+            {
+                Assert.IsFalse(NetRateLimit.Allow(client, kind));
+                if (drops % 10 == 0 && !NetRateLimit.Allow(client, probe)) return drops;
+            }
+            return -1;
+        }
+
+        [Test]
+        public void AFloodOf1500DropsKicks()
+        {
+            // Chat weighs 1 per drop: kicked at the 1500th (not yet at the 1490th probe).
+            int drops = DropsUntilKicked(2001, NetRateLimit.Kind.Chat, NetRateLimit.Kind.Shot, 2000);
+            Assert.AreEqual(1500, drops);
+        }
+
+        [Test]
+        public void TradeDropsWeighAFifth()
+        {
+            // 0.2 per drop: about 7500 drops (a float sum; probed every 100).
+            Burst(2002, NetRateLimit.Kind.Trade);
+            int drops = 0;
+            while (drops < 9000)
+            {
+                drops++;
+                NetRateLimit.Allow(2002, NetRateLimit.Kind.Trade);
+                if (drops % 100 == 0 && !NetRateLimit.Allow(2002, NetRateLimit.Kind.Shot)) break;
+            }
+            Assert.That(drops, Is.InRange(7400, 7600));
+        }
+
+        [Test]
+        public void AKickedClientIsRefusedEverything()
+        {
+            DropsUntilKicked(2003, NetRateLimit.Kind.Chat, NetRateLimit.Kind.Shot, 2000);
+            foreach (NetRateLimit.Kind k in System.Enum.GetValues(typeof(NetRateLimit.Kind)))
+                if (k != NetRateLimit.Kind.Count) Assert.IsFalse(NetRateLimit.Allow(2003, k), k.ToString());
+            Assert.IsTrue(NetRateLimit.Allow(2004, NetRateLimit.Kind.Chat), "another client isn't");
+        }
+
+        [Test]
+        public void ResetForgetsTheKick()
+        {
+            DropsUntilKicked(2005, NetRateLimit.Kind.Chat, NetRateLimit.Kind.Shot, 2000);
+            NetRateLimit.Reset();
+            Assert.IsTrue(NetRateLimit.Allow(2005, NetRateLimit.Kind.Chat));
+        }
+    }
+}

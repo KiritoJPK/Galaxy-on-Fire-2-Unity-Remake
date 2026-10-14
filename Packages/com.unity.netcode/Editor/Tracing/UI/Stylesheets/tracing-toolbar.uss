@@ -1,0 +1,256 @@
+.tracing-toolbar {
+    flex-direction: row;
+    align-items: center;
+    min-height: 26px;
+    width: 100%;
+    border-bottom-color: var(--unity-colors-default-border);
+    border-bottom-width: 1px;
+}
+
+.tracing-toolbar__container {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 6px;
+    border-right-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+    height: 100%;
+    flex-shrink: 0;
+}
+
+.tracing-toolbar__spacer {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.tracing-toolbar__dropdown-container__label {
+    padding: 0 8px 2px 8px;
+}
+
+.tracing-toolbar__container--no-padding {
+    padding: 0;
+}
+
+
+.tracing-toolbar__dropdown-container__speed-row {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+    padding: 2px 8px 4px 8px;
+}
+
+.tracing-toolbar__dropdown-container__speed-row__label {
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.tracing-toolbar__dropdown-container__speed-row__slider {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 40px;
+    margin: 0;
+}
+
+.tracing-toolbar__dropdown-container__speed-row__field {
+    width: 30px;
+    flex-shrink: 0;
+    margin-left: 4px;
+    margin-right: 0;
+}
+
+.tracing-toolbar__icon {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    border-width: 0;
+    padding: 0;
+    flex-shrink: 0;
+    background-color: transparent;
+    background-size: 10px 10px;
+}
+
+.tracing-toolbar__icon:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+    border-radius: 3px;
+}
+
+.tracing-toolbar__icon__record {
+    background-image: var(--toolbar-record-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__record--off {
+    background-image: var(--toolbar-record-off-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__previous-frame {
+    background-image: var(--toolbar-go-to-start-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__previous-diff {
+    background-image: var(--toolbar-step-back-icon);
+    background-size: 22px 22px;
+}
+
+.tracing-toolbar__icon__play {
+    background-image: var(--toolbar-play-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__play--per-tick {
+    background-image: var(--toolbar-replay-per-tick-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__play--per-system {
+    background-image: var(--toolbar-replay-per-system-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__pause {
+    background-image: var(--toolbar-pause-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__icon__next-diff {
+    background-image: var(--toolbar-step-forward-icon);
+    background-size: 22px 22px;
+}
+
+.tracing-toolbar__icon__next-frame {
+    background-image: var(--toolbar-go-to-end-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-toolbar__container--panel {
+    flex-shrink: 0;
+}
+
+.tracing-toolbar__panel-toggle {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    padding: 0;
+    border-width: 0;
+    flex-shrink: 0;
+    background-color: transparent;
+    background-size: 16px 16px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.tracing-toolbar__panel-toggle:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+    border-radius: 3px;
+}
+
+/* Pressed-in look while the panel is open, like a toolbar toggle that is on. */
+.tracing-toolbar__panel-toggle--active {
+    background-color: var(--unity-colors-button-background-pressed);
+    border-radius: 3px;
+}
+
+.tracing-toolbar__panel-toggle-separator {
+    width: 1px;
+    height: 16px;
+    margin: 0 4px;
+    flex-shrink: 0;
+    background-color: var(--unity-colors-default-border);
+}
+
+.tracing-toolbar__target-summary {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+    padding: 0 4px;
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.tracing-toolbar__target-summary:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+}
+
+.tracing-toolbar__target-summary__text {
+    margin: 0 2px 0 0;
+    padding: 0;
+}
+
+.tracing-toolbar__target-summary__count {
+    margin-left: 2px;
+}
+
+.tracing-toolbar__target-summary__icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 2px;
+    flex-shrink: 0;
+    background-size: 14px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.tracing-toolbar__icon__system {
+    background-image: var(--system-icon);
+}
+
+.tracing-toolbar__icon__component {
+    background-image: var(--toolbar-puzzle-piece-icon);
+}
+
+
+/*** Frame Input ****/
+.tracing-toolbar__frame-field {
+    width: 40px;
+    margin-left: 2px;
+    margin-right: 0;
+}
+
+.tracing-toolbar__frame-total-label {
+    margin-left: 0;
+    margin-right: 4px;
+}
+
+.tracing-toolbar__clear-button {
+    background-color: transparent;
+    border-color: transparent;
+}
+
+.tracing-toolbar__clear-button:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+}
+
+
+/*** Playback controls ****/
+.tracing-toolbar__playback-controls {
+    flex-direction: row;
+    align-items: center;
+    height: 100%;
+    flex-shrink: 0;
+}
+
+.tracing-toolbar__playback-controls__icon-container {
+    min-width: 16px;
+    height: 100%;
+    padding: 0 6px;
+    flex-direction: row;
+    align-items: center;
+    border-right-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+}
+
+.tracing-toolbar__playback-controls__icon-container .unity-base-popup-field__arrow {
+    padding: 0 0 0 1px;
+    margin: 0;
+    border-width: 0;
+    background-color: transparent;
+    height: 100%;
+}
+
+.tracing-toolbar__playback-controls__icon-container .unity-base-popup-field__arrow:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+}
+
+

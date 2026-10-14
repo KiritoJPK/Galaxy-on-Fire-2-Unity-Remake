@@ -111,6 +111,12 @@
                     <ui:Label name="loadTitle" class="panel-title gof-semibold" />
                     <ui:VisualElement class="panel-accent" />
                     <ui:ScrollView name="slotList" class="slot-list" />
+                    <!-- Remake: Export / Import saves (SaveTransfer); the delete hint (SaveSlotRow.AttachHint) goes above. -->
+                    <ui:VisualElement name="saveTransferRow" class="mods-actions save-transfer-row">
+                        <ui:Button name="exportSavesButton" class="mods-action gof-semibold" />
+                        <ui:Button name="importSavesButton" class="mods-action gof-semibold" />
+                    </ui:VisualElement>
+                    <ui:Label name="saveTransferNote" class="save-transfer-note" />
                     <ui:Button name="loadBack" class="menu-button back-button gof-semibold" />
                 </ui:VisualElement>
 
@@ -201,28 +207,28 @@
                                 <ui:Label name="mpDebugLabel" class="mp-label mp-debug-label gof-semibold" />
                                 <ui:VisualElement class="choice-segments mp-debug-segments">
                                     <ui:Button name="mpDebugOff" class="choice-segment gof-semibold" />
-                                    <ui:Button name="mpDebugOn" class="choice-segment gof-semibold" />
+                                    <ui:Button name="mpDebugOn" class="choice-segment choice-segment--last gof-semibold" />
                                 </ui:VisualElement>
                             </ui:VisualElement>
                             <ui:VisualElement class="mp-debug-row">
                                 <ui:Label name="mpPvpLabel" class="mp-label mp-debug-label gof-semibold" />
                                 <ui:VisualElement class="choice-segments mp-debug-segments">
                                     <ui:Button name="mpPvpOff" class="choice-segment gof-semibold" />
-                                    <ui:Button name="mpPvpOn" class="choice-segment gof-semibold" />
+                                    <ui:Button name="mpPvpOn" class="choice-segment choice-segment--last gof-semibold" />
                                 </ui:VisualElement>
                             </ui:VisualElement>
                             <ui:VisualElement class="mp-debug-row">
                                 <ui:Label name="mpWorldLabel" class="mp-label mp-debug-label gof-semibold" />
                                 <ui:VisualElement class="choice-segments mp-debug-segments">
                                     <ui:Button name="mpWorldFresh" class="choice-segment gof-semibold" />
-                                    <ui:Button name="mpWorldPersistent" class="choice-segment gof-semibold" />
+                                    <ui:Button name="mpWorldPersistent" class="choice-segment choice-segment--last gof-semibold" />
                                 </ui:VisualElement>
                             </ui:VisualElement>
                             <ui:VisualElement class="mp-debug-row">
                                 <ui:Label name="mpModsLabel" class="mp-label mp-debug-label gof-semibold" />
                                 <ui:VisualElement class="choice-segments mp-debug-segments">
                                     <ui:Button name="mpModsOff" class="choice-segment gof-semibold" />
-                                    <ui:Button name="mpModsOn" class="choice-segment gof-semibold" />
+                                    <ui:Button name="mpModsOn" class="choice-segment choice-segment--last gof-semibold" />
                                 </ui:VisualElement>
                             </ui:VisualElement>
                             </ui:VisualElement>

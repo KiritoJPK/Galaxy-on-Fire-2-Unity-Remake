@@ -1,0 +1,29 @@
+{
+    "name": "GoF2.App",
+    "rootNamespace": "GoF2Remake",
+    "references": [
+        "GoF2.Core",
+        "GoF2.Game",
+        "GoF2.TextureEncoder",
+        "Unity.InputSystem",
+        "Unity.Collections",
+        "glTFast",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "GoF2.Space",
+        "GoF2.Net",
+        "Unity.XR.Management",
+        "Unity.XR.CoreUtils",
+        "Unity.XR.OpenXR",
+        "Unity.Netcode.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

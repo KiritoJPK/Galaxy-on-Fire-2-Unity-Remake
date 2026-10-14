@@ -29,6 +29,12 @@ namespace GoF2Remake.Modding
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class ModContent
     {
+        /// <summary>The asset pack of the mods' models (AssemblyData.pack; AssembledObject.LoadPrefab hands out the built
+        /// templates for it: ModShips, ModStations).</summary>
+        public const string Pack = "mod";
+        /// <summary>A mod's folder of replacement textures (ModTextures).</summary>
+        public const string TexturesFolder = "textures";
+
         public const string ItemsFile = "items.json";
 
         /// <summary>One entry of a mod's items.json.</summary>
@@ -637,7 +643,7 @@ namespace GoF2Remake.Modding
                                 // A new model for an original ship (ModelOverrides; Database.ShipAssembly takes this first).
                                 string asm = ModelOverrideAssembly(t);
                                 if (db.AssemblyByName(asm) == null)
-                                    db.Assemblies.Add(new AssemblyData { name = asm, pack = ModShips.Pack, category = "ships", origin = "mod " + mod.Id });
+                                    db.Assemblies.Add(new AssemblyData { name = asm, pack = ModContent.Pack, category = "ships", origin = "mod " + mod.Id });
                             }
                             // Its own hardpoints ("mounts": weapon / turret / exhaust points), with a new model or on the
                             // ship's own (more primaries or secondaries need points to fire from; extra ones share them).
@@ -656,7 +662,7 @@ namespace GoF2Remake.Modding
                         var c = ShipData(index, d);
                         if (dflt && c.priceDefault > 0) c.price = c.priceDefault;
                         db.Ships.Add(c);
-                        db.Assemblies.Add(new AssemblyData { name = c.assembly, pack = ModShips.Pack, category = "ships", origin = "mod " + mod.Id });
+                        db.Assemblies.Add(new AssemblyData { name = c.assembly, pack = ModContent.Pack, category = "ships", origin = "mod " + mod.Id });
                         if (c.mounts != null && c.mounts.Count > 0)
                             db.WeaponMounts.Add(new WeaponMountSet { ship = index, shipName = c.name, mounts = c.mounts });
                     }

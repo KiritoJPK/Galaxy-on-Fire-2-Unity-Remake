@@ -1,0 +1,32 @@
+#templateid: NetCode.GhostFixedListContainer.cs
+using System;
+using Unity.Collections;
+using Unity.Netcode.LowLevel.Unsafe;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
+
+namespace __GHOST_NAMESPACE__
+{
+    /// <summary>
+    /// Auto-Generated struct used to wrap FixedList's when used inside snapshots. Not responsible for serializing the field itself.
+    /// /summary>
+    [System.Runtime.CompilerServices.CompilerGenerated]
+    internal struct __GHOST_FIXEDLIST_NAME__
+    {
+        public const int Capacity = __GHOST_FIXEDLIST_CAPACITY__;
+
+        #region __GHOST_FIXEDLIST_ELEMENTS__
+        __GHOST_ELEMENT_TYPENAME__ __GHOST_ELEMENT_FIELD_NAME__;
+        #endregion
+
+        // C# 11+ ref safety rules need UnscopedRef to return a span over this
+#if NET7_0_OR_GREATER
+        [System.Diagnostics.CodeAnalysis.UnscopedRef]
+#endif
+        public Span<__GHOST_ELEMENT_TYPENAME__> ToSpan() => FixedArraySerializationUtils.ToSpan<__GHOST_FIXEDLIST_NAME__,__GHOST_ELEMENT_TYPENAME__>(ref this, Capacity);
+#if NET7_0_OR_GREATER
+        [System.Diagnostics.CodeAnalysis.UnscopedRef]
+#endif
+        public ReadOnlySpan<__GHOST_ELEMENT_TYPENAME__> ToReadOnlySpan() => FixedArraySerializationUtils.ToReadOnlySpan<__GHOST_FIXEDLIST_NAME__, __GHOST_ELEMENT_TYPENAME__>(ref this, Capacity);
+    }
+}

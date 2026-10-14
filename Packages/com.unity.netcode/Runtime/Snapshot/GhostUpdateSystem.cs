@@ -1,0 +1,2055 @@
+using System;
+using System.Diagnostics;
+using UnityEngine.Assertions;
+using Unity.Entities;
+using Unity.Collections;
+using Unity.Burst;
+using Unity.Burst.Intrinsics;
+using Unity.Jobs.LowLevel.Unsafe;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Jobs;
+using Unity.Netcode.LowLevel.Unsafe;
+using Unity.Mathematics;
+using Unity.Netcode.EntitiesInternalAccess;
+using Unity.Netcode.NetcodeTime;
+using Unity.Transforms;
+using UnityEngine.Scripting.APIUpdating;
+
+namespace Unity.Netcode
+{
+    struct GhostPredictionGroupTickState : IComponentData
+    {
+        public NativeParallelHashMap<NetworkTick, NetworkTick> AppliedPredictedTicks;
+    }
+
+    /// <summary>
+    /// <para>System present only in client worlds, and responsible for:</para>
+    /// <para>- updating the state of interpolated ghosts, by copying and intepolating data from the received snapshosts.</para>
+    /// <para>- restore the predicted ghost state from the <see cref="GhostPredictionHistoryState"/> before running the next prediction loop (until new snapshot aren't received).</para>
+    /// <para>- updating the <see cref="PredictedGhost"/> properties for all predicted ghost, by reflecting the latest received snapshot (see <see cref="PredictedGhost.AppliedTick"/>)
+    /// and setting up the correct tick from which the ghost should start predicting (see <see cref="PredictedGhost.PredictionStartTick"/></para>
+    /// </summary>
+    [UpdateInGroup(typeof(GhostSimulationSystemGroup))]
+    [UpdateAfter(typeof(GhostReceiveSystem))]
+    [UpdateBefore(typeof(GhostSpawnClassificationSystemGroup))]
+    [UpdateBefore(typeof(GhostInputSystemGroup))]
+    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+    [BurstCompile]
+    [MovedFrom(true, "Unity.NetCode")]
+    public unsafe partial struct GhostUpdateSystem : ISystem
+    {
+        /// <summary>
+        /// Sets every single ghost's GhostField data to what we need for this tick. Early-outs if there are no changes.
+        /// Also informs the prediction group of which tick to start prediction from (to support rollback).
+        /// </summary>
+        /// <remarks>
+        /// ARCHITECTURAL NOTE: GhostUpdateSystem (and therefore UpdateJob) runs ONCE per render frame,
+        /// BEFORE the prediction loop runs N times in PredictedSimulationSystemGroup. The per-entity
+        /// decisions made here - which snapshot/backup to restore from, what to set PredictionStartTick
+        /// to, what ticks to register with appliedPredictedTicks - configure the ghost state for the
+        /// entire upcoming prediction loop. They are NOT re-evaluated per loop iteration.
+        /// </remarks>
+        [BurstCompile]
+        struct UpdateJob : IJobChunk
+        {
+            public DynamicTypeList DynamicTypeList;
+            public Entity GhostCollectionSingleton;
+            [ReadOnly] public BufferLookup<GhostComponentSerializer.State> GhostComponentCollectionFromEntity;
+            [ReadOnly] public BufferLookup<GhostCollectionPrefabSerializer> GhostTypeCollectionFromEntity;
+            [ReadOnly] public BufferLookup<GhostCollectionComponentIndex> GhostComponentIndexFromEntity;
+            [NativeDisableContainerSafetyRestriction] private DynamicBuffer<GhostComponentSerializer.State> GhostComponentCollection;
+            [NativeDisableContainerSafetyRestriction] private DynamicBuffer<GhostCollectionPrefabSerializer> GhostTypeCollection;
+            [NativeDisableContainerSafetyRestriction] private DynamicBuffer<GhostCollectionComponentIndex> GhostComponentIndex;
+            [ReadOnly] public NativeHashMap<GhostType, int>.ReadOnly GhostTypeToCollectionIndex;
+
+            [ReadOnly] public NativeParallelHashMap<SpawnedGhost, Entity>.ReadOnly GhostMap;
+    #if UNITY_EDITOR || NETCODE_DEBUG
+            [NativeDisableParallelForRestriction] public NativeArray<NetworkTick> minMaxSnapshotTick;
+    #endif
+    #pragma warning disable 649
+            [NativeSetThreadIndex] public int ThreadIndex;
+    #pragma warning restore 649
+            [ReadOnly] public ComponentTypeHandle<GhostInstance> ghostInstanceTypeHandle;
+            public ComponentTypeHandle<SnapshotData> ghostSnapshotDataType;
+            [ReadOnly] public BufferTypeHandle<SnapshotDataBuffer> ghostSnapshotDataBufferType;
+            [ReadOnly] public BufferTypeHandle<SnapshotDynamicDataBuffer> ghostSnapshotDynamicDataBufferType;
+            [ReadOnly] public ComponentTypeHandle<PreSpawnedGhostIndex> prespawnGhostIndexType;
+            [ReadOnly] public ComponentTypeHandle<PredictedGhostSpawnRequest> predictedGhostRequestType;
+            [ReadOnly] public ComponentTypeHandle<GhostType> ghostTypeHandle;
+
+            public NetworkTick interpolatedTargetTick;
+            public float interpolatedTargetTickFraction;
+            public NetworkTick predictedTargetTick;
+            public float predictedTargetTickFraction;
+
+            public NativeParallelHashMap<NetworkTick, NetworkTick>.ParallelWriter appliedPredictedTicks;
+            public ComponentTypeHandle<PredictedGhost> PredictedGhostType;
+            public NetworkTick lastPredictedTick;
+            public bool lastPredictedTickWasPartial;
+            public NetworkTick lastInterpolatedTick;
+
+            [ReadOnly] public EntityStorageInfoLookup childEntityLookup;
+            [ReadOnly] public BufferTypeHandle<LinkedEntityGroup> linkedEntityGroupType;
+
+            public NetworkTick predictionStateBackupTick;
+            public NativeParallelHashMap<ulong, SlotPtr>.ReadOnly predictionStateBackup;
+            public NativeParallelHashMap<Entity, GhostPredictionHistorySystem.PredictionBufferHistoryData>.ReadOnly predictionBackupEntityState;
+            /// <summary>
+            /// Multi-tick prediction history rings (per-chunk PredictionBackupRing pointers). Used by the global
+            /// rollback path to find an older slot for ghosts whose snapshot is not at globalRollbackTick.
+            /// </summary>
+            public NativeParallelHashMap<ulong, RingPtr>.ReadOnly predictionRings;
+            /// <summary>
+            /// Set by CalculateNumPredictedGhostToRollback. Invalid when the AlwaysRollbackAllPredictedGhosts flag is
+            /// off, OR when no non-static predicted ghost has new snapshot data this frame.
+            /// </summary>
+            [ReadOnly] public NativeReference<NetworkTick> globalRollbackTick;
+            [ReadOnly] public EntityTypeHandle entityType;
+            public int ghostOwnerId;
+            public ClientTickRate clientTickRate;
+            public NetDebug netDebug;
+
+            [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+            private static void ValidateReadEnableBits(int enableableMaskOffset, int numEnableBits)
+            {
+                if(enableableMaskOffset > numEnableBits)
+                    throw new InvalidOperationException($"Read only {enableableMaskOffset} enable bits data whics are less than the expected {numEnableBits} for this ghost type. This is not a serializarion error but a problem restoring the component state from the decoded snapshot data.");
+            }
+            [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+            private void ValidateAllEnableBitsHasBeenRead(int enableableMaskOffset, int numEnableBits)
+            {
+                if (enableableMaskOffset != numEnableBits)
+                    throw new InvalidOperationException($"Read only {enableableMaskOffset} enable bits but expected to read exacly {numEnableBits} for this ghost type");
+            }
+
+            struct BackupRange
+            {
+                public byte EntityIndex;
+                public byte EntityIndexInBackup;
+                public IntPtr BackupState;
+            }
+            struct EntityRange
+            {
+                public byte StartEntityIndex;
+                public byte Count;
+            }
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                // This job is not written to support queries with enableable component types.
+                Assert.IsFalse(useEnabledMask);
+
+                DynamicComponentTypeHandle* ghostChunkComponentTypesPtr = DynamicTypeList.GetData();
+                int ghostChunkComponentTypesLength = DynamicTypeList.Length;
+                GhostComponentCollection = GhostComponentCollectionFromEntity[GhostCollectionSingleton];
+                GhostTypeCollection = GhostTypeCollectionFromEntity[GhostCollectionSingleton];
+                GhostComponentIndex = GhostComponentIndexFromEntity[GhostCollectionSingleton];
+
+                bool predicted = chunk.Has(ref PredictedGhostType);
+                bool isPrespawn = chunk.Has(ref prespawnGhostIndexType);
+                NetworkTick targetTick = predicted ? predictedTargetTick : interpolatedTargetTick;
+                float targetTickFraction = predicted ? predictedTargetTickFraction : interpolatedTargetTickFraction;
+
+                var deserializerState = new GhostDeserializerState
+                {
+                    GhostMap = GhostMap,
+                    GhostOwner = ghostOwnerId,
+                    SendToOwner = SendToOwnerType.All
+                };
+                var ghostInstances = chunk.GetNativeArray(ref ghostInstanceTypeHandle);
+                var ghostTypes = chunk.GetNativeArray(ref ghostTypeHandle);
+                var ghostTypeId = ghostInstances[0].ghostType;
+                if (chunk.Has(ref predictedGhostRequestType) || isPrespawn)
+                {
+                    //Check if the pre-spawned ghost and predicted ghost has a valid prefab and serializer.
+                    //if they don't skip the chunk.
+                    var ghostType = ghostTypes[0];
+                    if (!GhostTypeToCollectionIndex.TryGetValue(ghostType, out ghostTypeId))
+                        return;
+                }
+                // serialization data has not been loaded yet. This can happen if the prefab has been loaded but
+                // not processed yet (i.e previous prefab in the GhostCollectionPrefab is still missing).
+                if (ghostTypeId >= GhostTypeCollection.Length)
+                    return;
+
+                ref readonly var typeData = ref GhostTypeCollection.ElementAtRO(ghostTypeId);
+                using var ___ = typeData.profilerMarker.Auto();
+
+                var requiredSendMask = predicted ? GhostSendType.OnlyPredictedClients : GhostSendType.OnlyInterpolatedClients;
+                int numBaseComponents = typeData.NumComponents - typeData.NumChildComponents;
+                bool isStatic = typeData.CanBeStaticOptimized();
+
+                // Now find all ghosts that need to either RestoreFromBackup or CopyFromSnapshot:
+                k_FindCandidates.Begin();
+                var ghostSnapshotDataArray = chunk.GetNativeArray(ref ghostSnapshotDataType).AsSpan();
+                var ghostSnapshotDataBufferArray = chunk.GetBufferAccessor(ref ghostSnapshotDataBufferType);
+                var ghostSnapshotDynamicBufferArray = chunk.GetBufferAccessor(ref ghostSnapshotDynamicDataBufferType);
+
+                int changeMaskUints = GhostComponentSerializer.ChangeMaskArraySizeInUInts(typeData.ChangeMaskBits);
+                int enableableMaskUints = GhostComponentSerializer.ChangeMaskArraySizeInUInts(typeData.EnableableBits);
+
+                int headerSize = GhostComponentSerializer.SnapshotSizeAligned(sizeof(uint) + changeMaskUints*sizeof(uint) + enableableMaskUints*sizeof(uint));
+                int snapshotDataOffset = headerSize;
+
+                int snapshotDataAtTickSize = UnsafeUtility.SizeOf<SnapshotData.DataAtTick>();
+                int minMaxOffset = 0;
+#if UNITY_EDITOR || NETCODE_DEBUG
+                minMaxOffset = ThreadIndex * (JobsUtility.CacheLineSize/sizeof(int));
+#endif
+                var dataAtTick = new NativeArray<SnapshotData.DataAtTick>(ghostInstances.Length, Allocator.Temp);
+                var entityRanges = new NativeList<EntityRange>(ghostInstances.Length, Allocator.Temp);
+                var predictedGhostArray = chunk.GetNativeArray(ref PredictedGhostType).AsSpan();
+                var chunkEntities = chunk.GetNativeArray(entityType);
+                var restoreFromHistoryBackup = new NativeList<BackupRange>(ghostInstances.Length, Allocator.Temp);
+
+                int shouldRewindAndResimulate = 0;
+                if (typeData.PredictedSpawnedGhostRollbackToSpawnTick != 0 && globalRollbackTick.Value.IsValid)
+                    shouldRewindAndResimulate = 1;
+
+                if (clientTickRate.AlwaysRollbackAllPredictedGhosts && predicted)
+                {
+                    ApplyAlwaysRollbackAllPredictedBehaviour(in chunk, ghostInstances, isPrespawn, ghostTypeId, ref entityRanges, ref restoreFromHistoryBackup, ghostSnapshotDataBufferArray, ghostSnapshotDataArray, predictedGhostArray, typeData, isStatic, shouldRewindAndResimulate, chunkEntities, dataAtTick);
+                }
+                else
+                {
+                    ApplyPartialRollbackOrInterpolatedBehaviour(in chunk, ghostInstances, isPrespawn, ghostTypeId, ref entityRanges, ref restoreFromHistoryBackup, ghostSnapshotDataBufferArray, ghostSnapshotDataArray, isStatic, predicted, typeData, targetTick, targetTickFraction, minMaxOffset, predictedGhostArray, shouldRewindAndResimulate, chunkEntities, dataAtTick);
+                }
+                k_FindCandidates.End();
+
+                if(restoreFromHistoryBackup.Length > 0)
+                {
+                    k_RestoreFromBackup.Begin();
+                    RestorePredictionBackup(chunk, restoreFromHistoryBackup, typeData, ghostChunkComponentTypesPtr, ghostChunkComponentTypesLength);
+                    k_RestoreFromBackup.End();
+                }
+
+                // CPU optimization: If there are no entities to CopyFromSnapshot on, skip the entire CopyFromSnapshot step.
+                if (entityRanges.IsEmpty)
+                {
+                    return;
+                }
+                k_CopyFromSnapshot.Begin();
+
+                // This buffer allows us to MemCmp changes, which allows us to support change filtering.
+                var tempChangeBufferSize = 1_500;
+                byte* tempChangeBuffer = stackalloc byte[tempChangeBufferSize];
+                NativeArray<byte> tempChangeBufferLarge = default;
+
+                var enableableMaskOffset = 0;
+                for (int comp = 0; comp < numBaseComponents; ++comp)
+                {
+                    int compIdx = GhostComponentIndex[typeData.FirstComponent + comp].ComponentIndex;
+                    int serializerIdx = GhostComponentIndex[typeData.FirstComponent + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    if (compIdx >= ghostChunkComponentTypesLength)
+                        throw new System.InvalidOperationException("Component index out of range");
+#endif
+                    ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                    var snapshotSize = GhostComponentSerializer.SizeInSnapshot(ghostSerializer);
+                    if (!chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]) || (GhostComponentIndex[typeData.FirstComponent + comp].SendMask&requiredSendMask) == 0)
+                    {
+                        snapshotDataOffset += snapshotSize;
+                        if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                        {
+                            ++enableableMaskOffset;
+                            ValidateReadEnableBits(enableableMaskOffset, typeData.EnableableBits);
+                        }
+                        continue;
+                    }
+
+                    var componentHasChanges = false;
+                    var compSize = ghostSerializer.ComponentSize;
+                    if (!ghostSerializer.ComponentType.IsBuffer)
+                    {
+                        deserializerState.SendToOwner = ghostSerializer.SendToOwner;
+                        if (ghostSerializer.HasGhostFields)
+                        {
+                            var roDynamicComponentTypeHandle = ghostChunkComponentTypesPtr[compIdx].CopyToReadOnly();
+                            // 1. Get Readonly version from chunk. We always read/write from/to this pointer. It is stable and does not change.
+                            var compDataPtr = (byte*)chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref roDynamicComponentTypeHandle, compSize).GetUnsafeReadOnlyPtr();
+                            for (var rangeIdx = 0; rangeIdx < entityRanges.Length; ++rangeIdx)
+                            {
+                                ref readonly var range = ref entityRanges.ElementAt(rangeIdx);
+                                var snapshotData = (byte*)dataAtTick.GetUnsafeReadOnlyPtr();
+                                snapshotData += snapshotDataAtTickSize * range.StartEntityIndex;
+                                // Fast path: If we already have changes, just fetch the RW version and write directly.
+                                if (componentHasChanges)
+                                {
+                                    var rwCompData = compDataPtr + range.StartEntityIndex * compSize;
+                                    ghostSerializer.CopyFromSnapshot.Invoke((System.IntPtr) UnsafeUtility.AddressOf(ref deserializerState), (System.IntPtr) snapshotData, snapshotDataOffset, snapshotDataAtTickSize, (System.IntPtr) rwCompData, compSize, range.Count);
+                                    continue;
+                                }
+
+                                var roCompData = compDataPtr + range.StartEntityIndex * compSize;
+                                // 2. Copy it into a temp buffer large enough to hold values (inside the range loop).
+                                var requiredNumBytes = range.Count * compSize;
+                                CopyRODataIntoTempChangeBuffer(requiredNumBytes, ref tempChangeBuffer, ref tempChangeBufferSize, ref tempChangeBufferLarge, roCompData);
+
+                                // 3. Invoke CopyFromSnapshot with the ro buffer as destination (yes, hacky!).
+                                ghostSerializer.CopyFromSnapshot.Invoke((System.IntPtr) UnsafeUtility.AddressOf(ref deserializerState), (System.IntPtr) snapshotData, snapshotDataOffset, snapshotDataAtTickSize, (System.IntPtr) roCompData, compSize, range.Count);
+
+                                // 4. Compare the two buffers (for changes).
+                                k_ChangeFiltering.Begin();
+                                if (UnsafeUtility.MemCmp(roCompData, tempChangeBuffer, requiredNumBytes) != 0)
+                                {
+                                    // 5. Fetch as RW to bump change version. We've already written to it, so nothing to do.
+                                    componentHasChanges = true;
+                                    chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref ghostChunkComponentTypesPtr[compIdx], compSize);
+                                }
+                                k_ChangeFiltering.End();
+                            }
+                            snapshotDataOffset += snapshotSize;
+                        }
+                    }
+                    else
+                    {
+                        deserializerState.SendToOwner = ghostSerializer.SendToOwner;
+                        if (ghostSerializer.HasGhostFields)
+                        {
+                            var roDynamicComponentTypeHandle = ghostChunkComponentTypesPtr[compIdx].CopyToReadOnly();
+                            var bufferAccessor = chunk.GetUntypedBufferAccessor(ref roDynamicComponentTypeHandle);
+                            var dynamicDataSize = ghostSerializer.SnapshotSize;
+                            var maskBits = ghostSerializer.ChangeMaskBits;
+                            for (var rangeIdx = 0; rangeIdx < entityRanges.Length; ++rangeIdx)
+                            {
+                                ref readonly var range = ref entityRanges.ElementAt(rangeIdx);
+                                for (int ent = range.StartEntityIndex; ent < range.StartEntityIndex + range.Count; ++ent)
+                                {
+                                    //Compute the required owner mask for the buffers and skip the copyfromsnapshot. The check must be done
+                                    //for each entity.
+                                    if((ghostSerializer.SendToOwner & dataAtTick[ent].RequiredOwnerSendMask) == 0)
+                                        continue;
+
+                                    var dynamicDataBuffer = ghostSnapshotDynamicBufferArray[ent];
+                                    var dynamicDataAtTick = SetupDynamicDataAtTick(dataAtTick[ent], snapshotDataOffset, dynamicDataSize, maskBits, dynamicDataBuffer, typeData.SnapshotHistorySize, out var bufLen);
+                                    var prevBufLen = bufferAccessor.GetBufferLength(ent);
+                                    if(prevBufLen != bufLen)
+                                    {
+                                        if (!componentHasChanges)
+                                        {
+                                            componentHasChanges = true;
+                                            // Bump change version.
+                                            bufferAccessor = chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                        }
+                                        bufferAccessor.ResizeUninitialized(ent, bufLen);
+                                        var rwBufData = (byte*)bufferAccessor.GetUnsafePtr(ent);
+                                        ghostSerializer.CopyFromSnapshot.Invoke(
+                                            (System.IntPtr)UnsafeUtility.AddressOf(ref deserializerState),
+                                            (System.IntPtr) UnsafeUtility.AddressOf(ref dynamicDataAtTick), 0, dynamicDataSize,
+                                            (IntPtr)rwBufData, compSize, bufLen);
+                                        continue;
+                                    }
+
+                                    var requiredNumBytes = bufLen * compSize;
+                                    var roBufData = (byte*) bufferAccessor.GetUnsafeReadOnlyPtr(ent);
+                                    CopyRODataIntoTempChangeBuffer(requiredNumBytes, ref tempChangeBuffer, ref tempChangeBufferSize, ref tempChangeBufferLarge, roBufData);
+
+                                    // Again, hack to pass in the roBufData to be written into.
+                                    // NOTE: We know that these two buffers will be the EXACT same size, due to the above assurances.
+                                    ghostSerializer.CopyFromSnapshot.Invoke(
+                                        (System.IntPtr)UnsafeUtility.AddressOf(ref deserializerState),
+                                        (System.IntPtr) UnsafeUtility.AddressOf(ref dynamicDataAtTick), 0, dynamicDataSize,
+                                        (IntPtr)roBufData, compSize, bufLen);
+
+                                    k_ChangeFiltering.Begin();
+                                    if (UnsafeUtility.MemCmp(roBufData, tempChangeBuffer, requiredNumBytes) != 0)
+                                    {
+                                        if (!componentHasChanges)
+                                        {
+                                            componentHasChanges = true;
+                                            // Bump change version.
+                                            bufferAccessor = chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                        };
+                                    }
+                                    k_ChangeFiltering.End();
+                                }
+                            }
+                            snapshotDataOffset += snapshotSize;
+                        }
+                    }
+                    if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                    {
+                        for (var rangeIdx = 0; rangeIdx < entityRanges.Length; ++rangeIdx)
+                        {
+                            ref readonly var range = ref entityRanges.ElementAt(rangeIdx);
+                            //The following will update the enable bits for the whole chunk. So the data should be retrieved from the
+                            //beginning of the range
+                            var dataAtTickPtr = (SnapshotData.DataAtTick*)dataAtTick.GetUnsafeReadOnlyPtr();
+                            dataAtTickPtr += range.StartEntityIndex;
+                            UpdateEnableableMask(chunk, dataAtTickPtr, ghostSerializer.SendToOwner,
+                                changeMaskUints, enableableMaskOffset, range, ghostChunkComponentTypesPtr, compIdx, ref componentHasChanges);
+                        }
+                        ++enableableMaskOffset;
+                        ValidateReadEnableBits(enableableMaskOffset, typeData.EnableableBits);
+                    }
+                }
+                if (typeData.NumChildComponents > 0)
+                {
+                    var linkedEntityGroupAccessor = chunk.GetBufferAccessor(ref linkedEntityGroupType);
+                    for (int comp = numBaseComponents; comp < typeData.NumComponents; ++comp)
+                    {
+                        int compIdx = GhostComponentIndex[typeData.FirstComponent + comp].ComponentIndex;
+                        int serializerIdx = GhostComponentIndex[typeData.FirstComponent + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        if (compIdx >= ghostChunkComponentTypesLength)
+                            throw new System.InvalidOperationException("Component index out of range");
+#endif
+
+                        ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                        var snapshotSize = GhostComponentSerializer.SizeInSnapshot(ghostSerializer);
+                        if ((GhostComponentIndex[typeData.FirstComponent + comp].SendMask & requiredSendMask) == 0)
+                        {
+                            snapshotDataOffset += snapshotSize;
+                            if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                            {
+                                ++enableableMaskOffset;
+                                ValidateReadEnableBits(enableableMaskOffset, typeData.EnableableBits);
+                            }
+                            continue;
+                        }
+
+                        var compSize = ghostSerializer.ComponentSize;
+                        if (!ghostSerializer.ComponentType.IsBuffer)
+                        {
+                            deserializerState.SendToOwner = ghostSerializer.SendToOwner;
+                            for (var rangeIdx = 0; rangeIdx < entityRanges.Length; ++rangeIdx)
+                            {
+                                ref readonly var range = ref entityRanges.ElementAt(rangeIdx);
+                                for (int ent = range.StartEntityIndex; ent < range.StartEntityIndex + range.Count; ++ent)
+                                {
+                                    var linkedEntityGroup = linkedEntityGroupAccessor[ent];
+                                    var childEntity = linkedEntityGroup[GhostComponentIndex[typeData.FirstComponent + comp].EntityIndex].Value;
+                                    if (!childEntityLookup.Exists(childEntity))
+                                        continue;
+                                    var childChunk = childEntityLookup[childEntity];
+                                    if (!childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                                        continue;
+
+                                    // We fetch these via `GetUnsafeReadOnlyPtr` only for performance reasons. It's safe.
+                                    var dataAtTickPtr = (SnapshotData.DataAtTick*)dataAtTick.GetUnsafeReadOnlyPtr();
+                                    dataAtTickPtr += ent;
+                                    if (ghostSerializer.HasGhostFields)
+                                    {
+                                        // No fast-path here!
+                                        // 1. Get Readonly version from chunk.
+                                        var roDynamicComponentTypeHandle = ghostChunkComponentTypesPtr[compIdx].CopyToReadOnly();
+                                        var roCompArray = childChunk.Chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref roDynamicComponentTypeHandle, compSize);
+                                        var roCompData = (byte*) roCompArray.GetUnsafeReadOnlyPtr();
+                                        roCompData += childChunk.IndexInChunk * compSize;
+
+                                        // 2. Copy it into a temp buffer large enough to hold values (inside the range loop).
+                                        var requiredNumBytes = compSize;
+                                        CopyRODataIntoTempChangeBuffer(requiredNumBytes, ref tempChangeBuffer, ref tempChangeBufferSize, ref tempChangeBufferLarge, roCompData);
+
+                                        // 3. Invoke CopyFromSnapshot with the ro buffer as destination (yes, hacky!).
+                                        ghostSerializer.CopyFromSnapshot.Invoke((System.IntPtr) UnsafeUtility.AddressOf(ref deserializerState), (System.IntPtr) dataAtTickPtr, snapshotDataOffset, snapshotDataAtTickSize, (System.IntPtr) roCompData, compSize, 1);
+
+                                        // 4. MemCmp the two buffers.
+                                        k_ChangeFiltering.Begin();
+                                        if (UnsafeUtility.MemCmp(tempChangeBuffer, roCompData, compSize) != 0)
+                                        {
+                                            // 5. Get RW, if changes, MemCpy
+                                            childChunk.Chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref ghostChunkComponentTypesPtr[compIdx], compSize);
+                                        }
+                                        k_ChangeFiltering.End();
+                                    }
+                                    if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                                    {
+                                        var childRange = new EntityRange { StartEntityIndex = (byte)childChunk.IndexInChunk, Count = 1 };
+                                        var unused = false;
+                                        UpdateEnableableMask(childChunk.Chunk, dataAtTickPtr, ghostSerializer.SendToOwner,
+                                            changeMaskUints, enableableMaskOffset, childRange, ghostChunkComponentTypesPtr, compIdx, ref unused);
+                                    }
+                                }
+                            }
+                            if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                            {
+                                ++enableableMaskOffset;
+                                ValidateReadEnableBits(enableableMaskOffset, typeData.EnableableBits);
+                            }
+                            snapshotDataOffset += snapshotSize;
+                        }
+                        else // component type is buffer
+                        {
+                            var dynamicDataSize = ghostSerializer.SnapshotSize;
+                            var maskBits = ghostSerializer.ChangeMaskBits;
+                            deserializerState.SendToOwner = ghostSerializer.SendToOwner;
+                            for (var rangeIdx = 0; rangeIdx < entityRanges.Length; ++rangeIdx)
+                            {
+                                ref readonly var range = ref entityRanges.ElementAt(rangeIdx);
+                                var maskOffset = enableableMaskOffset;
+                                for (int rootEntity = range.StartEntityIndex; rootEntity < range.StartEntityIndex + range.Count; ++rootEntity)
+                                {
+                                    var linkedEntityGroup = linkedEntityGroupAccessor[rootEntity];
+                                    var childEntity = linkedEntityGroup[GhostComponentIndex[typeData.FirstComponent + comp].EntityIndex].Value;
+                                    if (!childEntityLookup.Exists(childEntity))
+                                        continue;
+                                    var childChunk = childEntityLookup[childEntity];
+                                    if (!childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                                        continue;
+
+                                    if((ghostSerializer.SendToOwner & dataAtTick[rootEntity].RequiredOwnerSendMask) == 0)
+                                        continue;
+
+                                    if (ghostSerializer.HasGhostFields)
+                                    {
+                                        var roDynamicComponentTypeHandle = ghostChunkComponentTypesPtr[compIdx].CopyToReadOnly();
+                                        var roBufferAccessor = childChunk.Chunk.GetUntypedBufferAccessor(ref roDynamicComponentTypeHandle);
+
+                                        var dynamicDataBuffer = ghostSnapshotDynamicBufferArray[rootEntity];
+                                        var dynamicDataAtTick = SetupDynamicDataAtTick(dataAtTick[rootEntity], snapshotDataOffset, dynamicDataSize, maskBits, dynamicDataBuffer, typeData.SnapshotHistorySize, out var bufLen);
+                                        var prevBufLen = roBufferAccessor.GetBufferLength(childChunk.IndexInChunk);
+                                        if (prevBufLen != bufLen)
+                                        {
+                                            var rwBufferAccessor = childChunk.Chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                            rwBufferAccessor.ResizeUninitialized(childChunk.IndexInChunk, bufLen);
+                                            var rwBufData = rwBufferAccessor.GetUnsafePtr(childChunk.IndexInChunk);
+
+                                            ghostSerializer.CopyFromSnapshot.Invoke(
+                                                (System.IntPtr) UnsafeUtility.AddressOf(ref deserializerState),
+                                                (System.IntPtr) UnsafeUtility.AddressOf(ref dynamicDataAtTick), 0, dynamicDataSize,
+                                                (IntPtr) rwBufData, compSize, bufLen);
+                                        }
+                                        else
+                                        {
+                                            var roBufData = (byte*) roBufferAccessor.GetUnsafeReadOnlyPtr(childChunk.IndexInChunk);
+                                            var requiredNumBytes = bufLen * compSize;
+                                            CopyRODataIntoTempChangeBuffer(requiredNumBytes, ref tempChangeBuffer, ref tempChangeBufferSize, ref tempChangeBufferLarge, roBufData);
+
+                                            // Again, hack to pass in the roBufData to be written into.
+                                            // NOTE: We know that these two buffers will be the EXACT same size, due to the above assurances.
+                                            ghostSerializer.CopyFromSnapshot.Invoke(
+                                                (System.IntPtr) UnsafeUtility.AddressOf(ref deserializerState),
+                                                (System.IntPtr) UnsafeUtility.AddressOf(ref dynamicDataAtTick), 0, dynamicDataSize,
+                                                (IntPtr) roBufData, compSize, bufLen);
+
+                                            k_ChangeFiltering.Begin();
+
+                                            if (UnsafeUtility.MemCmp(roBufData, tempChangeBuffer, requiredNumBytes) != 0)
+                                            {
+                                                // Bump change version.
+                                                childChunk.Chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                            }
+                                            k_ChangeFiltering.End();
+                                        }
+                                    }
+
+                                    if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                                    {
+                                        var snapshotData = (byte*) dataAtTick.GetUnsafeReadOnlyPtr();
+                                        snapshotData += snapshotDataAtTickSize * rootEntity;
+                                        var dataAtTickPtr = (SnapshotData.DataAtTick*) snapshotData;
+
+                                        var childRange = new EntityRange {StartEntityIndex = (byte)childChunk.IndexInChunk, Count = 1};
+                                        var unused = false;
+                                        UpdateEnableableMask(childChunk.Chunk, dataAtTickPtr,
+                                            ghostSerializer.SendToOwner,
+                                            changeMaskUints, maskOffset, childRange, ghostChunkComponentTypesPtr, compIdx, ref unused);
+                                    }
+                                }
+                            }
+                            if (typeData.EnableableBits > 0 && ghostSerializer.SerializesEnabledBit != 0)
+                            {
+                                ++enableableMaskOffset;
+                                ValidateReadEnableBits(enableableMaskOffset, typeData.EnableableBits);
+                            }
+                            snapshotDataOffset += snapshotSize;
+                        }
+                    }
+                }
+                ValidateAllEnableBitsHasBeenRead(enableableMaskOffset, typeData.EnableableBits);
+                k_CopyFromSnapshot.End();
+            }
+
+            private void ApplyPartialRollbackOrInterpolatedBehaviour(in ArchetypeChunk chunk, NativeArray<GhostInstance> ghostInstances,
+                bool isPrespawn, int ghostTypeId, ref NativeList<EntityRange> entityRanges, ref NativeList<BackupRange> restoreFromHistoryBackup, BufferAccessor<SnapshotDataBuffer> ghostSnapshotDataBufferArray,
+                Span<SnapshotData> ghostSnapshotDataArray, bool isStatic, bool predicted, GhostCollectionPrefabSerializer typeData, NetworkTick targetTick,
+                float targetTickFraction, int minMaxOffset, Span<PredictedGhost> predictedGhostArray, int shouldRewindAndResimulate,
+                NativeArray<Entity> chunkEntities, NativeArray<SnapshotData.DataAtTick> dataAtTick)
+            {
+                // Find the ranges of entities which have data to apply, store the data to apply in an array while doing so:
+                for (byte ent = 0; ent < ghostInstances.Length; ++ent)
+                {
+                    // Pre spawned ghosts might not have the ghost type set yet - in that case we need to skip them until the GHostReceiveSystem has assigned the ghost type
+                    if (isPrespawn && ghostInstances[ent].ghostType != ghostTypeId)
+                    {
+                        SkipEntity(ref entityRanges, ent);
+                        continue;
+                    }
+#if UNITY_EDITOR || NETCODE_DEBUG
+                    // Validate that the ghost entity has been spawned by the client as predicted spawn or because a ghost as been
+                    // received. In any case, validate that the ghost component contains pertinent data.
+                    if((ghostInstances[ent].ghostId == 0) && (isPrespawn || !ghostInstances[ent].spawnTick.IsValid))
+                    {
+                        var invalidEntity = chunk.GetNativeArray(entityType)[ent];
+                        if (isPrespawn)
+                            netDebug.LogError($"Entity {invalidEntity.ToFixedString()} is not a valid prespawned ghost (ghostId == {ghostInstances[ent].ghostId}).");
+                        else
+                            netDebug.LogError($"Entity {invalidEntity.ToFixedString()} is not a valid ghost (ghostId == {ghostInstances[ent].ghostId}) (i.e. it is not a real 'replicated ghost', nor is it a 'predicted spawn' ghost). This can happen if you instantiate a ghost entity on the client manually (without marking it as a predicted spawn).");
+                        SkipEntity(ref entityRanges, ent);
+                        continue;
+                    }
+#endif
+                    //GhostId == 0 means it is a predicted spawn.
+                    //TODO: change the ghostId to use some high bits (or low) to denote predicted spawn for example
+                    var snapshotDataBuffer = ghostSnapshotDataBufferArray[ent];
+                    ref var ghostSnapshotData = ref ghostSnapshotDataArray[ent];
+                    var latestTick = ghostSnapshotData.GetLatestTick(snapshotDataBuffer);
+
+                    #region Interpolated static ghost early exit
+
+                    // CPU optimization: Static ghosts can be skipped (without expensive GetDataAtTick lookups) IF:
+                    if (isStatic
+                        && !predicted
+                        // we have valid tick data (should always be true!)...
+                        && latestTick.IsValid
+                        && lastInterpolatedTick.IsValid
+                        // & when we've applied the latest snapshot at least once (as we must apply at least once to resolve
+                        // GhostField's that need additional processing, like `NetworkTick`)...
+                        && ghostSnapshotData.AppliedTick.IsValid)
+                    {
+                       /*
+                            * Static ghosts only send snapshots for ticks ghost has changed.
+                            *    We assume there is nothing to process if we don't have new snapshots to apply.
+                            *    State diagram: https://miro.com/app/board/uXjVGF3bwyQ=/
+                            */
+
+                        // When the client interpolation timeline has already gone past the latest snapshot we have.
+                        // AND we've already applied the newest snapshot we have,
+                        if (lastInterpolatedTick.TicksSince(latestTick) >= 0 && ghostSnapshotData.AppliedTick == latestTick)
+                        {
+                            /*
+                                * STATE 1: STOPPED MOVING
+                                * Static ghost is stopped. Nothing to interpolate.
+                                */
+
+                            SkipEntity(ref entityRanges, ent);
+                            continue;
+                        }
+
+                        // If the MaxSendRate is low, the ghost may have started moving on any tick where the ghost wasn't being polled.
+                        // For the smoothest possible movement, we assume it started moving halfway between the MaxSendRate interval
+                        // e.g. if MaxSendRate is once every 4 ticks, we assume that the ghost started moving 2 ticks before we received the snapshot.
+                        var assumedChangePollDelay = (uint) math.max(typeData.MaxSendRateAsSimTickInterval / 2, 1);
+
+
+                        if (!ghostSnapshotData.ResumeTick.IsValid && targetTick.TicksSince(targetTickFraction, ghostSnapshotData.AppliedTick) >= 0)
+                        {
+                            /*
+                                * STATE 2: RECEIVED NEW SNAPSHOT
+                                *   As the interpolation timeline is in the past, the new snapshot could be for a few ticks in the future
+                                *   Calculate which tick was the last tick where the ghost was stopped.
+                                */
+
+                            ghostSnapshotData.ResumeTick = latestTick;
+                            ghostSnapshotData.ResumeTick.Subtract(assumedChangePollDelay);
+                        }
+
+                        // No ResumeTick means this ghost is interpolating normally.
+                        if (ghostSnapshotData.ResumeTick.IsValid)
+                        {
+                            // resumeDelta will be negative when the ResumeTick is in the future.
+                            // It will be zero or positive when we should start resuming.
+                            var resumeDelta = targetTick.TicksSince(targetTickFraction, ghostSnapshotData.ResumeTick);
+
+                            // Skip while the ResumeTick is in the future.
+                            if (resumeDelta < 0)
+                            {
+                                /*
+                                    * STATE 3: WAITING FOR RESUME
+                                    *   The interpolation timeline is currently behind the new snapshot that has new data.
+                                    */
+                                SkipEntity(ref entityRanges, ent);
+                                continue;
+                            }
+
+                            // Once positive, the resumeDelta will count up for the number of ticks since we assumed we started moving
+                            if (resumeDelta >= assumedChangePollDelay)
+                            {
+                                /*
+                                    * STATE 4: RESUME COMPLETE
+                                    */
+
+                                // Once we've reached the poll delay, we've finished resuming and can clear the ResumeTick
+                                ghostSnapshotData.ResumeTick = NetworkTick.Invalid;
+                            }
+
+                        }
+                    }
+                    #endregion
+
+#if UNITY_EDITOR || NETCODE_DEBUG
+                    if (latestTick.IsValid && !isStatic)
+                    {
+                        if (!minMaxSnapshotTick[minMaxOffset].IsValid || minMaxSnapshotTick[minMaxOffset].IsNewerThan(latestTick))
+                            minMaxSnapshotTick[minMaxOffset] = latestTick;
+                        if (!minMaxSnapshotTick[minMaxOffset + 1].IsValid || latestTick.IsNewerThan(minMaxSnapshotTick[minMaxOffset + 1]))
+                            minMaxSnapshotTick[minMaxOffset + 1] = latestTick;
+                    }
+#endif
+
+                    //For predicted ghosts, there will be never be a snapshot for the predicted tick, unless:
+                    // - The client is behind the server.
+                    // - The predicted tick rolled back.
+                    // - Forced Input Latency is enabled.
+                    // This method is quite heavy, and inside is doing a bunch of logic to retrieve:
+                    // - the received snapshot ticks and indices before and after the targetTick
+                    bool hasSnapshot = ghostSnapshotData.GetDataAtTick(targetTick, typeData.PredictionOwnerOffset, ghostOwnerId,
+                        targetTickFraction, snapshotDataBuffer, out var data, clientTickRate.MaxExtrapolationTimeSimTicks, isStatic);
+                    if (!hasSnapshot)
+                    {
+                        //This is also quite heavy work. In general this is doing two linear search (nothing bad but for all ghosts all the time is plenty an overhead).
+                        // If there is no snapshot before our target tick, try to get the oldest tick we do have and use that
+                        // This deals better with ticks moving backwards and clamps ghosts at the oldest state we do have data for
+                        var oldestSnapshot = ghostSnapshotData.GetOldestTick(snapshotDataBuffer);
+                        hasSnapshot = (oldestSnapshot.IsValid && ghostSnapshotData.GetDataAtTick(oldestSnapshot, typeData.PredictionOwnerOffset, ghostOwnerId,
+                            1, snapshotDataBuffer, out data, clientTickRate.MaxExtrapolationTimeSimTicks, isStatic));
+                    }
+                    if (hasSnapshot)
+                    {
+                        if (predicted)
+                        {
+                            // We might get an interpolation between the tick before and after our target - we have to apply the tick right before our target so we set interpolation to 0
+                            data.InterpolationFactor = 0;
+                            var snapshotTick = data.Tick;
+                            ref var predictedData = ref predictedGhostArray[ent];
+
+                            bool shouldRollbackToSnapshot = GetPredictionStartTick(snapshotTick, targetTick, predictedData.AppliedTick, ghostInstances[ent].ghostId, shouldRewindAndResimulate, ent, chunkEntities[ent], isStatic, in chunk, in typeData, ref restoreFromHistoryBackup, out NetworkTick predictionStartTick);
+
+                            if (!shouldRollbackToSnapshot)
+                            {
+                                // This will happen if we don't need to roll back at all (e.g. we are continuing prediction from last tick)
+                                SkipEntity(ref entityRanges, ent);
+                            }
+                            else
+                            {
+                                AddEntityToRange(ref entityRanges, ent);
+                                predictedData.AppliedTick = snapshotTick;
+                                ghostSnapshotData.AppliedTick = snapshotTick;
+                            }
+                            predictedData.PredictionStartTick = predictionStartTick;
+                            appliedPredictedTicks.TryAdd(predictionStartTick, predictionStartTick);
+                        }
+                        else
+                        {
+                            AddEntityToRange(ref entityRanges, ent);
+                            ghostSnapshotData.AppliedTick = latestTick;
+                        }
+                        dataAtTick[ent] = data;
+                    }
+                    else
+                    {
+                        SkipEntity(ref entityRanges, ent);
+
+                        if (predicted)
+                        {
+                            //predicted - pre-spawned ghost may not have a valid snapshot until we receive the first snapshot from the server.
+                            //This is also happening for static optimized - prespawned ghosts until they change
+                            if(!isPrespawn)
+                                netDebug.LogWarning($"Trying to predict a ghost without having a state to roll back to {ghostSnapshotData.GetOldestTick(snapshotDataBuffer)} / {targetTick}");
+                            // This is a predicted snapshot which does not have any state at all to roll back to, just let it continue from it's last state if possible
+                            var predictionStartTick = lastPredictedTick;
+                            // Try to restore from backup if last tick was a partial tick
+                            if (predictionStateBackupTick.IsValid && TryGetChunkBackupState(chunk, ent, typeData.RollbackPredictionOnStructuralChanges,
+                                    chunkEntities[ent], allowMovedChunkFallback: false, out var backupState, out var indexInBackup, out _))
+                            {
+                                predictionStartTick = predictionStateBackupTick;
+                                restoreFromHistoryBackup.Add(new BackupRange
+                                {
+                                    EntityIndex = ent,
+                                    EntityIndexInBackup = indexInBackup,
+                                    BackupState = backupState
+                                });
+                            }
+                            else if (!predictionStartTick.IsValid)
+                            {
+                                // There was no last state to continue from, so do not run prediction at all.
+                                predictionStartTick = targetTick;
+                            }
+                            ref var predictedData = ref predictedGhostArray[ent];
+                            appliedPredictedTicks.TryAdd(predictionStartTick, predictionStartTick);
+                            predictedData.PredictionStartTick = predictionStartTick;
+                        }
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Every predicted ghost rolls back to globalRollbackTick uniformly, if it can. Three outcomes:
+            ///   (a) SNAPSHOT-MATCH: a server snapshot landed exactly at globalRollbackTick. Apply it and
+            ///       set AppliedTick to that tick.
+            ///   (b) BACKUP-RESTORE: this ghost's ring has a slot at globalRollbackTick. Restore the
+            ///       predicted state (AppliedTick unchanged - no new server data was applied).
+            ///   (c) NO STATE / NO ROLLBACK: continue predicting forward from where we left off.
+            /// </summary>
+            private void ApplyAlwaysRollbackAllPredictedBehaviour(in ArchetypeChunk chunk, NativeArray<GhostInstance> ghostInstances, bool isPrespawn,
+                int ghostTypeId, ref NativeList<EntityRange> entityRanges, ref NativeList<BackupRange> restoreFromHistoryBackup, BufferAccessor<SnapshotDataBuffer> ghostSnapshotDataBufferArray,
+                Span<SnapshotData> ghostSnapshotDataArray, Span<PredictedGhost> predictedGhostArray, GhostCollectionPrefabSerializer typeData,
+                bool isStatic, int shouldRewindAndResimulate, NativeArray<Entity> chunkEntities,
+                NativeArray<SnapshotData.DataAtTick> dataAtTick)
+            {
+                bool globalShouldRollback = true;
+                NetworkTick chunkPredictionStartTick = globalRollbackTick.Value;
+                if (!chunkPredictionStartTick.IsValid)
+                {
+                    // Do we need to undo a partial tick?
+                    if (lastPredictedTickWasPartial && predictionStateBackupTick.IsValid)
+                    {
+                        chunkPredictionStartTick = predictionStateBackupTick;
+                    }
+                    else
+                    {
+                        // No: So just continue predicting from where we left off, without rollback.
+                        chunkPredictionStartTick = lastPredictedTick;
+                        globalShouldRollback = false;
+                    }
+                }
+
+                // Find the ranges of entities which have data to apply, store the data to apply in an array while doing so:
+                for (byte ent = 0; ent < ghostInstances.Length; ++ent)
+                {
+                    // Pre spawned ghosts might not have the ghost type set yet - in that case we need to skip them until the GHostReceiveSystem has assigned the ghost type
+                    if (isPrespawn && ghostInstances[ent].ghostType != ghostTypeId)
+                    {
+                        SkipEntity(ref entityRanges, ent);
+                        continue;
+                    }
+                    var isPredictedSpawn = ghostInstances[ent].ghostId == 0;
+#if UNITY_EDITOR || NETCODE_DEBUG
+                    // Validate that the ghost entity has been spawned by the client as predicted spawn or because a ghost as been
+                    // received. In any case, validate that the ghost component contains pertinent data.
+                    if (isPredictedSpawn && (isPrespawn || !ghostInstances[ent].spawnTick.IsValid))
+                    {
+                        var invalidEntity = chunk.GetNativeArray(entityType)[ent];
+                        if (isPrespawn)
+                            netDebug.LogError($"Entity {invalidEntity.ToFixedString()} is not a valid prespawned ghost (ghostId == {ghostInstances[ent].ghostId}).");
+                        else
+                            netDebug.LogError($"Entity {invalidEntity.ToFixedString()} is not a valid ghost (ghostId == {ghostInstances[ent].ghostId}) (i.e. it is not a real 'replicated ghost', nor is it a 'predicted spawn' ghost). This can happen if you instantiate a ghost entity on the client manually (without marking it as a predicted spawn).");
+                        SkipEntity(ref entityRanges, ent);
+                        continue;
+                    }
+#endif
+
+                    var snapshotDataBuffer = ghostSnapshotDataBufferArray[ent];
+                    ref var ghostSnapshotData = ref ghostSnapshotDataArray[ent];
+                    ref var predictedData = ref predictedGhostArray[ent];
+
+                    var predictionStartTick = chunkPredictionStartTick;
+
+                    // Predicted spawns (ghostId == 0) use the legacy per-ghost decision rather than the
+                    // global rollback tick: they can only roll back to their spawn tick (never before it),
+                    // and must honor RollbackToSpawnTick / structural-change re-prediction.
+                    if (isPredictedSpawn)
+                    {
+                        bool spawnHasSnapshot = ghostSnapshotData.GetDataAtTick(predictedTargetTick, typeData.PredictionOwnerOffset, ghostOwnerId,
+                            predictedTargetTickFraction, snapshotDataBuffer, out var spawnData, clientTickRate.MaxExtrapolationTimeSimTicks, isStatic);
+                        if (!spawnHasSnapshot)
+                        {
+                            var oldestSnapshot = ghostSnapshotData.GetOldestTick(snapshotDataBuffer);
+                            spawnHasSnapshot = oldestSnapshot.IsValid && ghostSnapshotData.GetDataAtTick(oldestSnapshot, typeData.PredictionOwnerOffset, ghostOwnerId,
+                                1, snapshotDataBuffer, out spawnData, clientTickRate.MaxExtrapolationTimeSimTicks, isStatic);
+                        }
+
+                        if (spawnHasSnapshot)
+                        {
+                            var snapshotTick = spawnData.Tick;
+                            bool shouldRollbackToSnapshot = GetPredictionStartTick(snapshotTick, predictedTargetTick, predictedData.AppliedTick, ghostInstances[ent].ghostId,
+                                shouldRewindAndResimulate, ent, chunkEntities[ent], isStatic, in chunk, in typeData, ref restoreFromHistoryBackup, out NetworkTick spawnPredictionStartTick);
+                            if (shouldRollbackToSnapshot)
+                            {
+                                spawnData.InterpolationFactor = 0;
+                                AddEntityToRange(ref entityRanges, ent);
+                                predictedData.AppliedTick = snapshotTick;
+                                ghostSnapshotData.AppliedTick = snapshotTick;
+                                dataAtTick[ent] = spawnData;
+                            }
+                            else
+                            {
+                                SkipEntity(ref entityRanges, ent);
+                            }
+
+                            predictedData.PredictionStartTick = spawnPredictionStartTick;
+                            appliedPredictedTicks.TryAdd(spawnPredictionStartTick, spawnPredictionStartTick);
+                        }
+                        else
+                        {
+                            SkipEntity(ref entityRanges, ent);
+                            if (!isPrespawn)
+                                netDebug.LogWarning($"Trying to predict a ghost without having a state to roll back to {ghostSnapshotData.GetOldestTick(snapshotDataBuffer)} / {predictedTargetTick}");
+                            var spawnPredictionStartTick = lastPredictedTick;
+                            if (predictionStateBackupTick.IsValid && TryGetChunkBackupState(chunk, ent, typeData.RollbackPredictionOnStructuralChanges,
+                                    chunkEntities[ent], allowMovedChunkFallback: false, out var backupState, out var indexInBackup, out _))
+                            {
+                                spawnPredictionStartTick = predictionStateBackupTick;
+                                restoreFromHistoryBackup.Add(new BackupRange
+                                {
+                                    EntityIndex = ent,
+                                    EntityIndexInBackup = indexInBackup,
+                                    BackupState = backupState
+                                });
+                            }
+                            else if (!spawnPredictionStartTick.IsValid)
+                            {
+                                spawnPredictionStartTick = predictedTargetTick;
+                            }
+
+                            predictedData.PredictionStartTick = spawnPredictionStartTick;
+                            appliedPredictedTicks.TryAdd(spawnPredictionStartTick, spawnPredictionStartTick);
+                        }
+
+                        continue;
+                    }
+
+                    bool shouldThisEntityRollback = globalShouldRollback;
+                    if (shouldThisEntityRollback)
+                    {
+                        var latestSnapshotTick = ghostSnapshotData.GetLatestTick(snapshotDataBuffer);
+                        bool hasSnapshot = ghostSnapshotData.GetDataAtTick(predictedTargetTick,
+                            typeData.PredictionOwnerOffset, ghostOwnerId, predictedTargetTickFraction, snapshotDataBuffer,
+                            out var data, clientTickRate.MaxExtrapolationTimeSimTicks, isStatic);
+                        if (predictionStartTick == latestSnapshotTick && hasSnapshot)
+                        {
+                            // Branch (a).
+                            data.InterpolationFactor = 0;
+                            AddEntityToRange(ref entityRanges, ent);
+                            dataAtTick[ent] = data;
+                            predictedData.AppliedTick = predictionStartTick;
+                            ghostSnapshotData.AppliedTick = predictionStartTick;
+                            predictedData.PredictionStartTick = predictionStartTick;
+                            appliedPredictedTicks.TryAdd(predictionStartTick, predictionStartTick);
+                        }
+                        else if (TryGetChunkBackupStateAtTick(chunkEntities[ent], predictionStartTick,
+                                     out var backupState, out var indexInBackup, out var actualSlotTick) == BackupLookupResult.Found)
+                        {
+                            // Branch (b). TryGetSlotForTick has returned an exact-tick match.
+                            Assert.IsTrue(actualSlotTick == predictionStartTick,
+                                "BACKUP-RESTORE slot tick must equal globalRollbackTick (TryGetSlotForTick is exact-match only).");
+                            SkipEntity(ref entityRanges, ent);
+                            restoreFromHistoryBackup.Add(new BackupRange
+                            {
+                                EntityIndex = ent,
+                                EntityIndexInBackup = indexInBackup,
+                                BackupState = backupState,
+                            });
+                            // NOTE: We don't set AppliedTick here, as we're restoring from a prediction!
+                            predictedData.PredictionStartTick = predictionStartTick;
+                            appliedPredictedTicks.TryAdd(predictionStartTick, predictionStartTick);
+                        }
+                        else
+                        {
+                            // Branch (c).
+                            shouldThisEntityRollback = false;
+                        }
+                    }
+
+                    if (!shouldThisEntityRollback)
+                    {
+                        // Branch (c) (cont.).
+                        // Keep predicting forward so appliedPredictedTicks is never empty, otherwise
+                        // the prediction loop runs zero ticks and predicted ghosts freeze between snapshots.
+                        SkipEntity(ref entityRanges, ent);
+                        // No snapshot at, and no history slot for, globalRollbackTick: rolling back would re-simulate from
+                        // current state at an old tick (teleport). Continue from where this ghost left off instead, and
+                        // keep appliedPredictedTicks non-empty so the prediction loop still advances.
+                        var continueTick = lastPredictedTick.IsValid ? lastPredictedTick : predictedTargetTick;
+#if NETCODE_DEBUG
+                        if (netDebug.LogLevel == NetDebug.LogLevelType.Debug)
+                            netDebug.LogWarning($"Predicted ghost {ghostInstances[ent].ghostId} couldn't roll back to global tick {predictionStartTick} (no snapshot or history slot); continuing from {continueTick}.");
+#endif
+                        predictedData.PredictionStartTick = continueTick;
+                        appliedPredictedTicks.TryAdd(continueTick, continueTick);
+                    }
+                }
+            }
+
+            /// <summary>
+            /// A prediction-history backup is "stale" when it is no newer than the snapshot already applied to this ghost
+            /// (appliedTick &gt;= backupTick): restoring it would revert the ghost to a state older than its authoritative snapshot.
+            /// </summary>
+            static bool BackupIsStale(NetworkTick appliedTick, NetworkTick predictionStateBackupTick) =>
+                appliedTick.IsValid && predictionStateBackupTick.IsValid && appliedTick.TicksSince(predictionStateBackupTick) >= 0;
+
+            /// <summary>
+            /// Determine from which tick we should start predicting.
+            /// </summary>
+            /// <param name="snapshotTick">The tick of the latest snapshot received for this ghost.</param>
+            /// <param name="targetTick">The tick denoting the timeline this ghost is on; ServerTick for predicted ghosts, InterpolationTick for interpolated ghosts.</param>
+            /// <param name="appliedTick">The tick of the last snapshot applied to this ghost.</param>
+            /// <param name="ghostId">The ghostId of the ghost instance.</param>
+            /// <param name="shouldRewindAndResimulate">User setting to always rewind predicted spawned ghosts to their spawn tick.</param>
+            /// <param name="entityIndexInChunk">The index of the entity in the chunk.</param>
+            /// <param name="entity">The ghost entity.</param>
+            /// <param name="isStatic"></param>
+            /// <param name="chunk">The ghost entity's chunk.</param>
+            /// <param name="typeData"></param>
+            /// <param name="restoreFromHistoryBackupList"></param>
+            /// <param name="predictionStartTick">Output parameter for the tick to start prediction from for this ghost.</param>
+            /// <returns>Returns true if we can continue prediction from the last predicted tick, false if we need to go back to the tick from the snapshot.</returns>
+            private bool GetPredictionStartTick(NetworkTick snapshotTick, NetworkTick targetTick, NetworkTick appliedTick,
+                int ghostId, int shouldRewindAndResimulate, byte entityIndexInChunk, Entity entity, bool isStatic, in ArchetypeChunk chunk,
+                in GhostCollectionPrefabSerializer typeData, ref NativeList<BackupRange> restoreFromHistoryBackupList, out NetworkTick predictionStartTick)
+            {
+                // TODO: BUG: As static predicted ghosts sometimes don't receive new snapshots
+                // (because they're not changing), mispredictions can linger.
+                // We will need to resolve that.
+
+                // Cases we should cover:
+
+                // [Case A] For predicted spawned ghosts (that have ghostId = 0), if user selected to always start
+                // re-predicting from the spawn tick, we always honour that if there is at least another predicted ghost
+                // that will rollback. We will attempt to rollback to the snapshot tick the `PredictedGhostSpawnSystem` saved
+                // into the snapshot buffer.
+                // TODO: Possible bug: Doesn't this have non-determinism issues?
+                var predictedSpawnShouldRollbackToSnapshot = ghostId == 0 && shouldRewindAndResimulate != 0;
+
+                // [Case B] Rollback to the (typically new) snapshot:
+                // Note that we do not rollback all ghosts when one ghost needs to rollback.
+                // While this will lead to more mispredictions, rolling back all predicted ghosts will be too expensive on the CPU.
+                // This is why we only need to care about the current ghost's AppliedTick instead of global state.
+                bool shouldRollbackToSnapshot = snapshotTick.IsValid && (!appliedTick.IsValid || appliedTick.IsOlderThan(snapshotTick) || predictedSpawnShouldRollbackToSnapshot);
+
+                // [Case C guard] Never restore a prediction-history backup that predates the snapshot this ghost has already
+                // applied (see BackupIsStale). This regime is common when the client predicts less than one full tick ahead
+                // of the received snapshots (e.g. a host/local client rendering far above the simulation rate): the misprediction
+                // would otherwise latch until a frame hitch advances the full-tick frontier past the snapshot stream. Prefer the
+                // snapshot: it is authoritative and at least as new as the backup, and re-predicting from a tick at, or ahead of,
+                // the full-tick frontier introduces no extra full ticks.
+                if (!shouldRollbackToSnapshot && lastPredictedTickWasPartial && snapshotTick.IsValid &&
+                    BackupIsStale(appliedTick, predictionStateBackupTick))
+                {
+                    shouldRollbackToSnapshot = true;
+                }
+
+                // [Case C] Continue from where we left off, undoing the partial write via the prediction history backup.
+                // Established ghosts (ghostId != 0) also restore when a structural change moved them to another chunk -
+                // but only if that backup still matches their current replicated layout; otherwise (and for predicted
+                // spawns, ghostId == 0) we re-predict from the snapshot, honoring RollbackPredictionOnStructuralChanges.
+                // NOTE: partial ticks are common on PC (variable render rate) but rare on locked-rate mobile/console.
+                if (!shouldRollbackToSnapshot && lastPredictedTickWasPartial)
+                {
+                    if (predictionStateBackupTick.IsValid
+                        && TryGetChunkBackupState(chunk, entityIndexInChunk, typeData.RollbackPredictionOnStructuralChanges, entity,
+                            allowMovedChunkFallback: ghostId != 0, out var backupState, out var indexInBackup, out var viaMovedChunkFallback)
+                        && (!viaMovedChunkFallback || BackupIsValidForCurrentLayout(backupState, entityIndexInChunk, indexInBackup, chunk, typeData)))
+                    {
+                        Assert.IsTrue(!BackupIsStale(appliedTick, predictionStateBackupTick),
+                            "Case C is about to restore a prediction-history backup older than the applied snapshot; the [Case C guard] should have rolled it back to the snapshot instead.");
+                        predictionStartTick = predictionStateBackupTick;
+                        restoreFromHistoryBackupList.Add(new BackupRange
+                        {
+                            EntityIndex = entityIndexInChunk,
+                            EntityIndexInBackup = indexInBackup,
+                            BackupState = backupState,
+                        });
+                        return false;
+                    }
+
+                    // As we cannot undo this partial tick, we INSTEAD attempt to rollback all the way to the
+                    // snapshot, and re-simulate from there. But note: This snapshot is likely to be VERY OLD
+                    // (so that rollback would be TOO severe from a CPU performance POV), so we may just continue
+                    // from the partial (which is technically "incorrect"), but ultimately harmless
+                    // (a la eventual consistency).
+                    shouldRollbackToSnapshot = typeData.RollbackPredictionOnStructuralChanges != 0 && snapshotTick.IsValid;
+                }
+
+                // [Case B Continued...]
+                if (shouldRollbackToSnapshot)
+                {
+                    // It does not make sense to rollback & run the prediction loop for more ticks than we have inputs for,
+                    // so we clamp the predictionStartTick to the input buffer size k_CommandDataMaxSize.
+                    // But it also does not make sense to rollback too far behind the interpolation tick, as all snapshots
+                    // should have already arrived by then (and it's rare to rollback to an old, pre-existing snapshot),
+                    // so we simply decide NOT to rollback in this case (with a healthy margin), and allow the latest prediction
+                    // to stand, as we ANTICIPATE that we'll get better snapshot data "soon" (due to eventual consistency).
+                    var commandInterpolationDelay = (uint)targetTick.TicksSince(interpolatedTargetTick);
+                    const uint marginForOlderSnapshots = 2;
+                    var maxRollbackDistanceInTicks = (math.min(math.max(commandInterpolationDelay * marginForOlderSnapshots, 4),
+                        CommandDataUtility.k_CommandDataMaxSize));
+
+                    // Use-cases where we encounter this:
+                    // 1. When prediction switching a static ghost (that has not changed recently) BACK to predicted,
+                    // the snapshot to start prediction from may be VERY old (e.g. feasibly 1000+ ticks old).
+                    // So: We use the fact that we haven't received any snapshots since then to assume that the ghost simply
+                    // hasn't changed (and won't have changed within the prediction loop either, HAD WE rolled back and simulated it),
+                    // thus no need to rollback now (as we assume the latest data we have is correct).
+                    // Note: Thanks to a fix in PredictionSwitchingUtilities.ConvertGhostToPredicted, this case is now
+                    // no longer explicitly hit here.
+
+                    // 2. If you have a lag spike, it is possible to receive a snapshot for a predicted ghost super late.
+                    // In this case, if it falls behind the above margin, we prefer to continue the misprediction until
+                    // we get another snapshot, as continuing the misprediction is "good enough" (a la "eventual consistency").
+
+                    // 3. Sometimes the 'full tick prediction history backup' fetch (after a partial tick) can fail
+                    // due to esoteric reasons (related to structural changes), so, when it does, we instead try to rollback
+                    // to the latest snapshot instead (which can now be quite old).
+                    // So, again; we simply prefer not to rollback at all, as rolling back so far will cause a CPU spike,
+                    // and we assume better data will arrive shortly.
+                    // Note: This is technically "incorrect", as we're continuing our client prediction from a now undone
+                    // partial tick DeltaTime, but this case is so rare, and client predictions are often off-by-one
+                    // tick anyway, it basically becomes invisible.
+                    if (targetTick.TicksSince(snapshotTick) <= maxRollbackDistanceInTicks)
+                    {
+                        predictionStartTick = snapshotTick;
+                        return true;
+                    }
+
+                    // It is EXPECTED that static-optimized, predicted ghosts will want to rollback to their snapshot,
+                    // but be unable to, as their snapshots are so old.
+                    // Therefore, we will only rollback static ghosts as far back as the interpolationTick, as we
+                    // assume they haven't changed since then (otherwise we should have received a new snapshot).
+                    if (isStatic)
+                    {
+                        predictionStartTick = targetTick;
+                        predictionStartTick.Subtract(commandInterpolationDelay);
+                        return true;
+                    }
+                    shouldRollbackToSnapshot = false;
+#if NETCODE_DEBUG || UNITY_EDITOR
+                    if (netDebug.LogLevel == NetDebug.LogLevelType.Debug)
+                        netDebug.LogWarning($"Dynamic predicted ghost GID:{ghostId} wants to rollback to (i.e. re-predict from) its latest snapshot tick {snapshotTick.ToFixedString()}, which is {targetTick.TicksSince(snapshotTick)} ticks behind targetTick:{targetTick.ToFixedString()}, which is above our dynamic threshold of {maxRollbackDistanceInTicks} ticks, so the rollback was cancelled! This case should be exceptional - if you're observing this often (with associated gameplay quality issues), report a bug. interpolationTick:{interpolatedTargetTick.ToFixedString()} ({commandInterpolationDelay}), appliedTick:{appliedTick.ToFixedString()} snapshotTick:{snapshotTick.ToFixedString()}, MaxExtrapolationTicks:{clientTickRate.MaxExtrapolationTimeSimTicks}, lastPredictedTickWasPartial:{lastPredictedTickWasPartial}!");
+#endif
+                }
+
+                // The common, fast-path case: We don't need to rollback to either the snapshot or the prediction history backup!
+                // We can just continue predicting from where we left off.
+                predictionStartTick = lastPredictedTick;
+                Assert.IsTrue(targetTick.TicksSince(predictionStartTick) < 32);
+                return false;
+            }
+
+            [Conditional("UNITY_ASSERTIONS")]
+            private void SkipEntity(ref NativeList<EntityRange> entityRanges, byte entityIndex)
+            {
+                if(entityRanges.Length != 0)
+                {
+                    ref var lastRange = ref entityRanges.ElementAt(entityRanges.Length - 1);
+                    UnityEngine.Debug.Assert(lastRange.StartEntityIndex + lastRange.Count <= entityIndex, $"Skip(Len:{entityRanges.Length} | Last[{lastRange.StartEntityIndex}+{lastRange.Count}] <= {entityIndex})");
+                }
+            }
+            private void AddEntityToRange(ref NativeList<EntityRange> entityRanges, byte entityIndex)
+            {
+                if (entityRanges.Length == 0)
+                {
+                    entityRanges.Add(new EntityRange
+                    {
+                        StartEntityIndex = entityIndex,
+                        Count = 1,
+                    });
+                    return;
+                };
+
+                ref var lastRange = ref entityRanges.ElementAt(entityRanges.Length - 1);
+                UnityEngine.Debug.Assert(lastRange.Count > 0);
+                UnityEngine.Debug.Assert(lastRange.StartEntityIndex + lastRange.Count <= entityIndex, $"Add(Len:{entityRanges.Length} | Last[{lastRange.StartEntityIndex}+{lastRange.Count}] <= {entityIndex})");
+                if (lastRange.StartEntityIndex + lastRange.Count == entityIndex)
+                {
+                    lastRange.Count++;
+                }
+                else
+                {
+                    entityRanges.Add(new EntityRange
+                    {
+                        StartEntityIndex = entityIndex,
+                        Count = 1,
+                    });
+                }
+            }
+
+            private bool TryGetChunkBackupState(in ArchetypeChunk chunk, byte indexInChunk, int rollbackOnStructuralChanges,
+                Entity entity, bool allowMovedChunkFallback, out IntPtr backupState, out byte remappedIndex, out bool viaMovedChunkFallback)
+            {
+                using var _ = k_TryGetChunkBackupState.Auto();
+                backupState = IntPtr.Zero;
+                remappedIndex = byte.MaxValue;
+                viaMovedChunkFallback = false;
+                //First check if the entity is present in the last backup. if not not there is nothing we can do.
+                if (!predictionBackupEntityState.TryGetValue(entity, out var lastState))
+                    return false;
+
+                if (rollbackOnStructuralChanges == 1)
+                {
+                    if (predictionStateBackup.TryGetValue(chunk.SequenceNumber, out var slot) && BackupStatePtrIsValid(slot))
+                    {
+                        var currentChunkState = (IntPtr)slot.Value;
+                        var currentIndex = indexInChunk;
+                        if (PredictionBackupState.MatchOrFindEntity(currentChunkState, ref currentIndex, entity))
+                        {
+                            backupState = currentChunkState;
+                            remappedIndex = currentIndex;
+                            return true;
+                        }
+                    }
+                    //Not in its current chunk; only chase the backup-time chunk when the caller opted in.
+                    if (!allowMovedChunkFallback)
+                        return false;
+                    //A structural change moved it to another chunk; its state still lives in the chunk it occupied at
+                    //backup time, found below via lastChunkSequenceNumber (shared with keep-history archetypes). The
+                    //caller must confirm that backup still matches the entity's current layout before trusting it.
+                    viaMovedChunkFallback = true;
+                }
+                //if the last backup chunk we used is the same (we need only the pointer check for sake of retrieving it)
+                if (!predictionStateBackup.TryGetValue(lastState.lastChunkSequenceNumber, out var lastSlot))
+                    return false;
+                if (!BackupStatePtrIsValid(lastSlot))
+                    return false;
+                backupState = (IntPtr)lastSlot.Value;
+                remappedIndex = lastState.LastIndexInChunk;
+                //Even if the last chunk was different in respect the current chunk (because of structural changes),
+                //we can find the entry in backup using the original information for the entity we stored at backup time,
+                //and we remap the index accordingly to access the backup information
+                return PredictionBackupState.MatchOrFindEntity(backupState, ref remappedIndex, entity);
+            }
+
+            /// <summary>
+            /// After a moved-chunk fallback, confirms the backup still matches the entity's current replicated layout. A
+            /// structural change can leave a component present now that was absent (its slot MemClear'd, change-version 0)
+            /// when the backup was captured; restoring that would write stale/zero data, so the caller rolls back to the
+            /// snapshot instead. Covers the root entity and its replicated children, and both replicated data and
+            /// enable-bit-only components (all of which are restored from the backup).
+            /// </summary>
+            private bool BackupIsValidForCurrentLayout(IntPtr backupState, byte entityIndexInChunk, byte indexInBackup,
+                in ArchetypeChunk chunk, in GhostCollectionPrefabSerializer typeData)
+            {
+                var ghostChunkComponentTypesPtr = DynamicTypeList.GetData();
+                var ghostChunkComponentTypesLength = DynamicTypeList.Length;
+                var chunkVersions = PredictionBackupState.GetChunkVersion(backupState);
+                int baseOffset = typeData.FirstComponent;
+                int numBaseComponents = typeData.NumComponents - typeData.NumChildComponents;
+                const GhostSendType requiredSendMask = GhostSendType.OnlyPredictedClients;
+                //Root components store one change-version entry each (see the capture in GhostPredictionHistorySystem).
+                for (int comp = 0; comp < numBaseComponents; ++comp)
+                {
+                    if ((GhostComponentIndex[baseOffset + comp].SendMask & requiredSendMask) == 0)
+                        continue;
+                    ref readonly var serializer = ref GhostComponentCollection.ElementAtRO(GhostComponentIndex[baseOffset + comp].SerializerIndex);
+                    //A component with neither ghost fields nor a replicated enabled bit restores nothing, so a layout change on it is harmless.
+                    if (!serializer.HasGhostFields && serializer.SerializesEnabledBit == 0)
+                        continue;
+                    int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                    if (compIdx >= ghostChunkComponentTypesLength)
+                        continue;
+                    //Present now but zeroed at capture => the component was added/re-added since the backup: stale data.
+                    if (chunkVersions[comp] == 0 && chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                        return false;
+                }
+                if (typeData.NumChildComponents == 0)
+                    return true;
+                //Child components store a per-entity change-version sub-array (stride = backup entity capacity) after the
+                //root ones, walked exactly as capture/restore do so indexInBackup lands on this entity's slot.
+                var linkedEntityGroup = chunk.GetBufferAccessor(ref linkedEntityGroupType)[entityIndexInChunk];
+                var childVersions = chunkVersions + numBaseComponents;
+                var entityCapacity = PredictionBackupState.GetEntityCapacity(backupState);
+                for (int comp = numBaseComponents; comp < typeData.NumComponents; ++comp)
+                {
+                    if ((GhostComponentIndex[baseOffset + comp].SendMask & requiredSendMask) == 0)
+                        continue;
+                    ref readonly var serializer = ref GhostComponentCollection.ElementAtRO(GhostComponentIndex[baseOffset + comp].SerializerIndex);
+                    if (!serializer.HasGhostFields && serializer.SerializesEnabledBit == 0)
+                        continue;
+                    int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                    if (compIdx < ghostChunkComponentTypesLength && childVersions[indexInBackup] == 0)
+                    {
+                        var childEntity = linkedEntityGroup[GhostComponentIndex[baseOffset + comp].EntityIndex].Value;
+                        //Present now but zeroed at capture => the child component was added/re-added since the backup: stale data.
+                        if (childEntityLookup.TryGetValue(childEntity, out var childChunk) && childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                            return false;
+                    }
+                    childVersions = PredictionBackupState.GetNextChildChunkVersion(childVersions, entityCapacity);
+                }
+                return true;
+            }
+
+            /// <summary>Cheap sanity guard against dereferencing a freed/corrupted backup slot.</summary>
+            private static bool BackupStatePtrIsValid(SlotPtr backupState)
+            {
+                if (backupState.Value == null)
+                    return false;
+                var capacity = PredictionBackupState.GetEntityCapacity(backupState);
+                return capacity > 0 && capacity <= TypeManager.MaximumChunkCapacity;
+            }
+
+            /// <summary>Distinguishes the various reasons <see cref="TryGetChunkBackupStateAtTick"/> might fail.</summary>
+            internal enum BackupLookupResult : byte
+            {
+                /// <summary>Lookup succeeded: a slot was found at the wanted tick, and the entity is present in it.</summary>
+                Found,
+                /// <summary>Entity isn't in <see cref="predictionBackupEntityState"/> — it has never been backed up (e.g. a brand-new ghost whose chunk hasn't run a full prediction tick yet).</summary>
+                NoEntityState,
+                /// <summary>Entity's last-known chunk has no ring — the chunk was evicted, typically due to a structural change (component add/remove) that moved the entity to a different archetype.</summary>
+                NoRingForLastChunk,
+                /// <summary>Ring exists, but no slot contains this tick.</summary>
+                NoSlotForTick,
+                /// <summary>Slot exists at the wanted tick but the entity isn't recorded in it — the entity moved chunks (structural change) between the slot's write tick and now, so the slot's per-entity slice doesn't include it.</summary>
+                EntityNotInSlot,
+            }
+
+            /// <summary>
+            /// Find the ring slot for <paramref name="entity"/> at <paramref name="wantedTick"/> by walking the
+            /// PredictionBackupRing newest-first for the entity's last-known chunk. Used by the global-rollback path.
+            /// </summary>
+            private BackupLookupResult TryGetChunkBackupStateAtTick(Entity entity, NetworkTick wantedTick,
+                out IntPtr backupState, out byte remappedIndex, out NetworkTick slotTick)
+            {
+                backupState = IntPtr.Zero;
+                remappedIndex = byte.MaxValue;
+                slotTick = NetworkTick.Invalid;
+                if (!wantedTick.IsValid)
+                    return BackupLookupResult.NoEntityState;
+                if (!predictionBackupEntityState.TryGetValue(entity, out var lastState))
+                    return BackupLookupResult.NoEntityState;
+
+                // Primary lookup: the entity's chunk as of the MOST RECENT backup. predictionBackupEntityState
+                // is rebuilt every backup tick, so lastChunk is only correct when the entity hasn't changed
+                // chunks between wantedTick and now.
+                var result = BackupLookupResult.NoRingForLastChunk;
+                if (predictionRings.TryGetValue(lastState.lastChunkSequenceNumber, out var ringPtr))
+                {
+                    ref var ring = ref ringPtr.Ref;
+                    if (ring.TryGetSlotForTick(wantedTick, out backupState))
+                    {
+                        remappedIndex = lastState.LastIndexInChunk;
+                        if (PredictionBackupState.MatchOrFindEntity(backupState, ref remappedIndex, entity))
+                        {
+                            slotTick = PredictionBackupState.GetTick(backupState);
+                            return BackupLookupResult.Found;
+                        }
+                        result = BackupLookupResult.EntityNotInSlot;
+                    }
+                    else result = BackupLookupResult.NoSlotForTick;
+                }
+
+                // Fallback: the entity underwent a structural change between wantedTick and the most recent
+                // backup, so it moved chunks and its wantedTick state lives in a DIFFERENT chunk's ring. An
+                // entity occupies exactly one chunk at any tick, so the wantedTick slot that still contains it
+                // is unique. Scan every ring for it.
+                // This fallback only runs for predicted ghosts that have had 2+ structural changes since their
+                // backup was created (a tiny subset), so the per-ghost ring scan is not a per-frame N^2 cost.
+                var rings = predictionRings.GetValueArray(Allocator.Temp);
+                for (int i = 0; i < rings.Length; ++i)
+                {
+                    if (rings[i].Value == null || rings[i].Value == ringPtr.Value)
+                        continue;
+                    if (!rings[i].Ref.TryGetSlotForTick(wantedTick, out var slot))
+                        continue;
+                    byte foundIndex = 0;
+                    if (PredictionBackupState.MatchOrFindEntity(slot, ref foundIndex, entity))
+                    {
+                        backupState = slot;
+                        remappedIndex = foundIndex;
+                        slotTick = PredictionBackupState.GetTick(slot);
+                        return BackupLookupResult.Found;
+                    }
+                }
+                return result;
+            }
+
+            private static void CopyRODataIntoTempChangeBuffer(int requiredCompDataLength, ref byte* tempChangeBuffer, ref int tempChangeBufferSize, ref NativeArray<byte> tempChangeBufferLarge, byte* roCompData)
+            {
+                k_ChangeFiltering.Begin();
+                if (requiredCompDataLength > tempChangeBufferSize)
+                {
+                    tempChangeBufferLarge = new NativeArray<byte>(math.ceilpow2(requiredCompDataLength), Allocator.Temp);
+                    tempChangeBuffer = (byte*) tempChangeBufferLarge.GetUnsafePtr();
+                    tempChangeBufferSize = tempChangeBufferLarge.Length;
+                }
+                UnsafeUtility.MemCpy(tempChangeBuffer, roCompData, requiredCompDataLength);
+                k_ChangeFiltering.End();
+            }
+
+            // TODO - We can perform this logic faster using the EnabledMask.
+            private static void UpdateEnableableMask(ArchetypeChunk chunk, SnapshotData.DataAtTick* dataAtTickPtr,
+                SendToOwnerType ownerSendMask,
+                int changeMaskUints, int enableableMaskOffset, in EntityRange range,
+                DynamicComponentTypeHandle* ghostChunkComponentTypesPtr, int compIdx, ref bool componentHasChanges)
+            {
+                var uintOffset = enableableMaskOffset >> 5;
+                var maskOffset = enableableMaskOffset & 0x1f;
+                for (int i = range.StartEntityIndex; i < range.StartEntityIndex + range.Count; ++i, ++dataAtTickPtr)
+                {
+                    var snapshotDataPtr = (byte*)dataAtTickPtr->SnapshotBefore;
+                    uint* enableableMasks = (uint*)(snapshotDataPtr + sizeof(uint) + changeMaskUints * sizeof(uint));
+                    enableableMasks += uintOffset;
+                    if ((dataAtTickPtr->RequiredOwnerSendMask & ownerSendMask) == 0)
+                        continue;
+                    var isSet = ((*enableableMasks) & (1U << maskOffset)) != 0;
+                    k_ChangeFiltering.Begin();
+                    if (isSet != chunk.IsComponentEnabled(ref ghostChunkComponentTypesPtr[compIdx], i))
+                    {
+                        componentHasChanges = true;
+                        k_ChangeFiltering.End();
+                        chunk.SetComponentEnabled(ref ghostChunkComponentTypesPtr[compIdx], i, isSet);
+                    }
+
+                    else k_ChangeFiltering.End();
+                }
+            }
+
+            static SnapshotData.DataAtTick SetupDynamicDataAtTick(in SnapshotData.DataAtTick dataAtTick,
+                int snapshotOffset, int snapshotSize, int maskBits, in DynamicBuffer<SnapshotDynamicDataBuffer> ghostSnapshotDynamicBuffer, int snapshotHistorySize, out int buffernLen)
+            {
+                // Retrieve from the snapshot the buffer information and
+                var snapshotData = (int*)(dataAtTick.SnapshotBefore + snapshotOffset);
+                var bufLen = snapshotData[0];
+                var dynamicDataOffset = snapshotData[1];
+                //The dynamic snapshot data is associated with the root entity not the children
+                var dynamicSnapshotDataBeforePtr = SnapshotDynamicBuffersHelper.GetDynamicDataPtr((byte*)ghostSnapshotDynamicBuffer.GetUnsafeReadOnlyPtr(),
+                    dataAtTick.BeforeIdx, ghostSnapshotDynamicBuffer.Length, snapshotHistorySize);
+                //var dynamicSnapshotDataCapacity = SnapshotDynamicBuffersHelper.GetDynamicDataCapacity(SnapshotDynamicBuffersHelper.GetHeaderSize(),ghostSnapshotDynamicBuffer.Length);
+                var dynamicMaskSize = SnapshotDynamicBuffersHelper.GetDynamicDataChangeMaskSize(maskBits, bufLen);
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                if ((dynamicDataOffset + bufLen*snapshotSize) > ghostSnapshotDynamicBuffer.Length)
+                    throw new System.InvalidOperationException("Overflow reading data from dynamic snapshot memory buffer");
+#endif
+                //Copy into the buffer the snapshot data. Use a temporary DataTick to pass some information to the serializer function.
+                //No need to use a DataAtTick per element (would be overkill)
+                buffernLen = bufLen;
+                return new SnapshotData.DataAtTick
+                {
+                    SnapshotBefore = (System.IntPtr)(dynamicSnapshotDataBeforePtr + dynamicDataOffset + dynamicMaskSize),
+                    SnapshotAfter = (System.IntPtr)(dynamicSnapshotDataBeforePtr + dynamicDataOffset + dynamicMaskSize),
+                    //No interpolation factor is necessary
+                    InterpolationFactor = 0.0f,
+                    Tick = dataAtTick.Tick
+                };
+            }
+
+            struct RestoreState
+            {
+                public byte* dataPtr;
+                public ulong* enableBits;
+                public byte* bufferBackupDataPtr;
+                public uint* chunkVersionPtr;
+                public uint* childChunkVersionPtr;
+                public int entityCapacity;
+            }
+
+            void RestorePredictionBackup(ArchetypeChunk chunk,
+                NativeList<BackupRange> toRestore,
+                in GhostCollectionPrefabSerializer typeData,
+                DynamicComponentTypeHandle* ghostChunkComponentTypesPtr,
+                int ghostChunkComponentTypesLength)
+            {
+                // If we call this, toRestore length MUST be greater than 0
+                UnityEngine.Assertions.Assert.IsTrue(toRestore.Length > 0);
+
+                int baseOffset = typeData.FirstComponent;
+                const GhostSendType requiredSendMask = GhostSendType.OnlyPredictedClients;
+                int numBaseComponents = typeData.NumComponents - typeData.NumChildComponents;
+                Span<RestoreState> allStates = stackalloc RestoreState[toRestore.Length];
+                Span<int> toUpdateIdx = stackalloc int[toRestore.Length];
+                for (int i = 0; i < toRestore.Length; ++i)
+                {
+                    allStates[i].dataPtr = PredictionBackupState.GetData(toRestore[i].BackupState);
+                    allStates[i].enableBits = PredictionBackupState.GetEnabledBits(toRestore[i].BackupState);
+                    allStates[i].bufferBackupDataPtr = PredictionBackupState.GetBufferDataPtr(toRestore[i].BackupState);
+                    allStates[i].chunkVersionPtr = PredictionBackupState.GetChunkVersion(toRestore[i].BackupState);
+                    allStates[i].childChunkVersionPtr = allStates[i].chunkVersionPtr + numBaseComponents;
+                    allStates[i].entityCapacity = PredictionBackupState.GetEntityCapacity(toRestore[i].BackupState);
+                    toUpdateIdx[i] = -1; // For safety.
+                }
+
+                for (int comp = 0; comp < numBaseComponents; ++comp)
+                {
+                    int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                    int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    if (compIdx >= ghostChunkComponentTypesLength)
+                        throw new System.InvalidOperationException("Component index out of range");
+#endif
+                    //data is not present in the backup buffer (see rules in GhostPredictionHistorySystem.cs, line 460)
+                    if ((GhostComponentIndex[baseOffset + comp].SendMask&requiredSendMask) == 0)
+                        continue;
+
+                    ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                    var compSize = ghostSerializer.ComponentType.IsBuffer
+                        ? GhostComponentSerializer.DynamicBufferComponentSnapshotSize
+                        : ghostSerializer.ComponentSize;
+                    if (!ghostSerializer.HasGhostFields)
+                        compSize = 0;
+
+                    if (!chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                    {
+                        for (var entIndex = 0; entIndex < toRestore.Length; entIndex++)
+                        {
+                            if (ghostSerializer.HasGhostFields)
+                                allStates[entIndex].dataPtr = PredictionBackupState.GetNextData(allStates[entIndex].dataPtr, compSize, allStates[entIndex].entityCapacity);
+                            if(ghostSerializer.SerializesEnabledBit != 0)
+                                allStates[entIndex].enableBits = PredictionBackupState.GetNextEnabledBits(allStates[entIndex].enableBits, allStates[entIndex].entityCapacity);
+                        }
+                        continue;
+                    }
+
+                    int toUpdateCount = 0;
+                    for (var index = 0; index < toRestore.Length; index++)
+                    {
+                        //We just need to check the chunk version when restoring from the backup. If something touched this component,
+                        //it has been touched no matter what. We should not "compensate" or change that semantic.
+                        uint backupVersion = allStates[index].chunkVersionPtr[comp];
+                        k_ChangeFiltering.Begin();
+                        //HOW THIS SHOULD WORK NOW THAT WE COPY/REMAP THE CHUNK STATE FOR THE ENTITY? I can't skip anywmore the
+                        //whole restore if there are some entities in this chunk that has a state that belong to an older one
+                        //in that case, being the entity moved, all the versions are pretty much invalidated.
+                        if (chunk.DidChange(ref ghostChunkComponentTypesPtr[compIdx], backupVersion))
+                        {
+                            toUpdateIdx[toUpdateCount] = index;
+                            ++toUpdateCount;
+                        }
+                        else
+                        {
+                            if(ghostSerializer.HasGhostFields)
+                                allStates[index].dataPtr = PredictionBackupState.GetNextData(allStates[index].dataPtr, compSize, allStates[index].entityCapacity);
+                            if(ghostSerializer.SerializesEnabledBit != 0)
+                                allStates[index].enableBits = PredictionBackupState.GetNextEnabledBits(allStates[index].enableBits, allStates[index].entityCapacity);
+                        }
+                        k_ChangeFiltering.End();
+                    }
+
+                    if(toUpdateCount == 0)
+                        continue;
+
+                    if (ghostSerializer.SerializesEnabledBit != 0)
+                    {
+                        for (var idx = 0; idx < toUpdateCount; idx++)
+                        {
+                            var toRestoreIdx = toUpdateIdx[idx];
+                            var indexInBackup = toRestore[toRestoreIdx].EntityIndexInBackup;
+                            var requiredOwnerMask = GetRequiredOwnerMask(toRestore[toRestoreIdx].BackupState, indexInBackup);
+                            //Do not restore the backup if the component is never received by this client (PlayerGhostFilter setting)
+                            //The component is present in the buffer, so we need to skip the data
+                            if ((ghostSerializer.SendToOwner & requiredOwnerMask) != 0)
+                            {
+                                bool isSet = (allStates[toRestoreIdx].enableBits[indexInBackup >> 6] & (1ul << (indexInBackup & 0x3f))) != 0;
+                                chunk.SetComponentEnabled(ref ghostChunkComponentTypesPtr[compIdx], toRestore[toRestoreIdx].EntityIndex, isSet);
+                            }
+                            allStates[toRestoreIdx].enableBits = PredictionBackupState.GetNextEnabledBits(allStates[toRestoreIdx].enableBits, allStates[toRestoreIdx].entityCapacity);
+                        }
+                    }
+                    //If the component does not have any ghost fields (so nothing to restore)
+                    //we don't need to restore the data and we don't need to advance the
+                    //data ptr either. No space has been reserved for this component in the backup buffer, see the
+                    //GhostPredictionHistorySystem)
+                    if (!ghostSerializer.HasGhostFields)
+                        continue;
+
+                    if (!ghostSerializer.ComponentType.IsBuffer)
+                    {
+                        var compData = (byte*)chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref ghostChunkComponentTypesPtr[compIdx], compSize).GetUnsafePtr();
+                        //TODO batch restore from backup function call
+                        for (var idx = 0; idx < toUpdateCount; idx++)
+                        {
+                            var toRestoreIdx = toUpdateIdx[idx];
+                            var indexInBackup = toRestore[toRestoreIdx].EntityIndexInBackup;
+                            var requiredOwnerMask = GetRequiredOwnerMask(toRestore[toRestoreIdx].BackupState, indexInBackup);
+                            //Do not restore the backup if the component is never received by this client (PlayerGhostFilter setting)
+                            //The component is present in the buffer, so we need to skip the data
+                            if ((ghostSerializer.SendToOwner & requiredOwnerMask) != 0)
+                            {
+                                ghostSerializer.RestoreFromBackup.Invoke((System.IntPtr)(compData + toRestore[toRestoreIdx].EntityIndex * compSize),
+                                    (System.IntPtr)(allStates[toRestoreIdx].dataPtr + indexInBackup * compSize));
+                            }
+                            allStates[toRestoreIdx].dataPtr = PredictionBackupState.GetNextData(allStates[toRestoreIdx].dataPtr, compSize,
+                                allStates[toRestoreIdx].entityCapacity);
+                        }
+                    }
+                    else
+                    {
+                        var bufferAccessor = chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                        for (var idx = 0; idx < toUpdateCount; idx++)
+                        {
+                            var toRestoreIdx = toUpdateIdx[idx];
+                            var indexInBackup = toRestore[toRestoreIdx].EntityIndexInBackup;
+                            var backupData = (int*)(allStates[toRestoreIdx].dataPtr + indexInBackup * compSize);
+                            var bufLen = backupData[0];
+                            var bufOffset = backupData[1];
+                            var elemSize = ghostSerializer.ComponentSize;
+                            var bufferDataPtr = allStates[toRestoreIdx].bufferBackupDataPtr + bufOffset;
+
+                            //Do not restore the backup if the component is never received by this client
+                            var requiredOwnerMask = GetRequiredOwnerMask(toRestore[toRestoreIdx].BackupState, indexInBackup);
+                            if ((ghostSerializer.SendToOwner & requiredOwnerMask) != 0)
+                            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                                if ((bufOffset + bufLen * elemSize) > PredictionBackupState.GetBufferDataCapacity(toRestore[toRestoreIdx].BackupState))
+                                    throw new System.InvalidOperationException("Overflow reading data from dynamic snapshot memory buffer");
+#endif
+                                //IMPORTANT NOTE: The RestoreFromBackup restore only the serialized fields for a given struct.
+                                //Differently from the component counterpart, when the dynamic snapshot buffer get resized the memory is not
+                                //cleared (for performance reason) and some portion of the data could be left "uninitialized" with random values
+                                //in case some of the element fields does not have a [GhostField] annotation.
+                                //For such a reason we enforced a rule: BufferElementData MUST have all fields annotated with the GhostFieldAttribute.
+                                //This solve the problem and we might relax that condition later.
+                                bufferAccessor.ResizeUninitialized(toRestore[toRestoreIdx].EntityIndex, bufLen);
+                                var bufferPointer = (byte*)bufferAccessor.GetUnsafePtr(toRestore[toRestoreIdx].EntityIndex);
+                                //for buffers we could probably use just a memcpy. the rule is that all fields must have a [GhostField],
+                                //so everything is replicated. But.. what about internal fields or properties?
+                                //These aren't replicated, nor we complain about their presence in code-gen.
+                                //However, given how buffer works, these are causing problem (because has random memory value when
+                                //initialised) and usually they must be avoided.
+                                //For such a reason, that would be probably the fast and more correct path. Although, we would also
+                                //make some opinionated choice and that would be a change in current behaviour.
+                                //That may be ok for 2.0, but in current 1.x we should avoid breaking user behaviours. I suspect though,
+                                //this would not break anything anyway.
+                                //TODO: batch this
+                                for (int bufElement = 0; bufElement < bufLen; ++bufElement)
+                                {
+                                    ghostSerializer.RestoreFromBackup.Invoke((System.IntPtr)(bufferPointer), (System.IntPtr)(bufferDataPtr));
+                                    bufferPointer += elemSize;
+                                    bufferDataPtr += elemSize;
+                                }
+                            }
+                            allStates[toRestoreIdx].dataPtr = PredictionBackupState.GetNextData(allStates[toRestoreIdx].dataPtr, compSize,
+                                allStates[toRestoreIdx].entityCapacity);
+                        }
+                    }
+                }
+                if (typeData.NumChildComponents > 0)
+                {
+                    var linkedEntityGroupAccessor = chunk.GetBufferAccessor(ref linkedEntityGroupType);
+                    for (int comp = numBaseComponents; comp < typeData.NumComponents; ++comp)
+                    {
+                        int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                        int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        if (compIdx >= ghostChunkComponentTypesLength)
+                            throw new System.InvalidOperationException("Component index out of range");
+#endif
+                        //Not present in the backup buffer (see rules in GhostPredictionHistorySystem.cs, line 460)
+                        if ((GhostComponentIndex[baseOffset + comp].SendMask & requiredSendMask) == 0)
+                            continue;
+                        ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                        var compSize = ghostSerializer.ComponentType.IsBuffer
+                            ? GhostComponentSerializer.DynamicBufferComponentSnapshotSize
+                            : ghostSerializer.ComponentSize;
+                        if (!ghostSerializer.HasGhostFields)
+                            compSize = 0;
+
+                        var readonlyHandle = ghostChunkComponentTypesPtr[compIdx].CopyToReadOnly();
+                        var childIndex = GhostComponentIndex[typeData.FirstComponent + comp].EntityIndex;
+                        for (var toRestoreIdx = 0; toRestoreIdx < toRestore.Length; toRestoreIdx++)
+                        {
+                            var rootEnt = toRestore[toRestoreIdx].EntityIndex;
+                            var linkedEntityGroup = linkedEntityGroupAccessor[rootEnt];
+                            var childEnt = linkedEntityGroup[childIndex].Value;
+
+                            if (!childEntityLookup.TryGetValue(childEnt, out var childChunk) || !childChunk.Chunk.Has(ref readonlyHandle))
+                                continue;
+                            var indexInBackup = toRestore[toRestoreIdx].EntityIndexInBackup;
+                            uint backupVersion = allStates[toRestoreIdx].childChunkVersionPtr[indexInBackup];
+                            k_ChangeFiltering.Begin();
+                            if (!childChunk.Chunk.DidChange(ref readonlyHandle, backupVersion))
+                            {
+                                k_ChangeFiltering.End();
+                                continue;
+                            }
+                            else k_ChangeFiltering.End();
+                            //The owner is still the rootEnt not the child entity.
+                            var requiredOwnerMask = GetRequiredOwnerMask(toRestore[toRestoreIdx].BackupState, indexInBackup);
+                            if ((ghostSerializer.SendToOwner & requiredOwnerMask) != 0)
+                            {
+                                if (ghostSerializer.SerializesEnabledBit != 0)
+                                {
+                                    bool isSet = (allStates[toRestoreIdx].enableBits[indexInBackup >> 6] & (1ul << (indexInBackup & 0x3f))) != 0;
+                                    childChunk.Chunk.SetComponentEnabled(ref ghostChunkComponentTypesPtr[compIdx], childChunk.IndexInChunk, isSet);
+                                }
+
+                                //If the component does not have any ghost fields (so nothing to restore)
+                                //we don't need to restore the data and we don't need to advance the
+                                //data ptr either. No space has been reserved for this component in the backup buffer, see the
+                                //GhostPredictionHistorySystem)
+                                if (!ghostSerializer.HasGhostFields)
+                                    continue;
+
+                                if (!ghostSerializer.ComponentType.IsBuffer)
+                                {
+                                    var compData = (byte*)childChunk.Chunk
+                                        .GetDynamicComponentDataArrayReinterpret<byte>(ref readonlyHandle, compSize)
+                                        .GetUnsafeReadOnlyPtr();
+                                    ghostSerializer.RestoreFromBackup.Invoke(
+                                        (System.IntPtr)(compData + childChunk.IndexInChunk * compSize),
+                                        (System.IntPtr)(allStates[toRestoreIdx].dataPtr + indexInBackup * compSize));
+                                }
+                                else
+                                {
+                                    var backupData = (int*)(allStates[toRestoreIdx].dataPtr + indexInBackup * compSize);
+                                    var bufLen = backupData[0];
+                                    var bufOffset = backupData[1];
+                                    var elemSize = ghostSerializer.ComponentSize;
+                                    var bufferDataPtr = allStates[toRestoreIdx].bufferBackupDataPtr + bufOffset;
+    #if ENABLE_UNITY_COLLECTIONS_CHECKS
+                                    if ((bufOffset + bufLen * elemSize) > PredictionBackupState.GetBufferDataCapacity(toRestore[toRestoreIdx].BackupState))
+                                        throw new System.InvalidOperationException("Overflow reading data from dynamic snapshot memory buffer");
+    #endif
+                                    var bufferAccessor = childChunk.Chunk.GetUntypedBufferAccessor(ref readonlyHandle);
+                                    bufferAccessor.ResizeUninitialized(childChunk.IndexInChunk, bufLen);
+                                    var bufferPointer = (byte*)bufferAccessor.GetUnsafePtr(childChunk.IndexInChunk);
+                                    for (int bulElement = 0; bulElement < bufLen; ++bulElement)
+                                    {
+                                        ghostSerializer.RestoreFromBackup.Invoke((System.IntPtr)(bufferPointer), (System.IntPtr)(bufferDataPtr));
+                                        bufferPointer += elemSize;
+                                        bufferDataPtr += elemSize;
+                                    }
+                                }
+                            }
+                        }
+                        //The data in the backup is stored on a per component basis Like this:
+                        // C1       | C2       | ChildComp1    | ChildComp2
+                        // e1,e2,e3 | e1,e2,e3 | e1c1,e2c1,e3c1| ...
+                        //So the dataptr, enablebits and chunk versions must be advanced here. Not for each entity restored
+                        for (var entIndex = 0; entIndex < toRestore.Length; entIndex++)
+                        {
+                            if (ghostSerializer.SerializesEnabledBit != 0)
+                                allStates[entIndex].enableBits = PredictionBackupState.GetNextEnabledBits(allStates[entIndex].enableBits,
+                                    allStates[entIndex].entityCapacity);
+                            if (ghostSerializer.HasGhostFields)
+                            {
+                                allStates[entIndex].dataPtr = PredictionBackupState.GetNextData(allStates[entIndex].dataPtr, compSize,
+                                    allStates[entIndex].entityCapacity);
+                            }
+                            if (ghostSerializer.HasGhostFields || ghostSerializer.SerializesEnabledBit != 0)
+                            {
+                                allStates[entIndex].childChunkVersionPtr = PredictionBackupState.GetNextChildChunkVersion(allStates[entIndex].childChunkVersionPtr,
+                                    allStates[entIndex].entityCapacity);
+                            }
+                        }
+                    }
+                }
+            }
+
+            private SendToOwnerType GetRequiredOwnerMask(IntPtr state, int ent)
+            {
+                var ghostOwner = PredictionBackupState.GetGhostOwner(state, ent);
+                var requiredOwnerMask = SendToOwnerType.All;
+                if (ghostOwnerId != 0 && ghostOwner >= 0)
+                {
+                    requiredOwnerMask = ghostOwnerId == ghostOwner
+                        ? SendToOwnerType.SendToOwner
+                        : SendToOwnerType.SendToNonOwner;
+                }
+
+                return requiredOwnerMask;
+            }
+        }
+
+        // TODO: Scheduled single-threaded (.Schedule) because each chunk reads-then-writes globalRollbackTick,
+        // so a naive .ScheduleParallel would race the accumulation. Test whether .ScheduleParallel with an atomic min
+        // into globalRollbackTick is viable and better perf.
+        [BurstCompile]
+        struct CalculateNumPredictedGhostToRollback : IJobChunk
+        {
+            [ReadOnly] public ComponentTypeHandle<PredictedGhost> predictedGhostTypeHandle;
+            [ReadOnly] public ComponentTypeHandle<SnapshotData> ghostSnapshotDataType;
+            [ReadOnly] public BufferTypeHandle<SnapshotDataBuffer> ghostSnapshotDataBufferType;
+            /// <summary>
+            /// Set to the MIN snapshot tick across predicted ghosts that have new data within the rollback window.
+            /// When valid, it signals (a) that at least one predicted ghost has new snapshot data this frame,
+            /// and (b) when AlwaysRollbackAllPredictedGhosts is on, the tick UpdateJob should roll all non-static
+            /// predicted ghosts back to.
+            /// </summary>
+            public NativeReference<NetworkTick> globalRollbackTick;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                var predictedGhosts = chunk.GetComponentDataPtrRO(ref predictedGhostTypeHandle);
+                var ghostSnapshotDataArray = chunk.GetNativeArray(ref ghostSnapshotDataType);
+                var ghostSnapshotDataBufferArray = chunk.GetBufferAccessor(ref ghostSnapshotDataBufferType);
+
+                var localMin = globalRollbackTick.Value;
+                for (int i = 0; i < chunk.Count; ++i)
+                {
+                    var latestSnapshotTick = ghostSnapshotDataArray[i].GetLatestTick(ghostSnapshotDataBufferArray[i]);
+                    var lastAppliedTick = predictedGhosts[i].AppliedTick;
+                    var hasNewSnapshot = latestSnapshotTick.IsValid && (!lastAppliedTick.IsValid || latestSnapshotTick.IsNewerThan(lastAppliedTick));
+                    if (hasNewSnapshot)
+                    {
+                        if (!localMin.IsValid || latestSnapshotTick.IsOlderThan(localMin))
+                            localMin = latestSnapshotTick;
+                    }
+                }
+                globalRollbackTick.Value = localMin;
+            }
+        }
+
+
+        /// <summary>
+        /// End-of-frame finalization scheduled after UpdateJob, with two purposes:
+        /// <para>(1) When <see cref="clearRings"/>, logically clears every prediction history ring. After a
+        /// snapshot-driven rollback the rings hold the pre-snapshot prediction trajectory, which is now stale
+        /// against the applied snapshot and must not source any future rollback. This is the same "a backup must
+        /// not predate the applied snapshot" invariant that <see cref="UpdateJob.BackupIsStale"/> enforces per-ghost
+        /// on the default (selective-rollback) path; here it is enforced wholesale because every ghost rolls back.
+        /// Logical only: slot allocations are kept, so the next BACKUP-WRITE reuses slot[0] and the ring re-fills
+        /// during re-prediction.</para>
+        /// <para>(2) Updates the last fully-applied interpolated tick (used to skip static ghosts that already
+        /// have the latest state).</para>
+        /// </summary>
+        /// <remarks>
+        /// Pass (1) clears EVERY ring when any predicted ghost rolled back, not only the chunks that actually rolled back
+        /// (we don't track which chunks rolled back). A chunk that received no new data this frame therefore also loses
+        /// its retained history. This is usually self-healing - with AlwaysRollbackAllPredictedGhosts on, every predicted
+        /// ghost backs up each full tick, so its ring re-fills forward from <see cref="globalRollbackTick"/> during
+        /// re-prediction - but under staggered snapshots a later frame's rollback tick can predate the re-covered range,
+        /// dropping such a ghost to the no-restore path (a partial rollback). Accepted trade-off: rolling back is better
+        /// than not, and a precise per-chunk clear would need a parallel-written set of rolled-back chunks (sized and
+        /// fail-loud like the still-used map), which isn't worth the complexity here.
+        /// </remarks>
+        [BurstCompile]
+        struct FinalizeJob : IJob
+        {
+            /// <summary>Prediction history rings to clear (pass (1)).</summary>
+            public NativeParallelHashMap<ulong, RingPtr>.ReadOnly predictionRings;
+            /// <summary>Min snapshot tick rolled back to this frame; Invalid means no rollback, so no clear.</summary>
+            [ReadOnly] public NativeReference<NetworkTick> globalRollbackTick;
+            /// <summary>Run pass (1) this frame: AlwaysRollbackAllPredictedGhosts is on AND the ghost-query path ran (globalRollbackTick is fresh).</summary>
+            public bool clearRings;
+            [ReadOnly] public ComponentLookup<NetworkSnapshotAck> AckFromEntity;
+            public Entity AckSingleton;
+            public NativeReference<NetworkTick> LastInterpolatedTick;
+            public NetworkTick InterpolationTick;
+            public float InterpolationTickFraction;
+
+            public void Execute()
+            {
+                // (1) Clear stale rings after a snapshot-driven rollback.
+                if (clearRings && globalRollbackTick.Value.IsValid)
+                {
+                    var values = predictionRings.GetValueArray(Allocator.Temp);
+                    for (int i = 0; i < values.Length; ++i)
+                    {
+                        if (values[i].Value != null)
+                            values[i].Ref.LogicalClear();
+                    }
+                    values.Dispose();
+                }
+
+                // (2) Update the last fully-applied interpolated tick.
+                var ack = AckFromEntity[AckSingleton];
+                if (InterpolationTick.IsValid && ack.LastReceivedSnapshotByLocal.IsValid && !InterpolationTick.IsNewerThan(ack.LastReceivedSnapshotByLocal))
+                {
+                    var lastInterpolTick = InterpolationTick;
+                    // Make sure it is the last full interpolated tick.
+                    if (InterpolationTickFraction < 1)
+                        lastInterpolTick.Decrement();
+                    LastInterpolatedTick.Value = lastInterpolTick;
+                }
+            }
+        }
+
+        static readonly Unity.Profiling.ProfilerMarker k_Scheduling = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_Scheduling");
+        static readonly Unity.Profiling.ProfilerMarker k_FindCandidates = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_FindCandidates");
+        static readonly Unity.Profiling.ProfilerMarker k_CopyFromSnapshot = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_CopyFromSnapshot");
+        static readonly Unity.Profiling.ProfilerMarker k_ChangeFiltering = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_ChangeFiltering");
+        static readonly Unity.Profiling.ProfilerMarker k_RestoreFromBackup = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_RestoreFromBackup");
+        static readonly Unity.Profiling.ProfilerMarker k_TryGetChunkBackupState = new Unity.Profiling.ProfilerMarker("GhostUpdateSystem_TryGetChunkBackupState");
+        private EntityQuery m_ghostQuery;
+        private EntityQuery m_PredictedGhostQuery;
+        private NetworkTick m_LastPredictedTick;
+        private bool m_LastPredictedTickWasPartial;
+        private NativeReference<NetworkTick> m_LastInterpolatedTick;
+        private NativeParallelHashMap<NetworkTick, NetworkTick> m_AppliedPredictedTicks;
+        /// <summary>Output of CalculateNumPredictedGhostToRollback: MIN snapshot tick across predicted ghosts that
+        /// have new snapshot data within the rollback window.</summary>
+        private NativeReference<NetworkTick> m_GlobalRollbackTick;
+
+        BufferLookup<GhostComponentSerializer.State> m_GhostComponentCollectionFromEntity;
+        BufferLookup<GhostCollectionPrefabSerializer> m_GhostTypeCollectionFromEntity;
+        BufferLookup<GhostCollectionComponentIndex> m_GhostComponentIndexFromEntity;
+        ComponentLookup<NetworkSnapshotAck> m_NetworkSnapshotAckLookup;
+
+        ComponentTypeHandle<PredictedGhost> m_PredictedGhostTypeHandle;
+        ComponentTypeHandle<GhostInstance> m_GhostComponentTypeHandle;
+        ComponentTypeHandle<GhostType> m_GhostTypeHandle;
+        ComponentTypeHandle<SnapshotData> m_SnapshotDataTypeHandle;
+        BufferTypeHandle<SnapshotDataBuffer> m_SnapshotDataBufferTypeHandle;
+        BufferTypeHandle<SnapshotDynamicDataBuffer> m_SnapshotDynamicDataBufferTypeHandle;
+        BufferTypeHandle<LinkedEntityGroup> m_LinkedEntityGroupTypeHandle;
+        ComponentTypeHandle<PreSpawnedGhostIndex> m_PreSpawnedGhostIndexTypeHandle;
+        ComponentTypeHandle<PredictedGhostSpawnRequest> m_PredictedGhostSpawnRequestTypeHandle;
+        EntityTypeHandle m_EntityTypeHandle;
+
+        /// <inheritdoc/>
+        public void OnCreate(ref SystemState systemState)
+        {
+            if (systemState.WorldUnmanaged.IsHost())
+            {
+                systemState.Enabled = false;
+                return;
+            }
+
+            int maxThreadCount = JobsUtility.ThreadIndexCount;
+
+            var ghostUpdateVersionSingleton = systemState.EntityManager.CreateEntity(ComponentType.ReadWrite<GhostUpdateVersion>());
+            systemState.EntityManager.SetName(ghostUpdateVersionSingleton, "GhostUpdateVersion-Singleton");
+            EntitiesStaticInternalAccessBursted.SetHideInHierarchy(systemState.EntityManager, ghostUpdateVersionSingleton);
+            m_AppliedPredictedTicks = new NativeParallelHashMap<NetworkTick, NetworkTick>(CommandDataUtility.k_CommandDataMaxSize*maxThreadCount / 4, Allocator.Persistent);
+            var singletonEntity = systemState.EntityManager.CreateEntity(ComponentType.ReadWrite<GhostPredictionGroupTickState>());
+            systemState.EntityManager.SetName(singletonEntity, "AppliedPredictedTicks-Singleton");
+            EntitiesStaticInternalAccessBursted.SetHideInHierarchy(systemState.EntityManager, singletonEntity);
+            SystemAPI.SetSingleton(new GhostPredictionGroupTickState { AppliedPredictedTicks = m_AppliedPredictedTicks });
+
+            var queryBuilder = new EntityQueryBuilder(Allocator.Temp)
+                .WithAll<SnapshotData, GhostInstance>()
+                .WithAllRW<SnapshotDataBuffer>()
+                .WithAbsent<PendingSpawnPlaceholder>();
+            m_ghostQuery = queryBuilder.Build(systemState.EntityManager);
+            queryBuilder.Reset();
+            queryBuilder.WithAll<PredictedGhost, SnapshotData, SnapshotDataBuffer>()
+                .WithNone<PendingSpawnPlaceholder>();
+            m_PredictedGhostQuery = queryBuilder.Build(systemState.EntityManager);
+            systemState.RequireForUpdate<NetworkStreamInGame>();
+            systemState.RequireForUpdate<GhostCollection>();
+
+            m_LastInterpolatedTick = new NativeReference<NetworkTick>(Allocator.Persistent);
+            m_GlobalRollbackTick = new NativeReference<NetworkTick>(NetworkTick.Invalid, Allocator.Persistent);
+            m_GhostComponentCollectionFromEntity = systemState.GetBufferLookup<GhostComponentSerializer.State>(true);
+            m_GhostTypeCollectionFromEntity = systemState.GetBufferLookup<GhostCollectionPrefabSerializer>(true);
+            m_GhostComponentIndexFromEntity = systemState.GetBufferLookup<GhostCollectionComponentIndex>(true);
+            m_NetworkSnapshotAckLookup = systemState.GetComponentLookup<NetworkSnapshotAck>(true);
+            m_PredictedGhostTypeHandle = systemState.GetComponentTypeHandle<PredictedGhost>();
+            m_GhostComponentTypeHandle = systemState.GetComponentTypeHandle<GhostInstance>(true);
+            m_GhostTypeHandle = systemState.GetComponentTypeHandle<GhostType>(true);
+            m_SnapshotDataTypeHandle = systemState.GetComponentTypeHandle<SnapshotData>(false);
+            m_SnapshotDataBufferTypeHandle = systemState.GetBufferTypeHandle<SnapshotDataBuffer>(true);
+            m_SnapshotDynamicDataBufferTypeHandle = systemState.GetBufferTypeHandle<SnapshotDynamicDataBuffer>(true);
+            m_LinkedEntityGroupTypeHandle = systemState.GetBufferTypeHandle<LinkedEntityGroup>(true);
+            m_PreSpawnedGhostIndexTypeHandle = systemState.GetComponentTypeHandle<PreSpawnedGhostIndex>(true);
+            m_PredictedGhostSpawnRequestTypeHandle = systemState.GetComponentTypeHandle<PredictedGhostSpawnRequest>(true);
+            m_EntityTypeHandle = systemState.GetEntityTypeHandle();
+        }
+
+        /// <inheritdoc/>
+        public void OnDestroy(ref SystemState systemState)
+        {
+            if (systemState.WorldUnmanaged.IsHost())
+                return;
+            m_LastInterpolatedTick.Dispose();
+            m_AppliedPredictedTicks.Dispose();
+            m_GlobalRollbackTick.Dispose();
+        }
+
+        /// <inheritdoc/>
+        [BurstCompile]
+        public void OnUpdate(ref SystemState systemState)
+        {
+            if (!SystemAPI.TryGetSingleton<ClientTickRate>(out var clientTickRate))
+                clientTickRate = NetworkTimeSystem.DefaultClientTickRate;
+
+            var networkTime = SystemAPI.GetSingleton<NetworkTime>();
+            var lastBackupTick = SystemAPI.GetSingleton<GhostSnapshotLastBackupTick>();
+            var ghostHistoryPrediction = SystemAPI.GetSingleton<GhostPredictionHistoryState>();
+
+            if (!networkTime.ServerTick.IsValid)
+                return;
+
+            var backupTick = lastBackupTick.Value;
+            // If tick has moved backwards we might have a backup that is newer than the target tick, if that is the case we do not want to use it
+            if (backupTick.IsValid && !networkTime.ServerTick.IsNewerThan(backupTick))
+                backupTick = NetworkTick.Invalid;
+
+            var interpolationTick = networkTime.InterpolationTick;
+            var interpolationTickFraction = networkTime.InterpolationTickFraction;
+            if (!m_ghostQuery.IsEmptyIgnoreFilter)
+            {
+                m_GhostComponentCollectionFromEntity.Update(ref systemState);
+                m_GhostTypeCollectionFromEntity.Update(ref systemState);
+                m_GhostComponentIndexFromEntity.Update(ref systemState);
+                m_PredictedGhostTypeHandle.Update(ref systemState);
+                m_GhostComponentTypeHandle.Update(ref systemState);
+                m_GhostTypeHandle.Update(ref systemState);
+                m_SnapshotDataTypeHandle.Update(ref systemState);
+                m_SnapshotDataBufferTypeHandle.Update(ref systemState);
+                m_SnapshotDynamicDataBufferTypeHandle.Update(ref systemState);
+                m_LinkedEntityGroupTypeHandle.Update(ref systemState);
+                m_PreSpawnedGhostIndexTypeHandle.Update(ref systemState);
+                m_PredictedGhostSpawnRequestTypeHandle.Update(ref systemState);
+                m_EntityTypeHandle.Update(ref systemState);
+                var localNetworkId = SystemAPI.GetSingleton<NetworkId>().Value;
+                // globalRollbackTick MUST be Invalid before the pre-pass - it then accumulates the per-ghost minimum
+                // during chunk iteration, and its post-pass validity doubles as the "any predicted ghost has new
+                // snapshot data" signal that drives predicted-spawn rollback.
+                m_GlobalRollbackTick.Value = NetworkTick.Invalid;
+
+                var ghostCollection = SystemAPI.GetSingletonEntity<GhostCollection>();
+                var ghostTypeToCollectionIndex = systemState.EntityManager.GetComponentData<GhostCollection>(ghostCollection).GhostTypeToColletionIndex;
+
+                var predictedGhostWithNewDataJob = new CalculateNumPredictedGhostToRollback
+                {
+                    predictedGhostTypeHandle = m_PredictedGhostTypeHandle,
+                    ghostSnapshotDataType = m_SnapshotDataTypeHandle,
+                    ghostSnapshotDataBufferType = m_SnapshotDataBufferTypeHandle,
+                    globalRollbackTick = m_GlobalRollbackTick,
+                }.Schedule(m_PredictedGhostQuery, systemState.Dependency);
+                var updateJob = new UpdateJob
+                {
+                    GhostCollectionSingleton = ghostCollection,
+                    GhostComponentCollectionFromEntity = m_GhostComponentCollectionFromEntity,
+                    GhostTypeCollectionFromEntity = m_GhostTypeCollectionFromEntity,
+                    GhostComponentIndexFromEntity = m_GhostComponentIndexFromEntity,
+                    GhostTypeToCollectionIndex = ghostTypeToCollectionIndex,
+                    GhostMap = SystemAPI.GetSingleton<SpawnedGhostEntityMap>().Value,
+#if UNITY_EDITOR || NETCODE_DEBUG
+                    minMaxSnapshotTick = SystemAPI.GetSingletonRW<GhostStatsCollectionMinMaxTick>().ValueRO.Value,
+#endif
+                    interpolatedTargetTick = interpolationTick,
+                    interpolatedTargetTickFraction = interpolationTickFraction,
+
+                    predictedTargetTick = networkTime.ServerTick,
+                    predictedTargetTickFraction = networkTime.ServerTickFraction,
+                    appliedPredictedTicks = m_AppliedPredictedTicks.AsParallelWriter(),
+                    PredictedGhostType = m_PredictedGhostTypeHandle,
+                    lastPredictedTick = m_LastPredictedTick,
+                    lastPredictedTickWasPartial = m_LastPredictedTickWasPartial,
+                    lastInterpolatedTick = m_LastInterpolatedTick.Value,
+
+                    ghostInstanceTypeHandle = m_GhostComponentTypeHandle,
+                    ghostTypeHandle = m_GhostTypeHandle,
+                    ghostSnapshotDataType = m_SnapshotDataTypeHandle,
+                    ghostSnapshotDataBufferType = m_SnapshotDataBufferTypeHandle,
+                    ghostSnapshotDynamicDataBufferType = m_SnapshotDynamicDataBufferTypeHandle,
+                    childEntityLookup = systemState.GetEntityStorageInfoLookup(),
+                    linkedEntityGroupType = m_LinkedEntityGroupTypeHandle,
+                    prespawnGhostIndexType = m_PreSpawnedGhostIndexTypeHandle,
+                    predictedGhostRequestType = m_PredictedGhostSpawnRequestTypeHandle,
+
+                    predictionStateBackupTick = backupTick,
+                    predictionStateBackup = ghostHistoryPrediction.PredictionState,
+                    predictionBackupEntityState = ghostHistoryPrediction.EntityData,
+                    predictionRings = ghostHistoryPrediction.PredictionRings,
+                    globalRollbackTick = m_GlobalRollbackTick,
+                    entityType = m_EntityTypeHandle,
+                    ghostOwnerId = localNetworkId,
+                    clientTickRate = clientTickRate,
+                    netDebug = SystemAPI.GetSingleton<NetDebug>(),
+                };
+                //@TODO: Use BufferFromEntity
+                var ghostComponentCollection = systemState.EntityManager.GetBuffer<GhostCollectionComponentType>(updateJob.GhostCollectionSingleton);
+                DynamicTypeList.PopulateList(ref systemState, ghostComponentCollection, false, ref updateJob.DynamicTypeList); // Change Filtering is handled on a per-chunk basis, inside the job.
+                k_Scheduling.Begin();
+                systemState.Dependency = updateJob.ScheduleParallelByRef(m_ghostQuery, predictedGhostWithNewDataJob);
+                k_Scheduling.End();
+            }
+
+            m_LastPredictedTick = networkTime.ServerTick;
+            m_LastPredictedTickWasPartial = networkTime.IsPartialTick;
+
+            // Final job:
+            m_NetworkSnapshotAckLookup.Update(ref systemState);
+            var finalizeJob = new FinalizeJob
+            {
+                predictionRings = ghostHistoryPrediction.PredictionRings,
+                globalRollbackTick = m_GlobalRollbackTick,
+                clearRings = !m_ghostQuery.IsEmptyIgnoreFilter && clientTickRate.AlwaysRollbackAllPredictedGhosts,
+                AckFromEntity = m_NetworkSnapshotAckLookup,
+                AckSingleton = SystemAPI.GetSingletonEntity<NetworkSnapshotAck>(),
+                LastInterpolatedTick = m_LastInterpolatedTick,
+                InterpolationTick = interpolationTick,
+                InterpolationTickFraction = interpolationTickFraction,
+            };
+            k_Scheduling.Begin();
+            systemState.Dependency = finalizeJob.Schedule(systemState.Dependency);
+            k_Scheduling.End();
+
+            SystemAPI.GetSingletonRW<GhostUpdateVersion>().ValueRW.LastSystemVersion = systemState.LastSystemVersion;
+        }
+    }
+}

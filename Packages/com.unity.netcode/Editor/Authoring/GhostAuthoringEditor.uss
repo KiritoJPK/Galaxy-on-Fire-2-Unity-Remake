@@ -1,0 +1,128 @@
+/*.ghost-inspection-entity-header*/
+/*{*/
+/*    margin-top: 5px;*/
+/*    margin-bottom: 5px;*/
+
+/*    justify-content: flex-start;*/
+/*    flex-direction: row;*/
+/*    flex-grow: 1;*/
+/*    flex-basis: 15px;*/
+
+/*    height: 15px;*/
+/*}*/
+/*.ghost-inspection-entity-header__label*/
+/*{*/
+/*    -unity-font-style: bold;*/
+/*    -unity-text-align: middle-left;*/
+/*    justify-content: flex-start;*/
+
+/*    flex-grow: 1;*/
+
+/*    font-size: 15px;*/
+/*    height: 15px;*/
+/*}*/
+.ghost-inspection-entity-header__icon
+{
+    background-image: var(--prefab-entity-icon);
+    margin-right: 7px;
+    width: 16px;
+    height: 16px;
+    align-content: flex-start;
+    justify-content: center;
+    -unity-background-scale-mode: scale-to-fit;
+}
+.ghost-inspection-entity-content
+{
+    margin-left: 0px;
+    padding: 5px 10px 5px 10px;
+
+    border-color: #818181;
+    border-width: 1.5px;
+    border-radius: 7px;
+
+    flex-grow: 1;
+
+    align-content: flex-start;
+    justify-content: center;
+}
+
+/*.ghost-inspection-replication-header*/
+/*{*/
+/*    -unity-font-style: bold;*/
+/*    -unity-text-align: middle-left;*/
+/*    justify-content: flex-start;*/
+/*    flex-grow: 1;*/
+/*    flex-direction: row;*/
+/*    font-size: 15px;*/
+/*    height: 30px;*/
+/*}*/
+.ghost-inspection-replication-header__icon
+{
+    background-image: var(--prefab-entity-icon);
+    margin-right: 15px;
+    width: 16px;
+    height: 16px;
+    align-content: flex-start;
+    flex-grow: 1;
+    justify-content: center;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+/*.ghost-inspection-component-header*/
+/*{*/
+/*    -unity-font-style: bold;*/
+/*    -unity-text-align: middle-left;*/
+/*    justify-content: center;*/
+/*    flex-grow: 1;*/
+/*}*/
+
+/*
+ * Colours below resolve through the custom properties declared in ghost-authoring-vars-dark.uss and
+ * ghost-authoring-vars-light.uss. The drawer adds whichever of those two matches the current skin, so no
+ * colour is picked in C# and the palette is data rather than code.
+ */
+.ghost-inspection-replicated-icon
+{
+    -unity-background-image-tint-color: var(--ghost-inspection-replicated-icon-tint);
+}
+.ghost-inspection-non-replicated-icon
+{
+    -unity-background-image-tint-color: var(--ghost-inspection-non-replicated-icon-tint);
+}
+.ghost-inspection-override-bar
+{
+    background-color: var(--ghost-inspection-override-bar);
+}
+
+/*
+ * The S/IC/PC prefab type toggles. These were inline styles, which beat every USS rule including the default
+ * theme's `.unity-button:hover`. As class rules they no longer do, so the hover and active states are pinned
+ * explicitly to keep the toggle colour stable while the pointer is over it.
+ */
+.ghost-inspection-prefabtype-toggle,
+.ghost-inspection-prefabtype-toggle:hover,
+.ghost-inspection-prefabtype-toggle:active
+{
+    background-color: var(--ghost-inspection-prefabtype-background);
+    color: var(--ghost-inspection-prefabtype-text);
+}
+
+.ghost-inspection-prefabtype-toggle--stripped,
+.ghost-inspection-prefabtype-toggle--stripped:hover,
+.ghost-inspection-prefabtype-toggle--stripped:active
+{
+    background-color: var(--ghost-inspection-prefabtype-background-stripped);
+}
+
+/* Flags a duplicated or otherwise invalid ComponentOverride. */
+.ghost-inspection-broken,
+.ghost-inspection-broken:hover,
+.ghost-inspection-broken:active
+{
+    background-color: var(--ghost-inspection-broken-background);
+    color: var(--ghost-inspection-broken-text);
+}
+
+
+
+

@@ -1,0 +1,70 @@
+using Unity.Mathematics;
+using UnityEngine.Scripting.APIUpdating;
+
+namespace Unity.Netcode
+{
+    /// <summary>
+    /// <para>
+    /// For internal use only. Used by the ghost component serializer to calculate (predict)
+    /// the new value for a field, given the two previous baseline values.
+    /// </para>
+    /// <para>
+    /// This value provides a good estimate for current value of a variable when changes are linear or otherwise predictable.
+    /// I.e. Small deltas have good compression ratios.
+    /// </para>
+    /// </summary>
+    [MovedFrom(true, "Unity.NetCode")]
+    public struct GhostDeltaPredictor
+    {
+        private int predictFrac;
+        private int applyFrac;
+
+        /// <summary>
+        /// Construct the predictor using the last three recent baselines ticks. The ticks are used to calculate
+        /// the relative weight that is applied to the baseline values.
+        /// </summary>
+        /// <param name="tick">the current server tick</param>
+        /// <param name="baseline0_tick">Network tick baseline</param>
+        /// <param name="baseline1_tick">Network tick baseline</param>
+        /// <param name="baseline2_tick">Network tick baseline</param>
+        public GhostDeltaPredictor(NetworkTick tick, NetworkTick baseline0_tick, NetworkTick baseline1_tick, NetworkTick baseline2_tick)
+        {
+            predictFrac = 16 * baseline0_tick.TicksSince(baseline1_tick) / baseline1_tick.TicksSince(baseline2_tick);
+            applyFrac = 16 * tick.TicksSince(baseline0_tick) / baseline0_tick.TicksSince(baseline1_tick);
+        }
+
+        /// <summary>
+        /// Calculate the predicted value for the given integer, using the previous three baselines.
+        /// </summary>
+        /// <param name="baseline0">Tick baseline</param>
+        /// <param name="baseline1">Tick baseline</param>
+        /// <param name="baseline2">Tick baseline</param>
+        /// <returns>Predicted value for given integer</returns>
+        public int PredictInt(int baseline0, int baseline1, int baseline2)
+        {
+            int delta = baseline1 - baseline2;
+            int predictBaseline = baseline1 + delta * predictFrac / 16;
+            delta = baseline0 - baseline1;
+            if (math.abs(baseline0 - predictBaseline) >= math.abs(delta))
+                return baseline0;
+            return baseline0 + delta * applyFrac / 16;
+        }
+
+        /// <summary>
+        /// Calculate the predicted value for the given long, using the previous three baselines.
+        /// </summary>
+        /// <param name="baseline0">Tick baseline</param>
+        /// <param name="baseline1">Tick baseline</param>
+        /// <param name="baseline2">Tick baseline</param>
+        /// <returns>Predicted value for given long</returns>
+        public long PredictLong(long baseline0, long baseline1, long baseline2)
+        {
+            long delta = baseline1 - baseline2;
+            long predictBaseline = baseline1 + delta * predictFrac / 16;
+            delta = baseline0 - baseline1;
+            if (math.abs(baseline0 - predictBaseline) >= math.abs(delta))
+                return baseline0;
+            return baseline0 + delta * applyFrac / 16;
+        }
+    }
+}

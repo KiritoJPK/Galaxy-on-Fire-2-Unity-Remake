@@ -29,7 +29,7 @@ namespace GoF2Remake.Modding
         public const string ModelsFolder = "models";
 
         /// <summary>Where the projects live (created on first use).</summary>
-        public static string Root => Path.Combine(Application.persistentDataPath, "ModProjects");
+        public static string Root => Path.Combine(GoF2Remake.GamePaths.Data, "ModProjects");
 
         public string Folder { get; private set; }
         public string Id { get; private set; }
@@ -378,7 +378,7 @@ namespace GoF2Remake.Modding
         {
             var set = new SortedSet<int>();
             if (builder["skins"] is JArray a) foreach (var t in a) if (t.Type == JTokenType.Integer) set.Add((int)t);
-            string dir = Path.Combine(Folder, ModTextures.Folder);
+            string dir = Path.Combine(Folder, ModContent.TexturesFolder);
             var shipName = new System.Text.RegularExpressions.Regex(@"^(?:v_|sn_)?ship_(\d{3})_");
             if (Directory.Exists(dir))
             {
@@ -413,7 +413,7 @@ namespace GoF2Remake.Modding
         /// for that assembly's objects only, textures/&lt;scope&gt;/&lt;name&gt;), null = none.</summary>
         public string SkinTexture(string textureName, string scope = null)
         {
-            string folder = scope == null ? ModTextures.Folder : ModTextures.Folder + "/" + scope;
+            string folder = scope == null ? ModContent.TexturesFolder : ModContent.TexturesFolder + "/" + scope;
             foreach (var ext in ImageExtensions)
             {
                 string rel = folder + "/" + textureName + ext;
@@ -427,14 +427,14 @@ namespace GoF2Remake.Modding
         public void SetSkinTexture(string textureName, string sourceFile, string scope = null)
         {
             RemoveSkinTexture(textureName, scope);
-            string dir = scope == null ? Path.Combine(Folder, ModTextures.Folder) : Path.Combine(Folder, ModTextures.Folder, scope);
+            string dir = scope == null ? Path.Combine(Folder, ModContent.TexturesFolder) : Path.Combine(Folder, ModContent.TexturesFolder, scope);
             Directory.CreateDirectory(dir);
             File.Copy(sourceFile, Path.Combine(dir, textureName + ".png"), true);
         }
 
         public void RemoveSkinTexture(string textureName, string scope = null)
         {
-            string dir = scope == null ? Path.Combine(Folder, ModTextures.Folder) : Path.Combine(Folder, ModTextures.Folder, scope);
+            string dir = scope == null ? Path.Combine(Folder, ModContent.TexturesFolder) : Path.Combine(Folder, ModContent.TexturesFolder, scope);
             foreach (var ext in ImageExtensions)
             {
                 string path = Path.Combine(dir, textureName + ext);

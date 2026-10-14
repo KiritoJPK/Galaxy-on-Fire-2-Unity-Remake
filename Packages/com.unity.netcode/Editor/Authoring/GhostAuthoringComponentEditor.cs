@@ -1,0 +1,342 @@
+using System;
+using Unity.Netcode.Hybrid;
+using Unity.Netcode.NetcodeTime;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+namespace Unity.Netcode.Editor
+{
+    [CustomEditor(typeof(GhostAuthoringComponent))]
+    [CanEditMultipleObjects]
+    internal class GhostAuthoringComponentEditor : BaseGhostAuthoringComponentEditor<GhostAuthoringComponentEditor, GhostAuthoringComponent>
+    {
+        // TODO-next@domino after domino PRs: have a GhostObject version of this
+        [MenuItem("Window/Multiplayer/Ghost Prefab List", priority = 3007)] // 3007 is the same as the playmode tools window, to stay in that same group
+        internal static void ShowGhostPrefabListSearch()
+        {
+            // This search checks for all prefabs containing a GhostAuthoringComponent script and lists them with columns related to ghosts like importance, ghost mode and the such
+            // Eventually with runtime GameObjects, this should also include those monobehaviours as well
+            var query = AssetDatabase.LoadMainAssetAtPath("Packages/com.unity.netcode/Editor/SearchQueries/U6-GhostSearchQuery.asset");
+            AssetDatabase.OpenAsset(query);
+        }
+    }
+
+    internal abstract class BaseGhostAuthoringComponentEditor<TEditor, TGhostSetting> : UnityEditor.Editor where TEditor : BaseGhostAuthoringComponentEditor<TEditor, TGhostSetting> where TGhostSetting : BaseGhostSettings
+    {
+        SerializedProperty DefaultGhostMode;
+        SerializedProperty SupportedGhostModes;
+        SerializedProperty OptimizationMode;
+        SerializedProperty HasOwner;
+        SerializedProperty SupportAutoCommandTarget;
+        SerializedProperty TrackInterpolationDelay;
+        SerializedProperty GhostGroup;
+        SerializedProperty UsePreSerialization;
+        SerializedProperty Importance;
+        SerializedProperty MaxSendRate;
+        SerializedProperty SnapshotHistorySize;
+        SerializedProperty SingleWorldHostInterpolationSmoothing;
+        SerializedProperty PredictedSpawnedGhostRollbackToSpawnTick;
+        SerializedProperty RollbackPredictionOnStructuralChanges;
+        SerializedProperty UseSingleBaseline;
+
+        internal static Color brokenColor = new Color(1f, 0.56f, 0.54f);
+        internal static Color brokenColorUIToolkit = new Color(0.35f, 0.19f, 0.19f);
+        internal static Color brokenColorUIToolkitText = new Color(0.9f, 0.64f, 0.61f);
+        private static readonly GUILayoutOption s_HelperWidth = GUILayout.Width(180);
+
+        static GUIStyle s_HelperBoxStyle;
+
+        /// <summary>
+        /// Box style for the inline Importance / MaxSendRate suggestion labels. The default box style renders black text
+        /// that is unreadable on the dark skin (after a domain reload / project restart), so we override the text colour
+        /// with the skin-aware label colour. The style is cached to avoid re-allocating it every OnGUI.
+        /// </summary>
+        static GUIStyle HelperBoxStyle
+        {
+            get
+            {
+                s_HelperBoxStyle ??= new GUIStyle(GUI.skin.box);
+                s_HelperBoxStyle.normal.textColor = EditorStyles.label.normal.textColor;
+                return s_HelperBoxStyle;
+            }
+        }
+
+        /// <summary>Aligned with Netcode for GameObjects.</summary>
+        public static Color netcodeColor => new Color(0.91f, 0.55f, 0.86f, 1f);
+
+        /// <summary>
+        /// Cached reference to the GhostObject that belongs to this inspector.
+        /// Avoids an expensive GetComponent call.
+        /// </summary>
+        private GhostObject m_GhostObject;
+
+        void OnEnable()
+        {
+            var targetAsSetting = target as TGhostSetting;
+            if (targetAsSetting != null)
+            {
+                m_GhostObject = targetAsSetting.gameObject.GetComponent<GhostObject>();
+            }
+            DefaultGhostMode = serializedObject.FindProperty(nameof(BaseGhostSettings.DefaultGhostMode));
+            SupportedGhostModes = serializedObject.FindProperty(nameof(BaseGhostSettings.SupportedGhostModes));
+            OptimizationMode = serializedObject.FindProperty(nameof(BaseGhostSettings.OptimizationMode));
+            HasOwner = serializedObject.FindProperty(nameof(BaseGhostSettings.HasOwner));
+            SupportAutoCommandTarget = serializedObject.FindProperty(nameof(BaseGhostSettings.SupportAutoCommandTarget));
+            TrackInterpolationDelay = serializedObject.FindProperty(nameof(BaseGhostSettings.TrackInterpolationDelay));
+            GhostGroup = serializedObject.FindProperty(nameof(BaseGhostSettings.GhostGroup));
+            UsePreSerialization = serializedObject.FindProperty(nameof(BaseGhostSettings.UsePreSerialization));
+            Importance = serializedObject.FindProperty(nameof(BaseGhostSettings.Importance));
+            MaxSendRate = serializedObject.FindProperty(nameof(BaseGhostSettings.MaxSendRate));
+            SnapshotHistorySize = serializedObject.FindProperty(nameof(BaseGhostSettings.SnapshotHistorySize));
+            SingleWorldHostInterpolationSmoothing = serializedObject.FindProperty(nameof(BaseGhostSettings.SingleWorldHostInterpolationSmoothing));
+            PredictedSpawnedGhostRollbackToSpawnTick = serializedObject.FindProperty(nameof(BaseGhostSettings.RollbackPredictedSpawnedGhostState));
+            RollbackPredictionOnStructuralChanges = serializedObject.FindProperty(nameof(BaseGhostSettings.RollbackPredictionOnStructuralChanges));
+            UseSingleBaseline = serializedObject.FindProperty(nameof(BaseGhostSettings.UseSingleBaseline));
+        }
+
+        public override void OnInspectorGUI()
+        {
+            var globalConfig = NetcodeClientAndServerSettings.instance?.GlobalNetcodeConfig;
+            var self = target as TGhostSetting;
+            if (self == null)
+            {
+                return;
+            }
+            var go = self.gameObject;
+            var isPrefabEditable = IsPrefabEditable(go);
+            GUI.enabled = isPrefabEditable;
+
+            var currentPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            var isViewingPrefab = PrefabUtility.IsPartOfPrefabAsset(go) || PrefabUtility.IsPartOfPrefabInstance(go) || (currentPrefabStage != null && currentPrefabStage.IsPartOfPrefabContents(go));
+            if (isPrefabEditable)
+            {
+                if (self.transform != self.transform.root)
+                {
+                    EditorGUILayout.HelpBox($"The `{target.GetType()}` must only be added to the root GameObject of a prefab. This is invalid, please remove or correct this authoring.", MessageType.Error);
+                    GUI.enabled = false;
+                }
+
+                if (GhostObject.IsUnsupportedSceneAuthoredGhost(go, m_GhostObject))
+                {
+                    EditorGUILayout.HelpBox($"'{go.name}' is not a recognised Prefab, so the `{target.GetType()}` is not valid. Ghosts must be prefabs. Please ensure that this GameObject is a Prefab instance mapped to a known project asset.", MessageType.Error);
+                    GUI.enabled = false;
+                }
+            }
+
+            var originalColor = GUI.color;
+            GUI.color = originalColor;
+            // Importance:
+            {
+                EditorGUILayout.BeginHorizontal();
+                var importanceContent = new GUIContent(nameof(Importance), GetImportanceFieldTooltip());
+                EditorGUILayout.PropertyField(Importance, importanceContent);
+                var editorImportanceSuggestion = ImportanceInlineTooltip(self.Importance);
+                importanceContent.text = editorImportanceSuggestion.Name;
+                GUILayout.Box(importanceContent, HelperBoxStyle, s_HelperWidth);
+                EditorGUILayout.EndHorizontal();
+            }
+            var tickRate = globalConfig != null ? globalConfig.ClientServerTickRate : new ClientServerTickRate();
+            tickRate.ResolveDefaults();
+            var sendInterval = tickRate.CalculateNetworkSendIntervalOfGhostInTicks(self.MaxSendRate);
+            GUIContent sendRateLabel;
+            // MaxSendRate:
+            {
+                var hasMaxSendRate = self.MaxSendRate != 0;
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.PropertyField(MaxSendRate);
+                sendRateLabel = new GUIContent(SendRateInlineTooltip(), MaxSendRate.tooltip);
+                GUILayout.Box(sendRateLabel, HelperBoxStyle, s_HelperWidth);
+
+                string SendRateInlineTooltip() =>
+                    (sendInterval, hasMaxSendRate) switch
+                    {
+                        (_, false) => "OFF | Every Snapshot",
+                        (1, true) => "Every Snapshot",
+                        (2, true) => "Every Other Snapshot",
+                        (_, true) => $"Every {WithOrdinalSuffix(sendInterval)} Snapshot",
+                    } + $" @ {tickRate.NetworkTickRate}Hz";
+
+                EditorGUILayout.EndHorizontal();
+            }
+
+            // SnapshotHistorySize:
+            {
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.PropertyField(SnapshotHistorySize);
+                var resolvedHistorySize = GhostSystemConstants.ResolveSnapshotHistorySize(self.SnapshotHistorySize);
+                var recommendedHistorySize = GhostSystemConstants.CalculateRecommendedSnapshotHistorySize(self.MaxSendRate, tickRate);
+                var resolvedLabel = $"Slots: {resolvedHistorySize}, Rec: {recommendedHistorySize}";
+                var recommendationTooltip = $"Minimum recommended: {recommendedHistorySize}, derived from your NetCodeConfig send/tick rates and a 350ms worst-case client RTT.\n\nNote: Aggressive — under packet loss, expect occasional packet saturation that may affect gameplay.";
+                GUILayout.Box(new GUIContent(resolvedLabel, recommendationTooltip), HelperBoxStyle, s_HelperWidth);
+                EditorGUILayout.EndHorizontal();
+            }
+
+            // MaxSendRate warning:
+            if (self.SupportedGhostModes != GhostModeMask.Predicted)
+            {
+                var clientTickRate = globalConfig != null ? globalConfig.ClientTickRate : NetworkTimeSystem.DefaultClientTickRate;
+                var interpolationBufferWindowInTicks = clientTickRate.CalculateInterpolationBufferTimeInTicks(in tickRate);
+                var delta = sendInterval - interpolationBufferWindowInTicks;
+                if (delta > 0)
+                {
+                    EditorGUILayout.HelpBox($"This ghost prefab is using a MaxSendRate value of {self.MaxSendRate}, which leads to a maximum send interval of '{sendRateLabel.text}' i.e. every {sendInterval}ms, which is {delta} ticks longer than your maximum interpolation buffer window of {interpolationBufferWindowInTicks} ticks. You are therefore not replicating this ghost often enough to allow it to smoothly interpolate. To fix; either increase MaxSendRate, or increase the size of the interpolation buffer window globally.", MessageType.Warning);
+                }
+            }
+
+            EditorGUILayout.PropertyField(SupportedGhostModes);
+
+            var isOwnerPredictedError = DefaultGhostMode.enumValueIndex == (int) GhostMode.OwnerPredicted && !self.HasOwner;
+
+            if (SupportedGhostModes.intValue == (int) GhostModeMask.All)
+            {
+                EditorGUILayout.PropertyField(DefaultGhostMode);
+
+                // Selecting OwnerPredicted on a ghost without a GhostOwner will cause an exception during conversion - display an error for that case in the inspector
+                if (isOwnerPredictedError)
+                {
+                    EditorGUILayout.HelpBox("Setting `Default Ghost Mode` to `Owner Predicted` is not valid unless the Ghost also supports being Owned by a player (via the `Ghost Owner Component`). Please resolve it one of the following ways.", MessageType.Error);
+                    GUI.color = brokenColor;
+                    if (GUILayout.Button("Enable Ownership via 'Has Owner'?")) HasOwner.boolValue = true;
+                    if (GUILayout.Button("Set to `GhostMode.Interpolated`?")) DefaultGhostMode.enumValueIndex = (int) GhostMode.Interpolated;
+                    if (GUILayout.Button("Set to `GhostMode.Predicted`?")) DefaultGhostMode.enumValueIndex = (int) GhostMode.Predicted;
+                    GUI.color = originalColor;
+                }
+            }
+
+            var canBeStaticOptimized = !self.GhostGroup; // TODO - Disable if any child ghost components exist.
+            if (canBeStaticOptimized)
+            {
+                EditorGUILayout.PropertyField(OptimizationMode);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox("This ghost prefab has enabled GhostGroup usage, therefore it cannot be static-optimized. Forcing `OptimizationMode.Dynamic` - the user-specified value will be ignored.", MessageType.Info);
+                var wasEnabled = GUI.enabled;
+                GUI.enabled = false;
+                EditorGUILayout.PropertyField(OptimizationMode);
+                GUI.enabled = wasEnabled;
+            }
+
+            if (self.OptimizationMode == GhostOptimizationMode.Static)
+            {
+                EditorGUILayout.HelpBox("The ghost prefab is using `Static` optimization mode, therefore forcibly serialized by server using a single baseline. Forcing `UseSingleBaseline:true` - the user-specified value will be ignored.", MessageType.Info);
+                var wasEnabled = GUI.enabled;
+                GUI.enabled = false;
+                EditorGUILayout.Toggle(new GUIContent("Use Single Baseline", UseSingleBaseline.tooltip), true);
+                GUI.enabled = wasEnabled;
+            }
+            else
+            {
+                UseSingleBaseline.boolValue = EditorGUILayout.Toggle(new GUIContent("Use Single Baseline", UseSingleBaseline.tooltip), UseSingleBaseline.boolValue);
+            }
+
+            EditorGUILayout.PropertyField(HasOwner);
+
+            if (self.HasOwner)
+            {
+                EditorGUILayout.PropertyField(SupportAutoCommandTarget);
+                EditorGUILayout.PropertyField(TrackInterpolationDelay);
+            }
+            EditorGUILayout.PropertyField(GhostGroup);
+            EditorGUILayout.PropertyField(UsePreSerialization);
+
+            if(self.SupportedGhostModes != GhostModeMask.Interpolated)
+            {
+                EditorGUILayout.PropertyField(PredictedSpawnedGhostRollbackToSpawnTick);
+                EditorGUILayout.PropertyField(RollbackPredictionOnStructuralChanges);
+            }
+
+            if (globalConfig?.HostWorldModeSelection == NetcodeConfig.HostWorldMode.SingleWorld)
+            {
+                EditorGUILayout.PropertyField(SingleWorldHostInterpolationSmoothing);
+            }
+
+            // Only re-bake when a setting's value actually changed (as it could be clamped).
+            var targets = serializedObject.targetObjects;
+            Span<int> settingsHashBefore = serializedObject.hasModifiedProperties ? stackalloc int[targets.Length] : default;
+            if (settingsHashBefore != null)
+            {
+                for (var i = 0; i < targets.Length; i++)
+                    settingsHashBefore[i] = ((TGhostSetting)targets[i]).GetHashCode();
+            }
+
+            if (serializedObject.ApplyModifiedProperties() && settingsHashBefore != null)
+            {
+                for (var i = 0; i < targets.Length; i++)
+                {
+                    var changedSelf = (TGhostSetting)targets[i];
+                    if (changedSelf.GetHashCode() == settingsHashBefore[i])
+                        continue;
+
+                    GhostAuthoringInspectionComponent.forceBake = true;
+                    var allComponentOverridesForGhost = GhostAuthoringInspectionComponent.CollectAllComponentOverridesInInspectionComponents(changedSelf, false);
+                    GhostComponentAnalytics.BufferConfigurationData(changedSelf, allComponentOverridesForGhost.Count);
+                }
+            }
+
+            if (isViewingPrefab && !go.GetComponent<GhostAuthoringInspectionComponent>())
+            {
+                EditorGUILayout.HelpBox("To modify this ghost's per-entity component meta-data, add a `Ghost Authoring Inspection Component` (a MonoBehaviour) to the relevant authoring GameObject. Inspecting children is supported by adding the Inspection component to the relevant child.", MessageType.Info);
+            }
+        }
+
+        // TODO - Add guard against nested Ghost prefabs as they're invalid (although a non-ghost prefab containing ghost nested prefabs is valid AFAIK).
+        /// <summary>
+        /// <para>Lots of valid and invalid ways to view a prefab. These API calls check to ensure we're either:</para>
+        /// <para>- IN the prefabs own scene (thus it's editable).</para>
+        /// <para>- Selecting the prefab in the PROJECT.</para>
+        /// <para>- NOT selecting this prefab in a SCENE.</para>
+        /// </summary>
+        /// <remarks>Note that it is valid to add this Inspection onto a nested-prefab!</remarks>
+        internal static bool IsPrefabEditable(GameObject go)
+        {
+            if (PrefabUtility.IsPartOfImmutablePrefab(go))
+                return false;
+            if (PrefabUtility.IsPartOfPrefabAsset(go))
+                return true;
+            return !PrefabUtility.IsPartOfPrefabInstance(go);
+        }
+
+        internal string GetImportanceFieldTooltip()
+        {
+            var suggestions = NetcodeClientAndServerSettings.instance.CurrentImportanceSuggestions;
+            var s = Importance.tooltip;
+            foreach (var eis in suggestions)
+            {
+                var value = eis.MaxValue == uint.MaxValue || eis.MaxValue == eis.MinValue || eis.MaxValue == 0
+                    ? $"~{eis.MinValue}" :  $"{eis.MinValue} ~ {eis.MaxValue}";
+                s += $"\n\n <b>{value}</b> for <b>{eis.Name}</b>\n<i>{eis.Tooltip}</i>";
+            }
+            return s;
+        }
+
+        internal static EditorImportanceSuggestion ImportanceInlineTooltip(long importance)
+        {
+            var suggestions = NetcodeClientAndServerSettings.instance.CurrentImportanceSuggestions;
+            foreach (var eis in suggestions)
+            {
+                if (importance <= eis.MaxValue)
+                {
+                    return eis;
+                }
+            }
+            return suggestions.Count == 0 ? default : suggestions[^1];
+        }
+
+        /// <summary>Adds the ordinal indicator/suffix to an integer.</summary>
+        internal static string WithOrdinalSuffix(long number)
+        {
+            // Numbers in the teens always end with "th".
+            if((number % 100 > 10 && number % 100 < 20))
+                return number + "th";
+            return (number % 10) switch
+            {
+                1 => number + "st",
+                2 => number + "nd",
+                3 => number + "rd",
+                _ => number + "th",
+            };
+        }
+    }
+}

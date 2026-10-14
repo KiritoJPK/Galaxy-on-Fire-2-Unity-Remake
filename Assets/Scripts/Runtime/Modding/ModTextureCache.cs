@@ -41,7 +41,7 @@ namespace GoF2Remake.Modding
         static void ResetStatics() => root = null;
 
         /// <summary>persistentDataPath/ModCache/Textures (read it on the main thread first: persistentDataPath).</summary>
-        public static string Root => root ??= Path.Combine(Application.persistentDataPath, "ModCache", "Textures");
+        public static string Root => root ??= Path.Combine(GoF2Remake.GamePaths.Data, "ModCache", "Textures");
 
         /// <summary>The cache file of a mod's texture (any thread): 'localFile' is the file on disk (ModInfo.LocalFile),
         /// 'kind' how it is compressed ("dxt" / "gpu").</summary>
@@ -155,7 +155,7 @@ namespace GoF2Remake.Modding
         /// rescans the mods, which loads them all again.</summary>
         public static void ClearAll()
         {
-            foreach (var dir in new[] { Path.Combine(Application.persistentDataPath, "ModCache"), Path.Combine(Application.temporaryCachePath, "ModFiles") })
+            foreach (var dir in new[] { Path.Combine(GoF2Remake.GamePaths.Data, "ModCache"), Path.Combine(Application.temporaryCachePath, "ModFiles") })
             {
                 try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
                 catch (Exception e) { Debug.LogWarning($"Mods: couldn't delete {dir}: {e.Message}"); }

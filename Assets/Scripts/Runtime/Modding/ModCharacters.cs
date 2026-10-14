@@ -100,7 +100,7 @@ namespace GoF2Remake.Modding
                 string race = ModJson.Str(o, "race");
                 if (race != null)
                 {
-                    d.race = Multiplayer.NetAdmin.RaceWord(race);
+                    d.race = Flight.Standing.RaceWord(race);
                     if (d.race < 0) throw new ModJsonException($"{where}: \"race\" {race} isn't a race (terran, vossk, nivelian, midorian, pirate, void)");
                 }
                 string gender = ModJson.Str(o, "gender");

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<engine:UXML
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:engine="UnityEngine.UIElements"
+    xmlns:toolbar="Unity.Netcode.Editor.Tracing.UI.TracingToolbar"
+    xsi:noNamespaceSchemaLocation="../../../../../UIElementsSchema/UIElements.xsd">
+    <Style src="project://database/Packages/com.unity.netcode/Editor/Tracing/UI/Stylesheets/tracing-toolbar.uss"/>
+
+    <engine:VisualElement class="tracing-toolbar__container tracing-toolbar__container--panel">
+        <engine:Button name="panel-toggle" class="tracing-toolbar__panel-toggle" tooltip="Show or hide the filter options panel."/>
+        <engine:VisualElement class="tracing-toolbar__panel-toggle-separator"/>
+        <engine:Button name="tracing-target-summary" class="tracing-toolbar__target-summary">
+            <engine:Label text="Targets:" class="tracing-toolbar__target-summary__text"/>
+            <engine:Label name="target-summary-system-count" text="0" class="tracing-toolbar__target-summary__text tracing-toolbar__target-summary__count"/>
+            <engine:VisualElement class="tracing-toolbar__icon__system tracing-toolbar__target-summary__icon"/>
+            <engine:Label text="and" class="tracing-toolbar__target-summary__text"/>
+            <engine:Label name="target-summary-component-count" text="0" class="tracing-toolbar__target-summary__text tracing-toolbar__target-summary__count"/>
+            <engine:VisualElement class="tracing-toolbar__icon__component tracing-toolbar__target-summary__icon"/>
+        </engine:Button>
+    </engine:VisualElement>
+
+    <engine:VisualElement class="tracing-toolbar__container tracing-toolbar__container">
+        <engine:Button name="record-button" class="tracing-toolbar__icon tracing-toolbar__icon__record--off" tooltip="Record tracing information."/>
+    </engine:VisualElement>
+
+    <toolbar:PlaybackControls />
+
+    <engine:VisualElement name="frame-field-container" class="tracing-toolbar__container">
+        <engine:Label text="Frame:" />
+        <engine:IntegerField name="frame-field" class="tracing-toolbar__frame-field" value="0" />
+        <engine:Label name="frame-total-label" text="/0" class="tracing-toolbar__frame-total-label" />
+    </engine:VisualElement>
+
+
+    <engine:VisualElement class="tracing-toolbar__container tracing-toolbar__container--no-padding">
+        <engine:Button name="clear-button" text="Clear" class="tracing-toolbar__clear-button" tooltip="Clear the captured data"/>
+    </engine:VisualElement>
+
+    <engine:VisualElement class="tracing-toolbar__spacer tracing-toolbar__container" />
+</engine:UXML>

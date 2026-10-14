@@ -26,7 +26,7 @@ namespace GoF2Remake.Modding
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => table = null;
 
-        static string FilePath => Path.Combine(Application.persistentDataPath, "mod_registry.json");
+        static string FilePath => Path.Combine(GoF2Remake.GamePaths.Data, "mod_registry.json");
         static string OldPath => Path.Combine(ModManager.UserFolder, "registry.json");
 
         static Dictionary<Kind, Dictionary<string, int>> Table

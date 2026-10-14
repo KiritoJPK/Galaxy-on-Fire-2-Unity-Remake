@@ -1,0 +1,17 @@
+{
+    "name": "GoF2.EntitiesBootstrap",
+    "rootNamespace": "GoF2Remake.Multiplayer",
+    "references": [
+        "Unity.Entities",
+        "Unity.NetCode"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

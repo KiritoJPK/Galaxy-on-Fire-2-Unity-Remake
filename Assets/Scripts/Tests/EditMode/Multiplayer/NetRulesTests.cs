@@ -1,0 +1,250 @@
+// NetRulesTests.cs
+// Feature: CLAUDE.md "Multiplayer" > Gameplay rules (NetRules: the Gameplay options that change how the game plays are
+// one rule for the session, a bit each; a dedicated server starts at the options' defaults and each flag turns one the
+// other way) and Server settings while running (NetServerSettings: /set <key> <value>, numbers clamped to their range,
+// on / off toggles, saved to server_settings.json beside the profiles, an option given on the command line wins).
+// Expected values: CLAUDE.md's rule list and defaults (cloak shakes off pursuers off, pirate outposts and bosses on,
+// capital ship enhancements off, the informer missions' original rule off, stackable Kaamo upgrades on, stored ships keep
+// their equipment on, the cloak bay on, EMP breaks cloaks on) and flags (-cloakhides, -nopirateevents, -capitalships,
+// -informeroriginal, -nokaamostacking, -nokaamoequipment, -nocloakbay, -noempcloak); the setting ranges (2..100 players,
+// 0..100 claims per faction, 1..3650 lapse days).
+
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using GoF2Remake.Data;
+using GoF2Remake.Multiplayer;
+using NUnit.Framework;
+
+namespace GoF2Remake.Tests
+{
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+    public class NetRulesTests : SandboxTest
+    {
+        static readonly (string key, string flag, bool on)[] Documented =
+        {
+            ("cloakhides", "-cloakhides", false),
+            ("pirateevents", "-nopirateevents", true),
+            ("capitalships", "-capitalships", false),
+            ("informeroriginal", "-informeroriginal", false),
+            ("kaamostacking", "-nokaamostacking", true),
+            ("kaamoequipment", "-nokaamoequipment", true),
+            ("cloakbay", "-nocloakbay", true),
+            ("empcloak", "-noempcloak", true),
+        };
+
+        [Test]
+        public void EightRulesWithTheirFlagsAndDefaults()
+        {
+            Assert.AreEqual(Documented.Length, NetRules.All.Count);
+            foreach (var (key, flag, on) in Documented)
+            {
+                var r = NetRules.All.Single(x => x.key == key);
+                Assert.AreEqual(flag, r.flag, key);
+                Assert.AreEqual(on, r.fallback, key + "'s default");
+                Assert.AreEqual(on, flag.StartsWith("-no"), key + ": a rule on by default is turned off by its flag");
+                Assert.IsNotEmpty(r.label);
+            }
+        }
+
+        [Test]
+        public void EachRuleIsItsOwnBit()
+        {
+            int all = 0;
+            foreach (var r in NetRules.All)
+            {
+                Assert.AreEqual(1, CountBits(r.bit), r.key + ": one bit");
+                Assert.AreEqual(0, all & r.bit, r.key + ": a bit of its own");
+                all |= r.bit;
+            }
+        }
+
+        static int CountBits(int v) { int n = 0; while (v != 0) { n += v & 1; v >>= 1; } return n; }
+
+        [Test]
+        public void TheBitsAreTheSessionRules()
+        {
+            Assert.AreEqual(SessionRules.CloakLosesPursuers, NetRules.CloakLosesPursuers);
+            Assert.AreEqual(SessionRules.PirateEvents, NetRules.PirateEvents);
+            Assert.AreEqual(SessionRules.CapitalShips, NetRules.CapitalShips);
+            Assert.AreEqual(SessionRules.InformerOriginalRule, NetRules.InformerOriginalRule);
+            Assert.AreEqual(SessionRules.KaamoStacking, NetRules.KaamoStacking);
+            Assert.AreEqual(SessionRules.KaamoKeepsEquipment, NetRules.KaamoKeepsEquipment);
+            Assert.AreEqual(SessionRules.CloakBay, NetRules.CloakBay);
+            Assert.AreEqual(SessionRules.EmpBreaksCloak, NetRules.EmpBreaksCloak);
+        }
+
+        [Test]
+        public void TheDefaultsAreTheRulesOnByDefault()
+        {
+            int expected = NetRules.PirateEvents | NetRules.KaamoStacking | NetRules.KaamoKeepsEquipment | NetRules.CloakBay | NetRules.EmpBreaksCloak;
+            Assert.AreEqual(expected, NetRules.Defaults);
+        }
+
+        [Test]
+        public void ThePlayersOwnOptionsAsRules()
+        {
+            int m = NetRules.FromOptions();
+            Assert.AreEqual(Settings.CloakLosesPursuers, (m & NetRules.CloakLosesPursuers) != 0);
+            Assert.AreEqual(Settings.PirateEvents, (m & NetRules.PirateEvents) != 0);
+            Assert.AreEqual(Settings.CapitalShips, (m & NetRules.CapitalShips) != 0);
+            Assert.AreEqual(Settings.KaamoStacking, (m & NetRules.KaamoStacking) != 0);
+        }
+
+        [Test]
+        public void OutsideASessionNoRuleIsTheSessions()
+        {
+            foreach (var r in NetRules.All)
+                Assert.IsFalse(NetRules.TryGet(r.bit, out _), r.key);
+        }
+
+        [Test]
+        public void SetTurnsOneBit()
+        {
+            int saved = NetRules.Host;
+            try
+            {
+                NetRules.Host = 0;
+                NetRules.Set(NetRules.CapitalShips, true);
+                Assert.AreEqual(NetRules.CapitalShips, NetRules.Host);
+                NetRules.Set(NetRules.CloakBay, true);
+                NetRules.Set(NetRules.CapitalShips, false);
+                Assert.AreEqual(NetRules.CloakBay, NetRules.Host);
+                NetRules.HostChanged(NetRules.EmpBreaksCloak, true);
+                Assert.AreEqual(NetRules.CloakBay, NetRules.Host, "only a server takes a host's change");
+            }
+            finally { NetRules.Host = saved; }
+        }
+
+        // ---- NetServerSettings ----
+
+        int savedMaxPlayers, savedClaims, savedLapse, savedRules;
+
+        void BeginSettings()
+        {
+            savedMaxPlayers = NetGame.MaxPlayers;
+            savedClaims = NetFactions.MaxClaims;
+            savedLapse = NetFactions.LapseDays;
+            savedRules = NetRules.Host;
+            NetProfiles.Configure(false, NetProfiles.DefaultEarnPerMinute, Path.Combine(Sandbox, "ServerProfiles"));
+            Directory.CreateDirectory(Path.Combine(Sandbox, "ServerProfiles"));
+            NetServerSettings.Load(_ => false);
+        }
+
+        void EndSettings()
+        {
+            NetGame.MaxPlayers = savedMaxPlayers;
+            NetFactions.MaxClaims = savedClaims;
+            NetFactions.LapseDays = savedLapse;
+            NetRules.Host = savedRules;
+            ResetStatics(typeof(NetServerSettings));
+            ResetStatics(typeof(NetProfiles));
+        }
+
+        internal static void ResetStatics(System.Type t)
+        {
+            var m = t.GetMethod("ResetStatics", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(m, t.Name + ".ResetStatics");
+            m.Invoke(null, null);
+        }
+
+        [Test]
+        public void EverySettingHasAKeyAndAnOption()
+        {
+            var keys = NetServerSettings.All.Select(s => s.key).ToList();
+            Assert.AreEqual(keys.Count, keys.Distinct().Count());
+            foreach (var k in new[] { "name", "password", "maxplayers", "allowdebug", "freepvp", "maxearn", "claimcost", "maxclaims", "claimdays", "siegecost", "toll" })
+                Assert.Contains(k, keys);
+            foreach (var r in NetRules.All) Assert.Contains(r.key, keys, "the rules are settings too");
+            foreach (var s in NetServerSettings.All) StringAssert.StartsWith("-", s.option, s.key);
+        }
+
+        [Test]
+        public void NumbersAreClampedToTheirRange()
+        {
+            BeginSettings();
+            try
+            {
+                NetServerSettings.Set("maxplayers", "500", "test");
+                Assert.AreEqual(100, NetGame.MaxPlayers);
+                NetServerSettings.Set("MAXPLAYERS", "1", "test");
+                Assert.AreEqual(2, NetGame.MaxPlayers, "keys in any case");
+                NetServerSettings.Set("maxclaims", "-5", "test");
+                Assert.AreEqual(0, NetFactions.MaxClaims);
+                NetServerSettings.Set("claimdays", "0", "test");
+                Assert.AreEqual(1, NetFactions.LapseDays);
+                NetServerSettings.Set("maxplayers", "1,000", "test");
+                Assert.AreEqual(100, NetGame.MaxPlayers, "thousands separators are fine");
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void TogglesTakeOnOffAndFriends()
+        {
+            BeginSettings();
+            try
+            {
+                NetRules.Host = 0;
+                NetServerSettings.Set("capitalships", "yes", "test");
+                Assert.AreNotEqual(0, NetRules.Host & NetRules.CapitalShips);
+                NetServerSettings.Set("capitalships", "0", "test");
+                Assert.AreEqual(0, NetRules.Host & NetRules.CapitalShips);
+                NetServerSettings.Set("cloakbay", "TRUE", "test");
+                Assert.AreNotEqual(0, NetRules.Host & NetRules.CloakBay);
+                NetServerSettings.Set("cloakbay", "off", "test");
+                Assert.AreEqual(0, NetRules.Host & NetRules.CloakBay);
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void BadValuesChangeNothing()
+        {
+            BeginSettings();
+            try
+            {
+                NetGame.MaxPlayers = 20;
+                NetRules.Host = 0;
+                Assert.IsNotEmpty(NetServerSettings.Set("maxplayers", "lots", "test"));
+                Assert.AreEqual(20, NetGame.MaxPlayers);
+                Assert.IsNotEmpty(NetServerSettings.Set("capitalships", "maybe", "test"));
+                Assert.AreEqual(0, NetRules.Host);
+                Assert.AreEqual(Localization.Extra("mpSetUnknown", "Unknown setting. /settings lists them."), NetServerSettings.Set("nosuchsetting", "1", "test"));
+                Assert.AreEqual(Localization.Extra("mpSetUnknown", "Unknown setting. /settings lists them."), NetServerSettings.Set(null, "1", "test"));
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void ChangesAreSavedAndLoadedAgain()
+        {
+            BeginSettings();
+            try
+            {
+                NetServerSettings.Set("maxplayers", "40", "test");
+                Assert.IsTrue(File.Exists(Path.Combine(Sandbox, "ServerProfiles", "server_settings.json")));
+                NetGame.MaxPlayers = 16;
+                NetServerSettings.Load(_ => false);
+                Assert.AreEqual(40, NetGame.MaxPlayers, "the saved value at the next start");
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void TheCommandLineWinsOverTheFile()
+        {
+            BeginSettings();
+            try
+            {
+                NetServerSettings.Set("maxplayers", "40", "test");
+                NetGame.MaxPlayers = 24;   // as the command line set it
+                NetServerSettings.Load(option => option == "-maxplayers");
+                Assert.AreEqual(24, NetGame.MaxPlayers);
+                Assert.IsTrue(NetServerSettings.FromCommandLine(NetServerSettings.All.Single(s => s.key == "maxplayers")));
+                Assert.IsFalse(NetServerSettings.FromCommandLine(NetServerSettings.All.Single(s => s.key == "maxclaims")));
+            }
+            finally { EndSettings(); }
+        }
+    }
+}

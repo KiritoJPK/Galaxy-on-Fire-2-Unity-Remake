@@ -1,0 +1,57 @@
+:root {
+    --system-icon: url("../../../../EditorIcons/Tracing/d_System.png");
+    --component-icon: url("../../../../EditorIcons/d_Component.png");
+    --ghost-icon: url("../../../../EditorIcons/d_GhostAuthoring_monochrome.png");
+    --system-group-icon: url("../../../../EditorIcons/Tracing/d_SystemGroup.png");
+
+    /* Icon variants for diffed rows (match the normal icons in the dark theme; see the light theme). */
+    --system-icon-diff: url("../../../../EditorIcons/Tracing/d_System.png");
+    --component-icon-diff: url("../../../../EditorIcons/d_Component.png");
+    --ghost-icon-diff: url("../../../../EditorIcons/d_GhostAuthoring_monochrome.png");
+    --system-group-icon-diff: url("../../../../EditorIcons/Tracing/d_SystemGroup.png");
+    --metadata-icon: url("../../../../EditorIcons/Tracing/Text Asset.png");
+    --script-icon: url("../../../../EditorIcons/Tracing/Script.png");
+    --open-window-icon: url("../../../../EditorIcons/Tracing/d_WindowInstance.png");
+    --slider-dragger-icon: url("../../../../EditorIcons/Tracing/slider-dragger.svg");
+    --tick-background: url("../../../../EditorIcons/Tracing/d_tick-background.svg");
+    --toolbar-record-icon: resource("d_Record On");
+    --toolbar-record-off-icon: resource("d_Record Off");
+    --toolbar-go-to-start-icon: resource("d_Animation.PrevKey");
+    --toolbar-step-back-icon: url("../../../../EditorIcons/Tracing/d_toolbar-step-back.svg");
+    --toolbar-play-icon: resource("d_PlayButton");
+    --toolbar-pause-icon: resource("d_PauseButton");
+    --toolbar-step-forward-icon: url("../../../../EditorIcons/Tracing/d_toolbar-step-forward.svg");
+    --toolbar-go-to-end-icon: resource("d_Animation.NextKey");
+    --toolbar-puzzle-piece-icon: url("../../../../EditorIcons/Tracing/d_puzzle-piece.svg");
+    --toolbar-eye-icon: url("../../../../EditorIcons/Tracing/d_eye.svg");
+    --toolbar-eye-strike-icon: url("../../../../EditorIcons/Tracing/d_eye-strike.svg");
+    --tracing-header-filter-icon: resource("d_Filter Icon");
+    --scene-view-icon: resource("d_UnityEditor.SceneView");
+    --toolbar-replay-per-tick-icon: url("../../../../EditorIcons/Tracing/d_ReplayPerTick.png");
+    --toolbar-replay-per-system-icon: url("../../../../EditorIcons/Tracing/d_ReplayPerSystem.png");
+    --timeline-frame-bg: url("../../../../EditorIcons/Tracing/d_frame_bg.svg");
+    --timeline-tick-bg: url("../../../../EditorIcons/Tracing/d_tick_bg.svg");
+    --info-message-icon: url("../../../../EditorIcons/Tracing/d_info-message@2x.png");
+    --timeline-snapshot-marker-icon: url("../../../../EditorIcons/Tracing/Keyframe.png");
+    --timeline-snapshot-marker-icon-selected: url("../../../../EditorIcons/Tracing/KeyframeSelected.png");
+
+    --selected-tick: #7BAEFA;
+
+    --tick-marker: #FF534A;
+    --tick-marker-inactive: rgba(255, 83, 74, 0.4);
+    --timeline-replay-indicator-color: white;
+    --timeline-ruler-line-color: #8B8B8B;
+    --timeline-band-tag-background: #282828;
+    --timeline-band-tag-text: #999999;
+    --timeline-gutter-label-color: #ABABAB;
+
+    --scarlet: #FF534A;
+    --server-diff: var(--unity-colors-label-text);
+    --value-change-background: var(--unity-colors-app_toolbar_button-background-pressed);
+    --label-on-red: #090909;
+    --label-on-tick: #C4C4C4;
+    /* Text on the scarlet diff fill; per-theme for contrast (black reads on the bright dark-theme red). */
+    --diff-highlight-text: #090909;
+    --diff-tag-deselected: #B4B4B4;
+    --diff-icon-tint: #FF534A;
+}

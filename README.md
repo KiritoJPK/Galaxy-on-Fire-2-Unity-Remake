@@ -66,7 +66,7 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
     (capital ships included), save and load ship loadouts.
   - The current story step and station can show small at the bottom right (Options > Gameplay), so a screenshot of a
     bug shows where it happened.
-  - Export and import of all save games as one file (Options > Gameplay in the main menu), to move your games to
+  - Export and import of all save games as one file (the buttons under Load game in the main menu), to move your games to
     another PC or phone. Importing checks the file first and replaces every existing save.
 - **Controls and screens:** touch, tilt, keyboard and mouse (with the PC version's clickable on-screen buttons when
   mouse steering is off), and controllers (shown with Xbox buttons), all rebindable.

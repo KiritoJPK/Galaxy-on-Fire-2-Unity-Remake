@@ -1,4 +1,3 @@
-%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -13,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bf2edee5c58d82540a51f03df9d42094, type: 3}
   m_Name: PC_RPAsset
   m_EditorClassIdentifier: 
-  k_AssetVersion: 14
-  k_AssetPreviousVersion: 14
+  k_AssetVersion: 15
+  k_AssetPreviousVersion: 15
   m_RendererType: 1
   m_RendererData: {fileID: 0}
   m_RendererDataList:

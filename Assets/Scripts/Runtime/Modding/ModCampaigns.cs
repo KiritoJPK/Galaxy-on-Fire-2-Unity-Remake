@@ -243,7 +243,7 @@ namespace GoF2Remake.Modding
             {
                 // The campaign's story: a quest from the start, run once the station is up (like a loaded save's).
                 Session.GraphQuests.Add(new GraphQuestState { name = c.quest, kind = GraphQuestState.KindQuest, title = c.Name });
-                Events.EventRunner.RestorePending = true;
+                Data.GraphQuestState.RestorePending = true;
             }
             Debug.Log($"Mods: campaign {c.Id} starts at station {station}, ship {ship}, {c.credits} credits");
             return "Station";

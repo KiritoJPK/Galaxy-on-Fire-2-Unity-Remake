@@ -1,0 +1,251 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
+using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+namespace Unity.Netcode.Generators
+{
+    /// <summary>
+    /// Parse the UserDefinedTemplate.RegisterTemplates partial method implementation and build a list of templates
+    /// entry used later to generate the type serialization.
+    /// String interpolation, like $"{TemplatePath}TheTemplate" or with more params supported.
+    /// </summary>
+    internal struct UserDefinedTemplateRegistryParser
+    {
+        public static List<TypeRegistryEntry> ParseTemplates(GeneratorExecutionContext context, IDiagnosticReporter reporter)
+        {
+            var templates = new List<TypeRegistryEntry>();
+            //This is only true for Netcode assembly. All the other don't have any symbols (but only metadata refs)
+            var symbolsWithName = new List <ISymbol>(context.Compilation.GetSymbolsWithName("UserDefinedTemplates"));
+            if (symbolsWithName.Count > 0)
+            {
+                foreach (var symbol in symbolsWithName)
+                {
+                    foreach (var syntaxRef in symbol.DeclaringSyntaxReferences)
+                    {
+                        context.CancellationToken.ThrowIfCancellationRequested();
+
+                        foreach (var node in syntaxRef.GetSyntax().DescendantNodes())
+                        {
+                            if (node is not MethodDeclarationSyntax m || m.Identifier.ToString() != "RegisterTemplates")
+                            {
+                                continue;
+                            }
+
+                            // Get the right reference (the one with the body)
+                            if (m.Body is { Statements.Count: > 0 })
+                            {
+                                ParseMethod(context, m, templates, reporter);
+                            }
+
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                ParseTemplatesFromMetadata(context, templates);
+            }
+            return templates;
+        }
+
+        static void ParseTemplatesFromMetadata(GeneratorExecutionContext context, IList<TypeRegistryEntry> templates)
+        {
+            string netCode = null;
+            foreach (var r in context.Compilation.ExternalReferences)
+            {
+                if (r.Properties.Kind == MetadataImageKind.Assembly &&
+                    r.Display != null && r.Display.EndsWith("Unity.NetCode.dll", StringComparison.Ordinal))
+                {
+                    netCode = GetImplementationPath(r.Display);
+                    break;
+                }
+            }
+
+            if (netCode == null)
+            {
+                string netCodeRef = null;
+                foreach (var r in context.Compilation.ExternalReferences)
+                {
+                    if (r.Properties.Kind == MetadataImageKind.Assembly &&
+                        r.Display != null && r.Display.EndsWith("Unity.NetCode.ref.dll", StringComparison.Ordinal))
+                    {
+                        netCodeRef = r.Display;
+                        break;
+                    }
+                }
+
+                if (netCodeRef != null)
+                    netCode = Path.Combine(Path.GetDirectoryName(netCodeRef), "Unity.NetCode.dll");
+            }
+            if (netCode == null)
+            {
+                throw new InvalidOperationException($"Cannot find Unity.NetCode metadata reference for assembly {context.Compilation.AssemblyName}");
+            }
+
+            //The dlls must be loaded in the main execution context since we need to execute the constructor code
+            var bytes = File.ReadAllBytes(netCode);
+            var assembly = Assembly.Load(bytes);
+            AddTemplatesFromMetadataType(assembly.GetType("Unity.Netcode.Generators.UserDefinedTemplates"), templates);
+            // Legacy scaffolding emitted by NetCodeNamespaceCompat for templates still declared in the renamed namespace.
+            AddTemplatesFromMetadataType(assembly.GetType("Unity.NetCode.Generators.UserDefinedTemplates"), templates);
+        }
+
+        // Reference assemblies (obj/.../ref/ or refint/, the default for net5.0+) cannot be loaded for execution
+        internal static string GetImplementationPath(string path)
+        {
+            var dir = Path.GetDirectoryName(path);
+            var dirName = Path.GetFileName(dir);
+            if (dirName != "ref" && dirName != "refint")
+                return path;
+            var implementation = Path.Combine(Path.GetDirectoryName(dir), Path.GetFileName(path));
+            return File.Exists(implementation) ? implementation : path;
+        }
+
+        static void AddTemplatesFromMetadataType(Type type, IList<TypeRegistryEntry> templates)
+        {
+            if (type == null)
+                return;
+            System.Runtime.CompilerServices.RuntimeHelpers.RunClassConstructor(type.TypeHandle);
+            var tmpl = type.GetField("Templates", BindingFlags.Static|BindingFlags.NonPublic).GetValue(null);
+            foreach (var l in (IList)tmpl)
+            {
+                TypeRegistryEntry e = new TypeRegistryEntry
+                {
+                    Composite = (bool)l.GetType().GetField("Composite").GetValue(l),
+                    Quantized = (bool)l.GetType().GetField("Quantized").GetValue(l),
+                    SupportCommand = (bool)l.GetType().GetField("SupportCommand").GetValue(l),
+                    Smoothing = (SmoothingAction)l.GetType().GetField("Smoothing").GetValue(l),
+                    Template = (string)l.GetType().GetField("Template").GetValue(l),
+                    TemplateOverride = (string)l.GetType().GetField("TemplateOverride").GetValue(l),
+                    SubType = (int)l.GetType().GetField("SubType").GetValue(l),
+                    Type = (string)l.GetType().GetField("Type").GetValue(l),
+                };
+                templates.Add(e);
+            }
+        }
+
+        static private void ParseMethod(GeneratorExecutionContext context, MethodDeclarationSyntax method, List<TypeRegistryEntry> templates, IDiagnosticReporter reporter)
+        {
+            var model = context.Compilation.GetSemanticModel(method.SyntaxTree);
+
+            var entryType = typeof(TypeRegistryEntry);
+            if (method.Body == null)
+            {
+                return;
+            }
+
+            foreach (var syntaxNode in method.Body.DescendantNodes())
+            {
+                if (syntaxNode is not InvocationExpressionSyntax s)
+                {
+                    continue;
+                }
+                var templatesList = s.ArgumentList.Arguments[0].Expression.DescendantNodes();
+                foreach (var node in templatesList)
+                {
+                    if (node is not ObjectCreationExpressionSyntax template)
+                    {
+                        continue;
+                    }
+                    var entry = new TypeRegistryEntry();
+                    ParseTemplateInitializer(template, model, entryType, entry);
+
+                    if (string.IsNullOrWhiteSpace(entry.Type))
+                    {
+                        reporter.LogError($"UserDefinedTemplate '{method.Identifier.SyntaxTree?.FilePath}' defines a `TypeRegistryEntry` with a missing `Type`. Cannot add it to the list of Templates. [{entry}]!");
+                        continue;
+                    }
+                    if (string.IsNullOrWhiteSpace(entry.Template))
+                    {
+                        reporter.LogError($"UserDefinedTemplate '{method.Identifier.SyntaxTree?.FilePath}' defines a `TypeRegistryEntry` (Type: {entry.Type}) with a missing `Template` path. Cannot add it to the list of Templates. [{entry}]!");
+                        continue;
+                    }
+                    templates.Add(entry);
+                }
+            }
+        }
+
+        static void ParseTemplateInitializer(ObjectCreationExpressionSyntax template, SemanticModel model, Type entryType, TypeRegistryEntry entry)
+        {
+            if (template.Initializer == null)
+            {
+                return;
+            }
+
+            foreach (var e in template.Initializer.Expressions)
+            {
+                if (e is not AssignmentExpressionSyntax assignment)
+                {
+                    continue;
+                }
+                var field = ((IdentifierNameSyntax) assignment.Left).Identifier;
+                var targetField = entryType.GetField(field.Text);
+                if (targetField == null)
+                {
+                    continue;
+                }
+                if (assignment.Right.IsKind(SyntaxKind.InterpolatedStringExpression))
+                {
+                    var text = ResolveInterpolatedString(
+                        assignment.Right as InterpolatedStringExpressionSyntax, model);
+                    targetField.SetValue(entry, text);
+                }
+                else
+                {
+                    var text = model.GetConstantValue(assignment.Right);
+                    if (text.HasValue)
+                    {
+                        targetField.SetValue(entry, text.Value);
+                    }
+                    // Legacy-namespace templates can reference enum members the semantic model can't bind yet
+                    // (the compat scaffolding is emitted by this same generator run): resolve by member name.
+                    else if (targetField.FieldType.IsEnum && assignment.Right is MemberAccessExpressionSyntax memberAccess)
+                    {
+                        targetField.SetValue(entry, Enum.Parse(targetField.FieldType, memberAccess.Name.Identifier.ValueText));
+                    }
+                }
+            }
+        }
+
+        // Resolve and return the interpolated string Don't support super complex interpolation, like with function or expression,
+        // but only the one witch use variables.
+        private static string ResolveInterpolatedString(InterpolatedStringExpressionSyntax interpolatedExpression, SemanticModel model)
+        {
+            var stringBuilder = new StringBuilder();
+            foreach(var content in interpolatedExpression.Contents)
+            {
+                if (content.Kind() == SyntaxKind.Interpolation)
+                {
+                    var symbolInfo = model.GetSymbolInfo(((InterpolationSyntax) content).Expression);
+                    //Just play safe here but report an error just in case.
+                    if (symbolInfo.Symbol != null)
+                    {
+                        //assuming one declaration here
+                        var fieldDeclaration = symbolInfo.Symbol.DeclaringSyntaxReferences[0].GetSyntax() as VariableDeclaratorSyntax;
+                        if (fieldDeclaration != null)
+                        {
+                            stringBuilder.Append((fieldDeclaration.Initializer?
+                                    .Value as LiteralExpressionSyntax)?.Token.ValueText);
+                        }
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Cannot resolve field declaration: {symbolInfo.ToString()}");
+                    }
+                }
+                else if (content.Kind() == SyntaxKind.InterpolatedStringText)
+                {
+                    stringBuilder.Append(((InterpolatedStringTextSyntax) content).TextToken.ValueText);
+                }
+            }
+            return stringBuilder.ToString();
+        }
+    }
+}

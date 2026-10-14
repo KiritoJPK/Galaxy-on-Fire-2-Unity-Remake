@@ -566,6 +566,25 @@
     opacity: 0.35;
 }
 
+/* Load game: Export / Import saves under the slot list (MainMenu, SaveTransfer) */
+.save-transfer-row {
+    justify-content: center;
+}
+
+.save-transfer-row > .mods-action {
+    margin: 0 5px;
+}
+
+.save-transfer-note {
+    flex-shrink: 0;
+    margin-top: 8px;
+    font-size: 14px;
+    letter-spacing: 1px;
+    white-space: normal;
+    color: var(--gof-text-dim);
+    -unity-text-align: middle-center;
+}
+
 .mods-toggle {
     min-width: 190px;
     color: #04121c;
@@ -718,7 +737,7 @@
     flex-direction: row;
 }
 
-.mb-field-pair > .mb-field-box:first-child {
+.mb-field-box--wide {
     margin-right: 14px;
     flex-grow: 3;
 }
@@ -1083,7 +1102,7 @@
     font-size: 13px;
 }
 
-.mp-switch-grid .mp-debug-segments .choice-segment:last-child {
+.mp-switch-grid .mp-debug-segments .choice-segment--last {
     margin-right: 0;
 }
 

@@ -1,0 +1,275 @@
+/* The "Filter Options" side panel: pops out and collapses from the left of the tracing window. */
+.tracing-filter-panel {
+    width: 260px;
+    flex-shrink: 0;
+    flex-direction: column;
+    border-right-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+    background-color: var(--unity-colors-window-background);
+}
+
+.tracing-filter-panel__header {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-default-border);
+}
+
+.tracing-filter-panel__header__label {
+    -unity-font-style: bold;
+}
+
+.tracing-filter-panel__threshold-group {
+    flex-shrink: 0;
+    padding: 2px 8px;
+}
+
+.tracing-filter-panel__threshold-group > .tracing-filter-panel__threshold-row {
+    padding: 2px 0;
+}
+
+.tracing-filter-panel__threshold-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 8px;
+}
+
+.tracing-filter-panel__threshold-row__label {
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.tracing-filter-panel__threshold-row__slider {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 40px;
+    margin: 0;
+}
+
+.tracing-filter-panel__threshold-row__field {
+    width: 55px;
+    flex-shrink: 0;
+    margin-left: 4px;
+    margin-right: 0;
+}
+
+.tracing-filter-panel__options-row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.tracing-filter-panel__changed-values-toggle {
+    flex-grow: 1;
+    margin: 0;
+    padding: 2px 8px;
+}
+
+.tracing-filter-panel__changed-values-toggle > .unity-base-field__label {
+    flex-grow: 1;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+}
+
+.tracing-filter-panel__changed-values-toggle > .unity-toggle__input {
+    flex-grow: 0;
+    flex-shrink: 0;
+}
+
+.tracing-filter-panel__body {
+    flex-grow: 1;
+    min-height: 0;
+    padding-top: 4px;
+}
+
+.tracing-filter-panel__separator {
+    flex-shrink: 0;
+    height: 1px;
+    margin-top: 4px;
+    background-color: var(--unity-colors-default-border);
+}
+
+.tracing-filter-panel__section {
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+.tracing-filter-panel__section > .unity-foldout__toggle {
+    margin: 0;
+    padding: 2px 0 2px 4px;
+    flex-shrink: 0;
+}
+
+.tracing-filter-panel__section > .unity-foldout__toggle .unity-toggle__input {
+    flex-grow: 1;
+}
+
+.tracing-filter-panel__section > .unity-foldout__toggle .unity-toggle__text {
+    flex-grow: 0;
+    -unity-font-style: bold;
+}
+
+.tracing-filter-panel__section__header-spacer {
+    flex-grow: 1;
+}
+
+.tracing-filter-panel__section__count {
+    flex-shrink: 0;
+    margin-right: 8px;
+    -unity-font-style: bold;
+}
+
+.tracing-filter-panel__section-gear {
+    width: 16px;
+    height: 16px;
+    margin: 0 0 0 2px;
+    padding: 0;
+    border-width: 0;
+    flex-shrink: 0;
+    background-color: transparent;
+    background-size: 14px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.tracing-filter-panel__section-gear:hover {
+    background-color: var(--unity-colors-inspector_titlebar-background-hover);
+    border-radius: 3px;
+}
+
+.tracing-filter-panel__section > .unity-foldout__content {
+    margin-left: 0;
+}
+
+/* The right padding is left to the eye's margin so it lines up with the rows' eye column. */
+.tracing-filter-panel__list-header {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 2px 0 2px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-default-border);
+}
+
+.tracing-filter-panel__list-header__label {
+    flex-grow: 1;
+    opacity: 0.7;
+}
+
+.tracing-filter-panel__list-header--spaced {
+    margin-top: 6px;
+}
+
+.tracing-filter-panel__row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 2px 8px;
+}
+
+.tracing-filter-panel__row--even {
+    background-color: var(--unity-colors-alternated_rows-background);
+}
+
+.tracing-filter-panel__row--even:hover {
+    background-color: var(--unity-colors-alternated_rows-background-hover);
+}
+
+.tracing-filter-panel__row__icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    flex-shrink: 0;
+    background-size: 16px 16px;
+}
+
+.tracing-filter-panel__row__icon--hidden {
+    display: none;
+}
+
+.tracing-filter-panel__row__info {
+    width: 18px;
+    height: 16px;
+    flex-shrink: 0;
+    background-image: var(--info-message-icon);
+    background-size: 14px 14px;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.tracing-filter-panel__row__info--hidden {
+    display: none;
+}
+
+.tracing-filter-panel__row__toggle {
+    background-color: transparent;
+    border-width: 0;
+    height: 100%;
+    width: 18px;
+    min-height: 26px;
+    margin: 0;
+}
+
+.tracing-filter-panel__row__toggle--invisible {
+    visibility: hidden;
+}
+
+.tracing-filter-panel__row__label {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.tracing-filter-panel__section-eye {
+    height: 18px;
+    margin-right: 8px;
+}
+
+.tracing-filter-panel__icon--visible {
+    background-image: var(--toolbar-eye-icon);
+    background-size: 16px 10px;
+}
+
+.tracing-filter-panel__icon--hidden {
+    background-image: var(--toolbar-eye-strike-icon);
+    background-size: 16px 12px;
+}
+
+.tracing-filter-panel__icon--info {
+    background-image: var(--info-message-icon);
+    background-size: 16px 16px;
+}
+
+.tracing-filter-panel__icon--system {
+    background-image: var(--system-icon);
+}
+
+.tracing-filter-panel__icon--component {
+    background-image: var(--toolbar-puzzle-piece-icon);
+}
+
+.tracing-filter-panel__tag-list .tracing-filter-panel__row {
+    justify-content: space-between;
+}
+
+.tracing-filter-panel__tag {
+    flex-grow: 0;
+    border-width: 1px;
+    border-color: var(--diff-tag-deselected);
+    padding: 0 3px;
+    color: var(--diff-tag-deselected);
+    -unity-text-align: middle-center;
+}
+
+.tracing-filter-panel__tag--present {
+    border-color: var(--scarlet);
+    color: var(--unity-colors-default-text);
+}
+

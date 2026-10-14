@@ -1,0 +1,894 @@
+using System;
+using UnityEngine.Assertions;
+using Unity.Entities;
+using Unity.Collections.LowLevel.Unsafe;
+using Unity.Collections;
+using Unity.Netcode.EntitiesInternalAccess;
+using Unity.Mathematics;
+using Unity.Netcode.LowLevel.Unsafe;
+using Unity.Burst;
+using Unity.Burst.Intrinsics;
+using Unity.Jobs;
+using Unity.Netcode.NetcodeTime;
+using UnityEngine.Scripting.APIUpdating;
+
+namespace Unity.Netcode
+{
+    // The header of prediction backup state
+    // The header is followed by:
+    // Entity[Capacity] the entity this history applies to (to prevent errors on structural changes)
+    // ulong[Capacity*enabledBits] each enabled bit is stored as a contiguous array of all entities, aligned to ulong
+    // int[root components + Capacity * num_child_component] chunk (and child chunk) version numbers.
+    // byte*[Capacity * sizeof(IComponentData)] the raw backup data for all replicated components in this ghost type. For buffers an uint pair (size, offset) is stored instead.
+    // [Opt]byte*[BuffersDataSize] the raw buffers element data present in the chunk if present. The total buffers size is computed at runtime and the
+    // backup state resized accordingly. All buffers contents start to a 16 bytes aligned offset: Align(b1Elem*b1ElemSize, 16), Align(b2Elem*b2ElemSize, 16) ...
+
+    /// <remarks>
+    /// One contiguous blob per backup slot, laid out by <see cref="AllocNew"/> as:
+    /// <code>
+    /// +----------------+ 0
+    /// | header         |  this struct, 16-byte aligned (GetHeaderSize)
+    /// +----------------+ entitiesOffset
+    /// | entities       |  Entity[entityCapacity]
+    /// +----------------+ enabledBitOffset
+    /// | enabledBits    |  ulong[ceil(cap/64)] per enableable component
+    /// +----------------+ chunkVersionsOffset
+    /// | chunkVersions  |  int[root components + cap * child components]
+    /// +----------------+ dataOffset
+    /// | data           |  serialized component data (buffers store a (size, offset) pair)
+    /// +----------------+ bufferDataOffset
+    /// | bufferData     |  raw dynamic-buffer element data (each buffer 16-byte aligned)
+    /// +----------------+
+    /// </code>
+    /// </remarks>
+    internal unsafe struct PredictionBackupState
+    {
+        /// <summary>Ghost type this slot was backed up for; if it changes the chunk is reused for something else and the backup is stale.</summary>
+        public int ghostType;
+        /// <summary>Chunk entity capacity this backup was sized for.</summary>
+        public int entityCapacity;
+        /// <summary>Byte offset (from this header) to the backed-up entity array.</summary>
+        public int entitiesOffset;
+        /// <summary>Byte offset to the enableable-component bit arrays.</summary>
+        public int enabledBitOffset;
+        /// <summary>Number of enableable-component bit arrays stored.</summary>
+        public int enabledBits;
+        /// <summary>Offset of the ghost owner field within the component data, or -1 when the ghost has no owner.</summary>
+        public int ghostOwnerOffset;
+        /// <summary>Byte offset to the serialized component data.</summary>
+        public int dataOffset;
+        /// <summary>Size in bytes of the serialized component data.</summary>
+        public int dataSize;
+        /// <summary>Byte offset to the per-component chunk change versions.</summary>
+        public int chunkVersionsOffset;
+        /// <summary>Size in bytes of the chunk-versions region.</summary>
+        public int chunkVersionsSize;
+        /// <summary>Capacity in bytes reserved for dynamic buffer data (stored after the component backup).</summary>
+        public int bufferDataCapacity;
+        /// <summary>Byte offset to the dynamic buffer data.</summary>
+        public int bufferDataOffset;
+        /// <summary>Serialized NetworkTick this slot was written for.</summary>
+        public uint tickValue;
+
+        public static IntPtr AllocNew(int ghostTypeId, int enabledBits,
+            int numComponents, int dataSize, int entityCapacity, int buffersDataCapacity, int predictionOwnerOffset)
+        {
+            var entitiesSize = (ushort)GetEntitiesSize(entityCapacity, out var _);
+            var headerSize = GetHeaderSize();
+            // each enabled bit is a unique array big enough to fit all entities
+            var enabledBitSize = (((entityCapacity+63)&(~63))/8 * enabledBits + 15) & (~15);
+            var versionSize = (sizeof(int) * numComponents * entityCapacity + 15) & ~15;
+            var state = (PredictionBackupState*)UnsafeUtility.Malloc(headerSize + enabledBitSize + entitiesSize + versionSize + dataSize + buffersDataCapacity, 16, Allocator.Persistent);
+            state->ghostType = ghostTypeId;
+            state->entityCapacity = entityCapacity;
+            state->entitiesOffset = headerSize;
+            state->enabledBitOffset = headerSize + entitiesSize;
+            state->ghostOwnerOffset = predictionOwnerOffset;
+            state->enabledBits = enabledBits;
+            state->chunkVersionsOffset = headerSize + entitiesSize + enabledBitSize;
+            state->chunkVersionsSize = versionSize;
+            state->dataOffset = state->chunkVersionsOffset + versionSize;
+            state->dataSize = dataSize;
+            state->bufferDataCapacity = buffersDataCapacity;
+            state->bufferDataOffset = state->dataOffset + dataSize;
+            state->tickValue = 0;
+            return (IntPtr)state;
+        }
+
+        public static int GetEntityCapacity(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return ps->entityCapacity;
+        }
+        /// <summary>Cast-free overload for callers already holding a <see cref="SlotPtr"/>.</summary>
+        public static int GetEntityCapacity(SlotPtr state)
+        {
+            return state.Value->entityCapacity;
+        }
+        /// <summary>Returns the NetworkTick this slot was backed up for.</summary>
+        public static NetworkTick GetTick(IntPtr state) => new NetworkTick { SerializedData = ((PredictionBackupState*) state)->tickValue };
+        public static int GetHeaderSize()
+        {
+            return (UnsafeUtility.SizeOf<PredictionBackupState>() + 15) & (~15);
+        }
+        public static int GetEntitiesSize(int chunkCapacity, out int singleEntitySize)
+        {
+            singleEntitySize = UnsafeUtility.SizeOf<Entity>();
+            return ((singleEntitySize * chunkCapacity) + 15) & (~15);
+        }
+        public static int GetDataSize(int componentSize, int chunkCapacity)
+        {
+            return (componentSize * chunkCapacity + 15) &(~15);
+        }
+        public static Entity* GetEntities(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return (Entity*)(((byte*)state) + ps->entitiesOffset);
+        }
+        /// <summary>
+        /// Looks for the entity at the passed in <see cref="entityIndex"/>,
+        /// but if not found there, linearly searches the history state to try to find it.
+        /// </summary>
+        /// <param name="state">The backup state to search in.</param>
+        /// <param name="entityIndex">The presumed index of the entity. Written if incorrect.</param>
+        /// <param name="entity">The entity to find.</param>
+        /// <returns>True if found.</returns>
+        public static bool MatchOrFindEntity(IntPtr state, ref byte entityIndex, in Entity entity)
+        {
+            var capacity = (byte)GetEntityCapacity(state);
+            var entities = GetEntities(state);
+            if (entityIndex < capacity && entities[entityIndex] == entity)
+                return true;
+
+            // TODO - Entities sparse chunks makes this lookup fail 100% of the time.
+            for (byte i = 0; i < capacity; i++)
+            {
+                if (entities[i] == entity)
+                {
+                    entityIndex = i;
+                    return true;
+                }
+            }
+            return false;
+        }
+        public static byte* GetData(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return ((byte*) state) + ps->dataOffset;
+        }
+
+        public static uint* GetChunkVersion(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return (uint*)((byte*)state + ps->chunkVersionsOffset);
+        }
+
+        public static int GetBufferDataCapacity(IntPtr state)
+        {
+            return ((PredictionBackupState*) state)->bufferDataCapacity;
+        }
+        public static byte* GetBufferDataPtr(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return ((byte*) state) + ps->bufferDataOffset;
+        }
+        public static byte* GetNextData(byte* data, int componentSize, int chunkCapacity)
+        {
+            return data + GetDataSize(componentSize, chunkCapacity);
+        }
+        public static ulong* GetEnabledBits(IntPtr state)
+        {
+            var ps = ((PredictionBackupState*) state);
+            return (ulong*)(((byte*) state) + ps->enabledBitOffset);
+        }
+        public static ulong* GetNextEnabledBits(ulong* data, int chunkCapacity)
+        {
+            return data + (chunkCapacity+63)/64;
+        }
+        public static int GetGhostOwner(IntPtr state, int ent)
+        {
+            var ps = ((PredictionBackupState*) state);
+            if (ps->ghostOwnerOffset == -1)
+                return -1;
+            var owners = (int*)((byte*)state + ps->dataOffset + ps->ghostOwnerOffset);
+            return owners[ent];
+        }
+
+        public static uint* GetNextChildChunkVersion(uint* changeVersionPtr, int chunkCapacity)
+        {
+            return changeVersionPtr + chunkCapacity;
+        }
+    }
+
+    /// <summary>
+    /// The last full tick for which a snapshot backup is available, plus the per-chunk prediction-history
+    /// ring capacity. Only present on the client world.
+    /// </summary>
+    internal struct GhostSnapshotLastBackupTick : IComponentData
+    {
+        /// <summary>The last full tick a snapshot backup was written for.</summary>
+        public NetworkTick Value;
+        /// <summary>
+        /// Per-chunk prediction-history ring slot count: 1 when <see cref="ClientTickRate.AlwaysRollbackAllPredictedGhosts"/>
+        /// is OFF (memory parity with the single-tick design), larger when ON. Diagnostic; the per-chunk ring
+        /// is the authoritative source for restores.
+        /// </summary>
+        public int Capacity;
+    }
+
+    /// <summary>
+    /// Singleton.
+    /// </summary>
+    internal struct GhostPredictionHistoryState : IComponentData
+    {
+        /// <summary>
+        /// Per-chunk handle (SlotPtr) to the NEWEST slot's PredictionBackupState. Preserved for backward compatibility with
+        /// GhostUpdateSystem's existing partial-tick undo path, GhostPredictionDebugSystem, and
+        /// GhostPredictionSmoothingSystem - all of which read the most recent backup directly.
+        /// </summary>
+        public NativeParallelHashMap<ulong, SlotPtr>.ReadOnly PredictionState;
+        public NativeParallelHashMap<Entity, GhostPredictionHistorySystem.PredictionBufferHistoryData>.ReadOnly EntityData;
+        /// <summary>
+        /// Per-chunk handle (RingPtr) to a PredictionBackupRing header (followed by capacity IntPtr slot pointers). Used by the
+        /// global rollback path in GhostUpdateSystem when AlwaysRollbackAllPredictedGhosts is enabled to find a slot at
+        /// the global rollback tick. The newest slot of each ring is the same pointer as PredictionState[chunk].
+        /// </summary>
+        public NativeParallelHashMap<ulong, RingPtr>.ReadOnly PredictionRings;
+    }
+
+    /// <summary>
+    /// A system used to make a backup of the current predicted state, right after the last full (not fractional)
+    /// tick in a prediction loop for a frame has been completed.
+    /// The backup does a memcopy of all ghost components (into a separate memory area connected to the chunk).
+    /// The backup is used to restore the last full tick, to continue prediction when no new data has arrived.
+    /// Note: When this happens, only the fields which are actually serialized as part of the snapshot are copied back,
+    /// not the full component. Thus, preserving any non-GhostField state.
+    /// The backup data is also used to:
+    /// - Detect errors in the prediction.
+    /// - To add smoothing of predicted values.
+    /// </summary>
+    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+    [UpdateInGroup(typeof(PredictedSimulationSystemGroup), OrderLast = true)]
+    [UpdateAfter(typeof(GhostPredictionEnableSimulateSystem))]
+    [UpdateBefore(typeof(EndPredictedSimulationEntityCommandBufferSystem))]
+    [BurstCompile]
+    [MovedFrom(true, "Unity.NetCode")]
+    public unsafe partial struct GhostPredictionHistorySystem : ISystem
+    {
+        /// <summary>
+        /// Data structure used to preserve the ability to retrieve or infer, even in case of structural changes,
+        /// the prediction history data for a given entity.
+        /// The struct store, at backup time, the chunk and index the
+        /// entity has been stored in history.
+        /// This information are used later, when we restore the entity state from the backup by the GhostUpdateSystem
+        /// </summary>
+        internal struct PredictionBufferHistoryData
+        {
+            /// <summary>
+            /// SequenceNumber of the archetype chunk at the time of the last history backup. Keys into the per-chunk
+            /// maps; a SequenceNumber is recycle-safe, whereas a stored ArchetypeChunk can alias a pooled/reused chunk.
+            /// </summary>
+            public ulong lastChunkSequenceNumber;
+            /// <summary>
+            /// The index in chunk at the time of the last history backup
+            /// </summary>
+            public byte LastIndexInChunk;
+            /// <summary>
+            /// The capacity of the that chunk, that it used to correctly decode the history data.
+            /// </summary>
+            public byte LastChunkCapacity;
+        }
+
+        /// <summary>Owns the per-chunk prediction-history collections and their parallel-stage -> serial-commit lifecycle.</summary>
+        PredictionBackupStore m_Store;
+        EntityQuery m_PredictionQuery;
+
+        ComponentTypeHandle<GhostInstance> m_GhostComponentHandle;
+        ComponentTypeHandle<GhostType> m_GhostTypeComponentHandle;
+        ComponentTypeHandle<PreSpawnedGhostIndex> m_PreSpawnedGhostIndexHandle;
+        ComponentTypeHandle<PredictedGhostSpawnRequest> m_PredictedSpawnRequestTypeHandle;
+        BufferTypeHandle<LinkedEntityGroup> m_LinkedEntityGroupHandle;
+        EntityTypeHandle m_EntityTypeHandle;
+
+        BufferLookup<GhostComponentSerializer.State> m_GhostComponentSerializerStateFromEntity;
+        BufferLookup<GhostCollectionPrefabSerializer> m_GhostCollectionPrefabSerializerFromEntity;
+        BufferLookup<GhostCollectionComponentIndex> m_GhostCollectionComponentIndexFromEntity;
+        BufferLookup<GhostCollectionPrefab> m_GhostCollectionPrefabFromEntity;
+
+        /// <inheritdoc/>
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            if (state.WorldUnmanaged.IsHost())
+            {
+                state.Enabled = false;
+                return;
+            }
+            m_Store.Allocate(128);
+            var builder = new EntityQueryBuilder(Allocator.Temp)
+                .WithAll<PredictedGhost, GhostInstance>();
+            m_PredictionQuery = state.GetEntityQuery(builder);
+
+            state.RequireForUpdate<GhostCollection>();
+
+            m_GhostComponentHandle = state.GetComponentTypeHandle<GhostInstance>(true);
+            m_GhostTypeComponentHandle = state.GetComponentTypeHandle<GhostType>(true);
+            m_PreSpawnedGhostIndexHandle = state.GetComponentTypeHandle<PreSpawnedGhostIndex>(true);
+            m_PredictedSpawnRequestTypeHandle = state.GetComponentTypeHandle<PredictedGhostSpawnRequest>(true);
+            m_LinkedEntityGroupHandle = state.GetBufferTypeHandle<LinkedEntityGroup>(true);
+            m_EntityTypeHandle = state.GetEntityTypeHandle();
+
+            m_GhostComponentSerializerStateFromEntity = state.GetBufferLookup<GhostComponentSerializer.State>(true);
+            m_GhostCollectionPrefabSerializerFromEntity = state.GetBufferLookup<GhostCollectionPrefabSerializer>(true);
+            m_GhostCollectionComponentIndexFromEntity = state.GetBufferLookup<GhostCollectionComponentIndex>(true);
+            m_GhostCollectionPrefabFromEntity = state.GetBufferLookup<GhostCollectionPrefab>(true);
+
+            var atype = new NativeArray<ComponentType>(1, Allocator.Temp);
+            atype[0] = ComponentType.ReadWrite<GhostPredictionHistoryState>();
+            var historySingleton = state.EntityManager.CreateEntity(state.EntityManager.CreateArchetype(atype));
+            FixedString64Bytes singletonName = "GhostPredictionHistoryState-Singleton";
+            state.EntityManager.SetName(historySingleton, singletonName);
+            EntitiesStaticInternalAccessBursted.SetHideInHierarchy(state.EntityManager, historySingleton);
+            // Declare that we are writing to GhostPredictionHistoryState, so we depend on all readers of this singleton during OnUpdate
+            ref var predictionHistoryState = ref SystemAPI.GetSingletonRW<GhostPredictionHistoryState>().ValueRW;
+            m_Store.PopulateSingleton(ref predictionHistoryState);
+        }
+
+        /// <inheritdoc/>
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+            if (state.WorldUnmanaged.IsHost())
+                return;
+            m_Store.Dispose();
+        }
+
+        /// <inheritdoc/>
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var networkTime = SystemAPI.GetSingleton<NetworkTime>();
+            if (!SystemAPI.TryGetSingleton<ClientTickRate>(out var clientTickRate))
+                clientTickRate = NetworkTimeSystem.DefaultClientTickRate;
+
+            // When AlwaysRollbackAllPredictedGhosts is ON, back up on EVERY full prediction tick so the ring
+            // covers every tick the prediction loop visits.
+            // ELSE, legacy behaviour only saves after a partial tick.
+            bool shouldBackup = clientTickRate.AlwaysRollbackAllPredictedGhosts
+                ? !networkTime.IsPartialTick
+                : networkTime.IsFinalFullPredictionTick;
+            if (!shouldBackup)
+                return;
+
+            // Determine the desired ring capacity:
+            int desiredRingCapacity = 1;
+            if (clientTickRate.AlwaysRollbackAllPredictedGhosts)
+            {
+                const int minRingCapacity = 4;
+                int commandInterpolationDelay = networkTime.ServerTick.IsValid && networkTime.InterpolationTick.IsValid
+                    ? math.max(minRingCapacity, networkTime.ServerTick.TicksSince(networkTime.InterpolationTick))
+                    : minRingCapacity;
+                // ceilpow2 because we don't want to keep resizing.
+                // TODO: tick-fraction handling is deferred, so this may be off-by-one - re-evaluate (raised by Emma).
+                desiredRingCapacity = math.min(math.ceilpow2(commandInterpolationDelay), CommandDataUtility.k_CommandDataMaxSize);
+            }
+
+            // Capacity is diagnostic; the per-chunk ring is the authoritative source for restore lookups.
+            SystemAPI.SetSingleton(new GhostSnapshotLastBackupTick { Value = networkTime.ServerTick, Capacity = desiredRingCapacity });
+
+            var count = m_PredictionQuery.CalculateEntityCount();
+            m_Store.BeginFrame(count);
+
+            m_GhostComponentHandle.Update(ref state);
+            m_GhostTypeComponentHandle.Update(ref state);
+            m_PreSpawnedGhostIndexHandle.Update(ref state);
+            m_PredictedSpawnRequestTypeHandle.Update(ref state);
+            m_LinkedEntityGroupHandle.Update(ref state);
+            m_EntityTypeHandle.Update(ref state);
+            m_GhostComponentSerializerStateFromEntity.Update(ref state);
+            m_GhostCollectionPrefabSerializerFromEntity.Update(ref state);
+            m_GhostCollectionComponentIndexFromEntity.Update(ref state);
+            m_GhostCollectionPrefabFromEntity.Update(ref state);
+            var backupJob = new PredictionBackupJob
+            {
+                store = m_Store.AsWriter(),
+                ghostComponentType = m_GhostComponentHandle,
+                ghostType = m_GhostTypeComponentHandle,
+                prespawnIndexType = m_PreSpawnedGhostIndexHandle,
+                predictedGhostSpawnRequestType = m_PredictedSpawnRequestTypeHandle,
+                entityType = m_EntityTypeHandle,
+                serverTick = networkTime.ServerTick,
+                desiredRingCapacity = desiredRingCapacity,
+
+                GhostCollectionSingleton = SystemAPI.GetSingletonEntity<GhostCollection>(),
+                GhostComponentCollectionFromEntity = m_GhostComponentSerializerStateFromEntity,
+                GhostTypeCollectionFromEntity = m_GhostCollectionPrefabSerializerFromEntity,
+                GhostComponentIndexFromEntity = m_GhostCollectionComponentIndexFromEntity,
+                GhostPrefabCollectionFromEntity = m_GhostCollectionPrefabFromEntity,
+                netDebug = SystemAPI.GetSingleton<NetDebug>(),
+
+                childEntityLookup = state.GetEntityStorageInfoLookup(),
+                linkedEntityGroupType = m_LinkedEntityGroupHandle,
+            };
+
+            var ghostComponentCollection = state.EntityManager.GetBuffer<GhostCollectionComponentType>(backupJob.GhostCollectionSingleton);
+            DynamicTypeList.PopulateList(ref state, ghostComponentCollection, true, ref backupJob.DynamicTypeList);
+            state.Dependency = backupJob.ScheduleParallelByRef(m_PredictionQuery, state.Dependency);
+
+            var cleanupJob = new CleanupPredictionStateJob
+            {
+                store = m_Store,
+                desiredRingCapacity = desiredRingCapacity,
+                serverTick = networkTime.ServerTick,
+            };
+            state.Dependency = cleanupJob.Schedule(state.Dependency);
+        }
+
+        [BurstCompile]
+        struct CleanupPredictionStateJob : IJob
+        {
+            public PredictionBackupStore store;
+            public int desiredRingCapacity;
+            public NetworkTick serverTick;
+
+            public void Execute() => store.Commit(desiredRingCapacity, serverTick);
+        }
+
+        [BurstCompile]
+        struct PredictionBackupJob : IJobChunk
+        {
+            public DynamicTypeList DynamicTypeList;
+
+            public PredictionBackupStore.Writer store;
+            public NetworkTick serverTick;
+            public int desiredRingCapacity;
+            [ReadOnly] public ComponentTypeHandle<GhostInstance> ghostComponentType;
+            [ReadOnly] public ComponentTypeHandle<GhostType> ghostType;
+            [ReadOnly] public ComponentTypeHandle<PreSpawnedGhostIndex> prespawnIndexType;
+            [ReadOnly] public ComponentTypeHandle<PredictedGhostSpawnRequest> predictedGhostSpawnRequestType;
+            [ReadOnly] public EntityTypeHandle entityType;
+
+            public Entity GhostCollectionSingleton;
+            [ReadOnly] public BufferLookup<GhostComponentSerializer.State> GhostComponentCollectionFromEntity;
+            [ReadOnly] public BufferLookup<GhostCollectionPrefabSerializer> GhostTypeCollectionFromEntity;
+            [ReadOnly] public BufferLookup<GhostCollectionComponentIndex> GhostComponentIndexFromEntity;
+            [ReadOnly] public BufferLookup<GhostCollectionPrefab> GhostPrefabCollectionFromEntity;
+            [ReadOnly] public EntityStorageInfoLookup childEntityLookup;
+            [ReadOnly] public BufferTypeHandle<LinkedEntityGroup> linkedEntityGroupType;
+
+            public NetDebug netDebug;
+            const GhostSendType requiredSendMask = GhostSendType.OnlyPredictedClients;
+
+            //Sum up all the dynamic buffers raw data content size. Each buffer content size is aligned to 16 bytes
+            private int GetChunkBuffersDataSize(GhostCollectionPrefabSerializer typeData, ArchetypeChunk chunk,
+                DynamicComponentTypeHandle* ghostChunkComponentTypesPtr, int ghostChunkComponentTypesLength, DynamicBuffer<GhostCollectionComponentIndex> GhostComponentIndex, DynamicBuffer<GhostComponentSerializer.State> GhostComponentCollection)
+            {
+                int numBaseComponents = typeData.NumComponents - typeData.NumChildComponents;
+                int bufferTotalSize = 0;
+                int baseOffset = typeData.FirstComponent;
+                for (int comp = 0; comp < numBaseComponents; ++comp)
+                {
+                    int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                    int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    if (compIdx >= ghostChunkComponentTypesLength)
+                        throw new System.InvalidOperationException($"Component index {comp} (of numBaseComponents: {numBaseComponents}) out of range for root component in method 'GetChunkBuffersDataSize'. ghostChunkComponentTypesLength is {ghostChunkComponentTypesLength}.");
+#endif
+                    if ((GhostComponentIndex[baseOffset + comp].SendMask & requiredSendMask) == 0)
+                        continue;
+
+                    ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                    if (!ghostSerializer.ComponentType.IsBuffer)
+                        continue;
+
+                    if (chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                    {
+                        var bufferData = chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                        for (int i = 0; i < bufferData.Length; ++i)
+                        {
+                            bufferTotalSize += bufferData.GetBufferCapacity(i) * ghostSerializer.ComponentSize;
+                        }
+                        bufferTotalSize = GhostComponentSerializer.SnapshotSizeAligned(bufferTotalSize);
+                    }
+                }
+
+                if (typeData.NumChildComponents > 0)
+                {
+                    var linkedEntityGroupAccessor = chunk.GetBufferAccessor(ref linkedEntityGroupType);
+                    for (int comp = numBaseComponents; comp < typeData.NumComponents; ++comp)
+                    {
+                        int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                        int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        if (compIdx >= ghostChunkComponentTypesLength)
+                            throw new System.InvalidOperationException($"Component index {comp} (of numBaseComponents: {numBaseComponents}) out of range for child component in method 'GetChunkBuffersDataSize'. ghostChunkComponentTypesLength is {ghostChunkComponentTypesLength}.");
+#endif
+                        if ((GhostComponentIndex[baseOffset + comp].SendMask & requiredSendMask) == 0)
+                            continue;
+
+                        ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                        if (!ghostSerializer.ComponentType.IsBuffer)
+                            continue;
+
+                        for (int ent = 0, chunkEntityCount = chunk.Count; ent < chunkEntityCount; ++ent)
+                        {
+                            var linkedEntityGroup = linkedEntityGroupAccessor[ent];
+                            var childEnt = linkedEntityGroup[GhostComponentIndex[baseOffset + comp].EntityIndex].Value;
+                            if (childEntityLookup.TryGetValue(childEnt, out var childChunk) && childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                            {
+                                var bufferData = childChunk.Chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                bufferTotalSize += bufferData.GetBufferCapacity(childChunk.IndexInChunk) * ghostSerializer.ComponentSize;
+                            }
+                            bufferTotalSize = GhostComponentSerializer.SnapshotSizeAligned(bufferTotalSize);
+                        }
+                    }
+                }
+
+                return bufferTotalSize;
+            }
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                // This job is not written to support queries with enableable component types.
+                Assert.IsFalse(useEnabledMask);
+
+                DynamicComponentTypeHandle* ghostChunkComponentTypesPtr = DynamicTypeList.GetData();
+                int ghostChunkComponentTypesLength = DynamicTypeList.Length;
+                var GhostTypeCollection = GhostTypeCollectionFromEntity[GhostCollectionSingleton];
+                var GhostComponentIndex = GhostComponentIndexFromEntity[GhostCollectionSingleton];
+                var GhostComponentCollection = GhostComponentCollectionFromEntity[GhostCollectionSingleton];
+                var GhostPrefabCollection = GhostPrefabCollectionFromEntity[GhostCollectionSingleton];
+
+                var ghostComponents = chunk.GetNativeArray(ref ghostComponentType);
+                var ghostTypes = chunk.GetNativeArray(ref ghostType);
+                int ghostTypeId = ghostComponents.GetFirstGhostTypeId();
+                var isPrespawnedGhost = chunk.Has(ref prespawnIndexType);
+                var isPredictedSpawnedGhost = chunk.Has(ref predictedGhostSpawnRequestType);
+                if (ghostTypeId < 0 && !isPrespawnedGhost)
+                {
+                    netDebug.LogError($"Found chunk with ghost type {(Hash128)ghostTypes[0]} that is not a pre-spawned ghost (there is not PreSpawnedGhostIndex component), and has a negative GhostInstance.type. Only prespawned ghosts are allowed to use a negative type index.");
+                    return;
+                }
+
+                //We need to resolve the type for prespawned ghost and predicted spawned ghost that hasn't received yet and update from the server
+                if (ghostTypeId < 0 || isPredictedSpawnedGhost)
+                {
+                    //We iterate over the GhostTypeCollection instead of the GhostPrefabCollection as counter because it is guarateed
+                    //that the GhostPrefabCollection length is always less or equal the GhostPrefabCollection size. But we assert this here.
+                    UnityEngine.Assertions.Assert.IsTrue(GhostTypeCollection.Length <= GhostPrefabCollection.Length);
+                    for (ghostTypeId = 0; ghostTypeId < GhostTypeCollection.Length; ++ghostTypeId)
+                    {
+                        if (GhostPrefabCollection[ghostTypeId].GhostType == ghostTypes[0])
+                            break;
+                    }
+                    //This is a valid condition in case the ghost collection prefab serializers hasn't been completely initialized
+                    if (ghostTypeId >= GhostTypeCollection.Length)
+                        return;
+                }
+                if(ghostTypeId >= GhostTypeCollection.Length)
+                    throw new InvalidOperationException($"Cannot find ghostTypeId in GhostPrefabCollection as expected to match {ghostTypes[0]} but didn't. (GhostPrefabCollection.Length: {GhostPrefabCollection.Length}).");
+
+                var typeData = GhostTypeCollection[ghostTypeId];
+                var singleEntitySize = UnsafeUtility.SizeOf<Entity>();
+                int baseOffset = typeData.FirstComponent;
+                int predictionOwnerOffset = -1;
+                var ghostOwnerTypeIndex = TypeManager.GetTypeIndex<GhostOwner>();
+
+                // Look up the ring (may not exist yet for first-time chunks). When it exists, delegate slot selection
+                // to PredictionBackupRing.SelectSlotForWrite (re-predict / empty / evict-oldest preference order; see
+                // its docs), which returns the chosen slot index, the pointer it holds, and whether this is a
+                // re-predict overwrite as one value. The selected slot's existing allocation - if any - is either
+                // reused below (when the chunk archetype matches) or freed and re-allocated.
+                bool ringExists = store.TryGetRing(chunk, out var ringPtr);
+                var selection = default(PredictionBackupRing.SlotSelection);
+                if (ringExists)
+                    selection = ringPtr.Ref.SelectSlotForWrite(serverTick);
+                IntPtr existingSlot = selection.ExistingData;
+
+                IntPtr state;
+                if (existingSlot == IntPtr.Zero ||
+                    (*(PredictionBackupState*)existingSlot).ghostType != ghostTypeId ||
+                    (*(PredictionBackupState*)existingSlot).entityCapacity != chunk.Capacity)
+                {
+                    int dataSize = 0;
+                    int enabledBits = 0;
+                    // Sum up the size of all components rounded up
+                    // RULES:
+                    // - if the component/buffer send mask not match PredictedClient neither the data, nor the enable bits are present in the backup.
+                    // - if the component/buffer replicated enablebits, the bits are present in the backup
+                    // - if the component has no ghost fields the data not present in the backup
+
+                    for (int comp = 0; comp < typeData.NumComponents; ++comp)
+                    {
+                        int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                        int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        if (compIdx >= ghostChunkComponentTypesLength)
+                            throw new System.InvalidOperationException($"Component index {comp} (of numBaseComponents: {typeData.NumComponents}) out of range in method 'Execute'. ghostChunkComponentTypesLength is {ghostChunkComponentTypesLength}.");
+#endif
+                        if ((GhostComponentIndex[baseOffset + comp].SendMask&requiredSendMask) == 0)
+                            continue;
+
+                        ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                        if (ghostSerializer.SerializesEnabledBit != 0)
+                            ++enabledBits;
+
+                        if (!ghostSerializer.HasGhostFields)
+                            continue;
+
+                        if (ghostSerializer.ComponentType.TypeIndex == ghostOwnerTypeIndex)
+                            predictionOwnerOffset = dataSize;
+
+                        //for buffers we store a a pair of uint:
+                        // uint length: the num of elements
+                        // uint backupDataOffset: the start position in the backup buffer
+                        if (!ghostSerializer.ComponentType.IsBuffer)
+                            dataSize += PredictionBackupState.GetDataSize(ghostSerializer.ComponentSize, chunk.Capacity);
+                        else
+                            dataSize += PredictionBackupState.GetDataSize(GhostComponentSerializer.DynamicBufferComponentSnapshotSize, chunk.Capacity);
+                    }
+
+                    //compute the space necessary to store the dynamic buffers data for the chunk
+                    int buffersDataCapacity = 0;
+                    if (typeData.NumBuffers > 0)
+                        buffersDataCapacity = GetChunkBuffersDataSize(typeData, chunk, ghostChunkComponentTypesPtr, ghostChunkComponentTypesLength, GhostComponentIndex, GhostComponentCollection);
+
+                    // Slot at writeIndex is missing, mismatched type, or different capacity. Free it (if any) and
+                    // allocate fresh. The ring's slot pointer is updated below to point at the new allocation.
+                    if (existingSlot != IntPtr.Zero)
+                        UnsafeUtility.Free((void*)existingSlot, Allocator.Persistent);
+                    state = PredictionBackupState.AllocNew(ghostTypeId, enabledBits, typeData.NumComponents, dataSize, chunk.Capacity, buffersDataCapacity, predictionOwnerOffset);
+                }
+                else
+                {
+                    state = existingSlot;
+                    if (typeData.NumBuffers > 0)
+                    {
+                        //resize the backup state to fit the dynamic buffers contents
+                        var buffersDataCapacity = GetChunkBuffersDataSize(typeData, chunk, ghostChunkComponentTypesPtr, ghostChunkComponentTypesLength, GhostComponentIndex, GhostComponentCollection);
+                        int bufferBackupDataCapacity = PredictionBackupState.GetBufferDataCapacity(state);
+                        if (bufferBackupDataCapacity < buffersDataCapacity)
+                        {
+                            var dataSize = ((PredictionBackupState*)state)->dataSize;
+                            var enabledBits = ((PredictionBackupState*)state)->enabledBits;
+                            var ghostOwnerOffset = ((PredictionBackupState*)state)->ghostOwnerOffset;
+                            var newState =  PredictionBackupState.AllocNew(ghostTypeId, enabledBits, typeData.NumComponents, dataSize, chunk.Capacity, buffersDataCapacity, ghostOwnerOffset);
+                            UnsafeUtility.Free((void*) state, Allocator.Persistent);
+                            state = newState;
+                        }
+                    }
+                }
+                store.MarkChunkUsed(chunk);
+                // We must always have a slot to write into - either reused (existingSlot path) or freshly allocated.
+                // If state is null here, AllocNew failed (OOM) or a logic bug short-circuited slot selection.
+                Assert.IsTrue(state != IntPtr.Zero, "PredictionBackupJob: no backup state slot to write into; ring slot selection or allocation failed.");
+                Entity* entities = PredictionBackupState.GetEntities(state);
+                var srcEntities = chunk.GetNativeArray(entityType).GetUnsafeReadOnlyPtr();
+                UnsafeUtility.MemCpy(entities, srcEntities, chunk.Count * singleEntitySize);
+                if (chunk.Count < chunk.Capacity)
+                    UnsafeUtility.MemClear(entities + chunk.Count, (chunk.Capacity - chunk.Count) * singleEntitySize);
+                for (byte i = 0; i < chunk.Count; ++i)
+                {
+                    store.RecordEntity(entities[i], new PredictionBufferHistoryData
+                    {
+                        lastChunkSequenceNumber = chunk.SequenceNumber,
+                        LastIndexInChunk = i,
+                        LastChunkCapacity = (byte) chunk.Capacity
+                    });
+                }
+                byte* dataPtr = PredictionBackupState.GetData(state);
+                byte* bufferBackupDataPtr = PredictionBackupState.GetBufferDataPtr(state);
+                ulong* enabledBitPtr = PredictionBackupState.GetEnabledBits(state);
+                uint* changeVersionPtr = PredictionBackupState.GetChunkVersion(state);
+
+                int numBaseComponents = typeData.NumComponents - typeData.NumChildComponents;
+                int bufferBackupDataOffset = 0;
+                for (int comp = 0; comp < numBaseComponents; ++comp)
+                {
+                    int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                    int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    if (compIdx >= ghostChunkComponentTypesLength)
+                        throw new System.InvalidOperationException($"Component index {comp} (of numBaseComponents: {numBaseComponents}) out of range for root component in method 'Execute'. ghostChunkComponentTypesLength is {ghostChunkComponentTypesLength}.");
+#endif
+                    if ((GhostComponentIndex[baseOffset + comp].SendMask&requiredSendMask) == 0)
+                        continue;
+                    uint chunkVersion = chunk.GetChangeVersion(ref ghostChunkComponentTypesPtr[compIdx]);
+                    ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                    var compSize = ghostSerializer.ComponentType.IsBuffer
+                        ? GhostComponentSerializer.DynamicBufferComponentSnapshotSize
+                        : ghostSerializer.ComponentSize;
+
+                    //store the change version for this component for the root entity. There is only one entry
+                    //per component for this chunk for root entities.
+                    changeVersionPtr[comp] = chunkVersion;
+
+                    if (ghostSerializer.SerializesEnabledBit != 0)
+                    {
+                        var handle = ghostChunkComponentTypesPtr[compIdx];
+                        var bitArray = chunk.GetEnableableBits(ref handle);
+                        UnsafeUtility.MemCpy(enabledBitPtr, &bitArray, ((chunk.Count+63)&(~63))/8);
+
+                        enabledBitPtr = PredictionBackupState.GetNextEnabledBits(enabledBitPtr, chunk.Capacity);
+                    }
+
+                    // Note that `HasGhostFields` reads the `SnapshotSize` of this type, BUT we're saving the entire component.
+                    // The reason we use this is: Why bother memcopy-ing the entire component state, if we're never actually going to be writing any data back?
+                    // I.e. Only the GhostFields will be written back anyway.
+                    if (!ghostSerializer.HasGhostFields)
+                        continue;
+
+                    if (!chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                    {
+                        UnsafeUtility.MemClear(dataPtr, chunk.Count * compSize);
+                        //reset the change version to 0. The component data is not present. And it case it will, it must
+                        //considered changed
+                        changeVersionPtr[comp] = 0;
+                    }
+                    else if (!ghostSerializer.ComponentType.IsBuffer)
+                    {
+                        var compData = (byte*) chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref ghostChunkComponentTypesPtr[compIdx], compSize).GetUnsafeReadOnlyPtr();
+                        UnsafeUtility.MemCpy(dataPtr, compData, chunk.Count * compSize);
+                    }
+                    else
+                    {
+                        var bufferData = chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                        var bufElemSize = ghostSerializer.ComponentSize;
+                        //Use local variable to iterate and set the buffer offset and length. The dataptr must be
+                        //advanced "per chunk" to the next correct position
+                        var tempDataPtr = dataPtr;
+                        for (int i = 0; i < bufferData.Length; ++i)
+                        {
+                            //Retrieve an copy each buffer data. Set size and offset in the backup buffer in the component backup
+                            var bufferPtr = bufferData.GetUnsafeReadOnlyPtrAndLength(i, out var size);
+                            ((int*) tempDataPtr)[0] = size;
+                            ((int*) tempDataPtr)[1] = bufferBackupDataOffset;
+                            if (size > 0)
+                                UnsafeUtility.MemCpy(bufferBackupDataPtr + bufferBackupDataOffset, (byte*) bufferPtr, size * bufElemSize);
+                            bufferBackupDataOffset += size * bufElemSize;
+                            tempDataPtr += compSize;
+                        }
+
+                        bufferBackupDataOffset = GhostComponentSerializer.SnapshotSizeAligned(bufferBackupDataOffset);
+                    }
+                    dataPtr = PredictionBackupState.GetNextData(dataPtr, compSize, chunk.Capacity);
+                }
+                if (typeData.NumChildComponents > 0)
+                {
+                    var linkedEntityGroupAccessor = chunk.GetBufferAccessor(ref linkedEntityGroupType);
+                    //for child component we store a one version entry, per component type for each entity in the chunk
+                    //the layout looks like
+                    //ChildComp1     ChildComp2
+                    //e1, e2 .. en | e1, e2 .. en
+                    var childChangeVersions = changeVersionPtr + numBaseComponents;
+                    for (int comp = numBaseComponents; comp < typeData.NumComponents; ++comp)
+                    {
+                        int compIdx = GhostComponentIndex[baseOffset + comp].ComponentIndex;
+                        int serializerIdx = GhostComponentIndex[baseOffset + comp].SerializerIndex;
+                        var handle = ghostChunkComponentTypesPtr[compIdx];
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        if (compIdx >= ghostChunkComponentTypesLength)
+                            throw new System.InvalidOperationException($"Component index {comp} (of numBaseComponents: {numBaseComponents}) out of range for child component in method 'Execute'. ghostChunkComponentTypesLength is {ghostChunkComponentTypesLength}.");
+#endif
+                        if ((GhostComponentIndex[baseOffset + comp].SendMask&requiredSendMask) == 0)
+                            continue;
+
+                        ref readonly var ghostSerializer = ref GhostComponentCollection.ElementAtRO(serializerIdx);
+                        if (ghostSerializer.SerializesEnabledBit != 0)
+                        {
+                            for (int rootEnt = 0, chunkEntityCount = chunk.Count; rootEnt < chunkEntityCount; ++rootEnt)
+                            {
+                                ulong isSet = 0;
+                                var linkedEntityGroup = linkedEntityGroupAccessor[rootEnt];
+                                var childEnt = linkedEntityGroup[GhostComponentIndex[baseOffset + comp].EntityIndex].Value;
+                                if (childEntityLookup.TryGetValue(childEnt, out var childChunk))
+                                {
+                                    var arr = childChunk.Chunk.GetEnableableBits(ref handle);
+                                    var bits = new UnsafeBitArray(&arr, sizeof(v128));
+                                    isSet = bits.IsSet(childChunk.IndexInChunk) ? 1u : 0u;
+                                    childChangeVersions[rootEnt] = childChunk.Chunk.GetChangeVersion(ref ghostChunkComponentTypesPtr[compIdx]);
+                                }
+                                enabledBitPtr[rootEnt>>6] &= ~(1ul<<(rootEnt&0x3f));
+                                enabledBitPtr[rootEnt>>6] |= (isSet<<(rootEnt&0x3f));
+                            }
+                            enabledBitPtr = PredictionBackupState.GetNextEnabledBits(enabledBitPtr, chunk.Capacity);
+                        }
+                        var isBuffer = ghostSerializer.ComponentType.IsBuffer;
+                        var compSize = isBuffer ? GhostComponentSerializer.DynamicBufferComponentSnapshotSize : ghostSerializer.ComponentSize;
+
+                        if (!ghostSerializer.HasGhostFields)
+                        {
+                            if(ghostSerializer.SerializesEnabledBit != 0)
+                                childChangeVersions = PredictionBackupState.GetNextChildChunkVersion(childChangeVersions, chunk.Capacity);
+                            continue;
+                        }
+
+                        if (!ghostSerializer.ComponentType.IsBuffer)
+                        {
+                            //use a temporary for the iteration here. Otherwise when the dataptr is offset for the chunk, we
+                            //end up in the wrong position
+                            var tempDataPtr = dataPtr;
+
+                            for (int rootEnt = 0, chunkEntityCount = chunk.Count; rootEnt < chunkEntityCount; ++rootEnt)
+                            {
+                                var linkedEntityGroup = linkedEntityGroupAccessor[rootEnt];
+                                var childEnt = linkedEntityGroup[GhostComponentIndex[baseOffset + comp].EntityIndex].Value;
+                                if (childEntityLookup.TryGetValue(childEnt, out var childChunk) && childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                                {
+                                    var compData = (byte*) childChunk.Chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref ghostChunkComponentTypesPtr[compIdx], compSize).GetUnsafeReadOnlyPtr();
+                                    UnsafeUtility.MemCpy(tempDataPtr, compData + childChunk.IndexInChunk * compSize, compSize);
+                                    //store the change version for the component
+                                    childChangeVersions[rootEnt] = childChunk.Chunk.GetChangeVersion(ref ghostChunkComponentTypesPtr[compIdx]);
+                                }
+                                else
+                                {
+                                    UnsafeUtility.MemClear(tempDataPtr, compSize);
+                                    //reset the change version to 0. The component data is not present. And it case it will, it must
+                                    //considered changed
+                                    childChangeVersions[rootEnt] = 0;
+                                }
+                                tempDataPtr += compSize;
+                            }
+                        }
+                        else
+                        {
+                            var bufElemSize = ghostSerializer.ComponentSize;
+                            var tempDataPtr = dataPtr;
+
+                            for (int rootEnt = 0, chunkEntityCount = chunk.Count; rootEnt < chunkEntityCount; ++rootEnt)
+                            {
+                                var linkedEntityGroup = linkedEntityGroupAccessor[rootEnt];
+                                var childEnt = linkedEntityGroup[GhostComponentIndex[baseOffset + comp].EntityIndex].Value;
+                                if (childEntityLookup.TryGetValue(childEnt, out var childChunk) && childChunk.Chunk.Has(ref ghostChunkComponentTypesPtr[compIdx]))
+                                {
+                                    var bufferData = childChunk.Chunk.GetUntypedBufferAccessor(ref ghostChunkComponentTypesPtr[compIdx]);
+                                    //Retrieve an copy each buffer data. Set size and offset in the backup buffer in the component backup
+                                    var bufferPtr = bufferData.GetUnsafeReadOnlyPtrAndLength(childChunk.IndexInChunk, out var size);
+                                    ((int*) tempDataPtr)[0] = size;
+                                    ((int*) tempDataPtr)[1] = bufferBackupDataOffset;
+                                    if (size > 0)
+                                        UnsafeUtility.MemCpy(bufferBackupDataPtr + bufferBackupDataOffset, (byte*) bufferPtr, size * bufElemSize);
+                                    bufferBackupDataOffset += size * bufElemSize;
+                                    //store the change version for the component. Will be used by GhostSendSystem when restoring
+                                    //components from the backup.
+                                    childChangeVersions[rootEnt] = childChunk.Chunk.GetChangeVersion(ref ghostChunkComponentTypesPtr[compIdx]);
+                                }
+                                else
+                                {
+                                    //reset the entry to 0. Don't use memcpy in this case (is faster this way)
+                                    ((long*) tempDataPtr)[0] = 0;
+                                    //reset the change version to 0. The component data is not present. And it case it will, it must
+                                    //considered changed
+                                    childChangeVersions[rootEnt] = 0;
+                                }
+
+                                tempDataPtr += compSize;
+                            }
+
+                            bufferBackupDataOffset = GhostComponentSerializer.SnapshotSizeAligned(bufferBackupDataOffset);
+                        }
+
+                        dataPtr = PredictionBackupState.GetNextData(dataPtr, compSize, chunk.Capacity);
+                        childChangeVersions = PredictionBackupState.GetNextChildChunkVersion(childChangeVersions, chunk.Capacity);
+                    }
+                }
+
+                // All component / buffer data has been written into `state`. Stamp the slot's tick and place the
+                // pointer in the chosen slot (the slot selection above resolved re-predict / empty / oldest-eviction).
+                ((PredictionBackupState*)state)->tickValue = serverTick.SerializedData;
+                if (ringExists)
+                {
+                    // Write the slot into the existing ring; Commit rebuilds predictionState from each ring's newest
+                    // slot, so there's no per-write newest tracking to do here.
+                    ringPtr.Ref.SetSlot(selection.Index, state);
+                }
+                else
+                {
+                    // First time we've seen this chunk: stage a fresh ring with our slot as its newest (index 0);
+                    // Commit picks it up and points predictionState at it.
+                    store.StageFreshRing(chunk, state, desiredRingCapacity);
+                }
+            }
+        }
+    }
+}
