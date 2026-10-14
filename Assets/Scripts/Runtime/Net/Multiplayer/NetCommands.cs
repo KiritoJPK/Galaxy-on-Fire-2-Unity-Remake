@@ -103,6 +103,18 @@ namespace GoF2Remake.Multiplayer
         };
         static bool Anyone(IPilot p) => true;
 
+        /// <summary>Every command's name, usage and description, for the modding reference (GoF2 > Build > Modding AI Reference).</summary>
+        public static IEnumerable<(string name, string usage, string description)> Reference()
+        {
+            foreach (var c in Commands) yield return (c.name, c.usage ?? "", c.description?.Invoke() ?? "");
+        }
+
+        /// <summary>The player selectors and what they pick, for the modding reference.</summary>
+        public static IEnumerable<(string selector, string description)> SelectorReference()
+        {
+            foreach (var (s, d) in Selectors) yield return (s, d());
+        }
+
         static readonly Command[] Commands =
         {
             new Command { name = "help", available = Everyone, local = _ => Help(),

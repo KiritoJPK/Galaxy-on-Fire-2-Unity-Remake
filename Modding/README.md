@@ -13,7 +13,9 @@ over. A new ship's shop icon is rendered from its model
 Mods folder. Ships, items, characters and skins can be built there so far; everything below can still be written by hand.
 
 **Making a mod with an AI assistant:** `Modding/ai/gof2-modding` is this guide condensed for Claude, ChatGPT and the like,
-with every original item, ship, system and station number in `reference.md`. See `Modding/ai/README.md` for how to use it.
+with every number and name of the original game a mod refers to in `reference.md` (items, stats, blueprints, ships, systems,
+stations, hardpoints, skies, planets, story steps and speakers, models and their textures, music, sounds), every voice clip in
+`voices.md`, every event graph node and command in `events.md`, and a copy of this guide as `guide.md`. See `Modding/ai/README.md` for how to use it.
 
 What mods can do so far:
 
