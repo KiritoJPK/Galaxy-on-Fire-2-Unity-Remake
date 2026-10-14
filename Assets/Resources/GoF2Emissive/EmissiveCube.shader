@@ -54,6 +54,7 @@ Shader "GoF2/EmissiveCube"
 
             half _GoF2HullReflection;
             half3 _GoF2HullRimColor;
+            TEXTURECUBE(_GoF2ReflectionCube); SAMPLER(sampler_GoF2ReflectionCube);   // as GoF2/Hull (SkyReflection)
 
             // Remake: the distance fog by the real distance to the camera, as the original (computeLinearFogFactor(eyeDist), the
             // eye-to-vertex distance). URP's fog goes by the view depth (clip z), which is shorter for the same distance toward the
@@ -134,7 +135,7 @@ Shader "GoF2/EmissiveCube"
                 half rim = smoothstep(0.8h, 1.0h, facing);
                 half reflectivity = clamp(smoothstep(0.6h, 1.0h, facing), reflectTex, spec * 2.0h + rim);
                 half3 r = reflect(-v, n);
-                half3 env = DecodeHDREnvironment(SAMPLE_TEXTURECUBE(unity_SpecCube0, samplerunity_SpecCube0, r), unity_SpecCube0_HDR);
+                half3 env = SAMPLE_TEXTURECUBE(_GoF2ReflectionCube, sampler_GoF2ReflectionCube, r).rgb;
                 color += (env * reflectivity + rim * reflectTex * _GoF2HullRimColor) * _GoF2HullReflection;
 
                 color = GoF2RadialFog(color, distance(i.positionWS, GetCameraPositionWS()));   // as GoF2/Hull

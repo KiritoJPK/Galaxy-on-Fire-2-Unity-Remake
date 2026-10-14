@@ -16,6 +16,10 @@
 
 half _GoF2HullReflection;
 half3 _GoF2HullRimColor;
+// Remake: the system's reflection cubemap as a global of its own (SkyReflection.SetSystem): unity_SpecCube0 stayed empty in
+// the Android build (Forward on the Mobile renderer).
+TEXTURECUBE(_GoF2ReflectionCube);
+SAMPLER(sampler_GoF2ReflectionCube);
 
 // Remake: the distance fog by the real distance to the camera, as the original (computeLinearFogFactor(eyeDist), the
 // eye-to-vertex distance). URP's fog goes by the view depth (clip z), which is shorter for the same distance toward the
@@ -84,7 +88,7 @@ void HullPassFragment(
         half reflectivity = clamp(smoothstep(0.6h, 1.0h, facing), reflectTex, spec * 2.0h + rim);
         half3 r = reflect(-v, n);
         // The GPU's own mip choice (the original's textureCube): a fixed mip 0 sparkled on far and grazing panels.
-        half3 env = DecodeHDREnvironment(SAMPLE_TEXTURECUBE(unity_SpecCube0, samplerunity_SpecCube0, r), unity_SpecCube0_HDR);
+        half3 env = SAMPLE_TEXTURECUBE(_GoF2ReflectionCube, sampler_GoF2ReflectionCube, r).rgb;   // an LDR cubemap: nothing to decode
         half k = _GoF2HullReflection * (1.0h - surfaceData.metallic);
         color.rgb += (env * reflectivity + rim * reflectTex * _GoF2HullRimColor) * k * surfaceData.occlusion;
     }

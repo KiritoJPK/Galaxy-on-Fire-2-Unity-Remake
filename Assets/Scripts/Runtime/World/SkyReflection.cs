@@ -32,11 +32,16 @@ namespace GoF2Remake.World
             Shader.SetGlobalFloat(ReflectionId, 1f);
             Shader.SetGlobalColor(RimId, RimColor(layout));
             if (cube == null) return;
+            // Remake: also as a global of its own, which GoF2/Hull and GoF2/EmissiveCube sample. unity_SpecCube0 (the custom
+            // environment reflection) came out empty in the Android build (Forward on the Mobile renderer, per-object probe
+            // data), so the hulls had no reflection there; the PC's Forward+ fills it.
+            Shader.SetGlobalTexture(CubeId, cube);
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
             RenderSettings.customReflectionTexture = cube;
         }
 
-        static readonly int ReflectionId = Shader.PropertyToID("_GoF2HullReflection"), RimId = Shader.PropertyToID("_GoF2HullRimColor");
+        static readonly int ReflectionId = Shader.PropertyToID("_GoF2HullReflection"), RimId = Shader.PropertyToID("_GoF2HullRimColor"),
+            CubeId = Shader.PropertyToID("_GoF2ReflectionCube");
 
         /// <summary>StarSystem::initLight: LightSetRimColor(3 x DAT_00258d34[sysTex]): the sun colour table but for systems 11
         /// and 15 (GoF2/Hull's rim light).</summary>
