@@ -761,6 +761,7 @@ namespace GoF2Remake.World
         void ApplyHangarLighting()
         {
             SkyReflection.SetSystem(Layout);   // the hulls' reflection: the station's system's cubemap
+            if (customHangar == null) SkyReflection.SetHangar(HangarIndex);   // Remake: the hangar's own (none in the Valkyrie's)
             if (keyLight != null)
             {
                 keyLight.transform.rotation = Quaternion.LookRotation(-OrbitLayout.DirToUnity(StationTables.HangarTowardLight).normalized);

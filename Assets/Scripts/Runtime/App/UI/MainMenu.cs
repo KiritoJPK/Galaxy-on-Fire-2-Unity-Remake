@@ -558,7 +558,9 @@ namespace GoF2Remake.UI
             bool offscreen = runtimePanel != null && runtimePanel.targetTexture != null;
             float w = Mathf.Max(1, lastScreen.x), h = Mathf.Max(1, lastScreen.y), aspect = w / h;
             float inches = Screen.dpi > 0f ? Mathf.Sqrt(w * w + h * h) / Screen.dpi : 20f;
-            bool phone = simulatePhone || Application.isMobilePlatform && inches < 7.5f;
+            // Remake: UnityEngine.Device, the Device Simulator's phone (UnityEngine.Application stays the Editor there, so
+            // the simulator showed the desktop layout); the same values in a build.
+            bool phone = simulatePhone || UnityEngine.Device.Application.isMobilePlatform && inches < 7.5f;
 
             if (runtimePanel != null)
             {

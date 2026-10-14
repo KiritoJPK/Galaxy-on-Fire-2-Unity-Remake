@@ -1,4 +1,3 @@
-%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -29,6 +28,24 @@ MonoBehaviour:
   m_MSAA: 1
   m_RenderScale: 0.8
   m_UpscalingFilter: 4
+  m_ScalingMode: 0
+  m_SelectedUpscalerName: 
+  m_UpscalerPriority:
+  - upscalerId: unity.stp
+    upscalerName: Spatial-Temporal Post-Processing
+  - upscalerId: nvidia.dlss4
+    upscalerName: Deep Learning Super Sampling 4
+  - upscalerId: amd.fsr4
+    upscalerName: FidelityFX Super Resolution 4
+  - upscalerId: amd.fsr3
+    upscalerName: FidelityFX Super Resolution 3
+  - upscalerId: amd.fsr2
+    upscalerName: FidelityFX Super Resolution 2
+  - upscalerId: amd.fsr1
+    upscalerName: FidelityFX Super Resolution 1.0
+  - upscalerId: unity.auto
+    upscalerName: Auto (Bilinear or Nearest-Neighbor)
+  m_UpscalerOptions: []
   m_FsrOverrideSharpness: 0
   m_FsrSharpness: 0.92
   m_EnableLODCrossFade: 1
@@ -134,7 +151,7 @@ MonoBehaviour:
   m_PrefilterReflectionProbeAtlas: 1
   m_PrefilterPointSamplingUpsampling: 1
   m_PrefilterExposure: 1
-  m_PrefilterVolumetricFog: 0
+  m_PrefilterVolumetricFog: 1
   m_PrefilterLightFalloffQuadratic: 1
   m_Light2DPrefilteringMode: 0
   m_Light2DKeptVariantCombos: []

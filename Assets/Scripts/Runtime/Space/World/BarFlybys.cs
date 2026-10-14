@@ -17,8 +17,11 @@
 //              from the rest pose (or just past the screen edges, for the camera's sway): the walls hide it, the windows
 //              show it, it is never inside the room. Silent.
 //   fog        the Vossk bar's linear fog ends at 250 m and its arches are 150-290 m out: there the flybys are on their own
-//              layer (FlybyLayer), drawn by an overlay camera stacked on the bar camera (its depth kept, so the walls still
-//              hide them) with the fog off while it renders; through the main camera they were a fog-green smear
+//              layer (FlybyLayer), left out of the bar camera and drawn by a pass of its own (FlybyPass) after its
+//              transparents, against its depth (the walls still hide them), with the fog factor at 1 while they draw;
+//              through the main camera they were a fog-green smear. Remake: it was an overlay camera stacked on the bar
+//              camera, and a camera stack turns URP's temporal upscalers off (DLSS, FSR 3, STP): the whole station dropped
+//              to the plain render scale from the first lounge visit until leaving it.
 // Created by StationLevel with the bar; runs only while the lounge is shown.
 
 using System;
@@ -26,6 +29,7 @@ using System.Collections.Generic;
 using GoF2Remake.Visuals;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.RenderGraphModule;
 using UnityEngine.Rendering.Universal;
 using Random = UnityEngine.Random;
 
@@ -47,8 +51,8 @@ namespace GoF2Remake.World
         Quaternion cameraRot;
         bool fogged, measured;
         Camera probe;                                     // the rest pose, for the rays and the projections
-        Camera clear;                                     // the fogged bar: the flybys without the fog
-        bool fogWas;
+        Camera barCam;                                    // the fogged bar: its camera, which FlybyPass draws the flybys for
+        FlybyPass flybyPass;
         bool[] open;                                      // see-through per pixel
         float[] limit;                                    // how far out a point there is surely outside the room (0 = unknown)
         readonly List<int> windows = new List<int>();     // the see-through pixels
@@ -82,7 +86,7 @@ namespace GoF2Remake.World
                 nextMs = -1f;
                 return;
             }
-            if (!measured) { Measure(); if (fogged) SetupClearCamera(); }
+            if (!measured) { Measure(); if (fogged) SetupFlybyPass(); }
             if (nextMs < 0f || level.IntroPlaying) nextMs = Mathf.Max(nextMs, Random.Range(3000f, 8000f));   // not from the intro's spot
             if (windows.Count > 0 && (nextMs -= Time.deltaTime * 1000f) <= 0f)
             {
@@ -118,53 +122,96 @@ namespace GoF2Remake.World
         {
             Clear();
             if (probe != null) Destroy(probe.gameObject);
-            RenderPipelineManager.beginCameraRendering -= BeforeCamera;
-            RenderPipelineManager.endCameraRendering -= AfterCamera;
-            if (clear != null) Destroy(clear.gameObject);
+            RenderPipelineManager.beginCameraRendering -= OnBeginCamera;
         }
 
-        // ---- the fogged bar's overlay camera -------------------------------------------------------------------------
+        // ---- the fogged bar's flyby pass -----------------------------------------------------------------------------
 
-        void SetupClearCamera()
+        void SetupFlybyPass()
         {
             var cam = Camera.main;
-            var data = cam != null ? cam.GetUniversalAdditionalCameraData() : null;
-            if (data == null || data.renderType != CameraRenderType.Base) return;
-            clear = new GameObject("BarFlybyCamera").AddComponent<Camera>();
-            clear.transform.SetParent(cam.transform, false);
-            clear.cullingMask = 1 << FlybyLayer;
-            var clearData = clear.GetUniversalAdditionalCameraData();
-            clearData.renderType = CameraRenderType.Overlay;
-            // The room's depth kept (the inspector's Clear Depth, read-only in code): the walls hide the ships.
-            typeof(UniversalAdditionalCameraData).GetField("m_ClearDepth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.SetValue(clearData, false);
-            clearData.renderShadows = false;
-            data.cameraStack.Add(clear);
-            cam.cullingMask &= ~(1 << FlybyLayer);
-            RenderPipelineManager.beginCameraRendering += BeforeCamera;
-            RenderPipelineManager.endCameraRendering += AfterCamera;
-        }
-
-        void LateUpdate()
-        {
-            if (clear == null) return;
-            var cam = clear.transform.parent != null ? clear.transform.parent.GetComponent<Camera>() : null;
             if (cam == null) return;
-            clear.fieldOfView = cam.fieldOfView;
-            clear.nearClipPlane = cam.nearClipPlane;
-            clear.farClipPlane = cam.farClipPlane;
+            barCam = cam;
+            flybyPass = new FlybyPass();
+            cam.cullingMask &= ~(1 << FlybyLayer);
+            RenderPipelineManager.beginCameraRendering += OnBeginCamera;
         }
 
-        void BeforeCamera(ScriptableRenderContext context, Camera cam)
+        /// <summary>The flybys culled on their own (the bar camera leaves their layer out) and the pass enqueued, only while
+        /// one is flying in the shown lounge.</summary>
+        void OnBeginCamera(ScriptableRenderContext context, Camera cam)
         {
-            if (cam != clear) return;
-            fogWas = RenderSettings.fog;
-            RenderSettings.fog = false;
+            if (cam != barCam || flybyPass == null || !isActiveAndEnabled || flying.Count == 0) return;
+            if (level == null || level.View != StationView.Lounge) return;
+            var data = cam.GetUniversalAdditionalCameraData();
+            if (data == null || data.scriptableRenderer == null || !cam.TryGetCullingParameters(out var p)) return;
+            p.cullingMask = 1u << FlybyLayer;
+            p.shadowDistance = 0f;
+            p.cullingOptions &= ~CullingOptions.ShadowCasters;
+            flybyPass.cull = context.Cull(ref p);
+            data.scriptableRenderer.EnqueuePass(flybyPass);
         }
 
-        void AfterCamera(ScriptableRenderContext context, Camera cam)
+        /// <summary>The flybys over the bar camera's image after its transparents, against its depth, without the fog.</summary>
+        sealed class FlybyPass : ScriptableRenderPass
         {
-            if (cam == clear) RenderSettings.fog = fogWas;
+            static readonly int FogParams = Shader.PropertyToID("unity_FogParams");
+            static readonly System.Collections.Generic.List<ShaderTagId> Tags = new System.Collections.Generic.List<ShaderTagId>
+            {
+                new ShaderTagId("UniversalForward"), new ShaderTagId("UniversalForwardOnly"), new ShaderTagId("SRPDefaultUnlit"),
+            };
+            public CullingResults cull;
+
+            public FlybyPass() => renderPassEvent = RenderPassEvent.AfterRenderingTransparents;
+
+            class PassData
+            {
+                public RendererListHandle opaque, transparent;
+                public Vector4 fog;
+            }
+
+            public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+            {
+                var resources = frameData.Get<UniversalResourceData>();
+                var rendering = frameData.Get<UniversalRenderingData>();
+                var camera = frameData.Get<UniversalCameraData>();
+                var lights = frameData.Get<UniversalLightData>();
+                var opaqueDraw = RenderingUtils.CreateDrawingSettings(Tags, rendering, camera, lights, SortingCriteria.CommonOpaque);
+                var transparentDraw = RenderingUtils.CreateDrawingSettings(Tags, rendering, camera, lights, SortingCriteria.CommonTransparent);
+                // Their own culling: the per-object light lists of the camera's culling don't apply to them.
+                opaqueDraw.perObjectData = PerObjectData.None;
+                transparentDraw.perObjectData = PerObjectData.None;
+                var opaque = renderGraph.CreateRendererList(new RendererListParams(cull, opaqueDraw, new FilteringSettings(RenderQueueRange.opaque)));
+                var transparent = renderGraph.CreateRendererList(new RendererListParams(cull, transparentDraw, new FilteringSettings(RenderQueueRange.transparent)));
+                using (var builder = renderGraph.AddRasterRenderPass<PassData>("GoF2 Bar Flybys", out var data))
+                {
+                    data.opaque = opaque;
+                    data.transparent = transparent;
+                    data.fog = SceneFogParams();
+                    builder.UseRendererList(opaque);
+                    builder.UseRendererList(transparent);
+                    builder.SetRenderAttachment(resources.activeColorTexture, 0);
+                    builder.SetRenderAttachmentDepth(resources.activeDepthTexture, AccessFlags.ReadWrite);
+                    builder.AllowGlobalStateModification(true);
+                    builder.SetRenderFunc((PassData d, RasterGraphContext ctx) =>
+                    {
+                        // Linear: d * z + w = 1, exp / exp2: exp2(0) = 1: no fog, whatever the mode.
+                        ctx.cmd.SetGlobalVector(FogParams, new Vector4(0f, 0f, 0f, 1f));
+                        ctx.cmd.DrawRendererList(d.opaque);
+                        ctx.cmd.DrawRendererList(d.transparent);
+                        ctx.cmd.SetGlobalVector(FogParams, d.fog);
+                    });
+                }
+            }
+
+            /// <summary>unity_FogParams as Unity sets it from RenderSettings (x = density / sqrt(ln 2), y = density / ln 2,
+            /// z = -1 / (end - start), w = end / (end - start)).</summary>
+            static Vector4 SceneFogParams()
+            {
+                float density = RenderSettings.fogDensity, start = RenderSettings.fogStartDistance, end = RenderSettings.fogEndDistance;
+                float range = Mathf.Max(end - start, 1e-4f);
+                return new Vector4(density * 1.2011224f, density * 1.442695f, -1f / range, end / range);
+            }
         }
 
         void Clear()
@@ -349,7 +396,7 @@ namespace GoF2Remake.World
                 if (go == null) continue;
                 go.transform.SetParent(root, true);
                 go.transform.position = a0 + offsets[n];
-                if (clear != null) foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = FlybyLayer;
+                if (barCam != null) foreach (var t in go.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = FlybyLayer;
                 var asm = go.GetComponent<AssembledObject>();
                 if (asm != null) asm.SetExhaust(true, HangarFlight.UsesPlayerEngine(asm));
                 flying.Add(new Flyby { go = go, a = a0 + offsets[n], b = b0 + offsets[n], c = c0 + offsets[n], duration = duration, roll = roll });

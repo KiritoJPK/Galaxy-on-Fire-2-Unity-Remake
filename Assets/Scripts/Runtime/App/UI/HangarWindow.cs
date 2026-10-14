@@ -98,6 +98,10 @@ namespace GoF2Remake.UI
             // Remake: a scrollbar along the list's right edge, outside the list (its DragScroll takes the list's own presses).
             listBar = new VisualElement();
             listBar.AddToClassList("list-bar");
+            // Remake: the bar is the touch area (wider on phones, layout-phone), the slim track and handle drawn inside it.
+            var listTrack = new VisualElement { pickingMode = PickingMode.Ignore };
+            listTrack.AddToClassList("list-bar-track");
+            listBar.Add(listTrack);
             listThumb = new VisualElement();
             listThumb.AddToClassList("list-bar-thumb");
             listBar.Add(listThumb);
@@ -414,11 +418,14 @@ namespace GoF2Remake.UI
                 return;
             }
             listBar.style.display = DisplayStyle.Flex;
-            listBar.style.left = lr.xMax - 14f;
+            // The slim track's centre 8 units in from the list's right edge, whatever the touch area's width.
+            float barW = listBar.resolvedStyle.width;
+            if (float.IsNaN(barW) || barW <= 0f) barW = 12f;
+            listBar.style.left = lr.xMax - 8f - barW * 0.5f;
             listBar.style.top = lr.y + 4f;
             listBar.style.height = lr.height - 8f;
             float track = lr.height - 8f;
-            float thumb = Mathf.Max(30f, track * view / content);
+            float thumb = Mathf.Max(barW > 20f ? 60f : 30f, track * view / content);   // a finger-sized handle on phones
             float t = Mathf.Clamp01(list.scrollOffset.y / Mathf.Max(1f, ListScrollMax));
             listThumb.style.height = thumb;
             listThumb.style.top = t * (track - thumb);

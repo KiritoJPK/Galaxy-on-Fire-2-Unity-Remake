@@ -200,7 +200,17 @@ namespace GoF2Remake.UI
             // screen's own detail (a big box at only ~1.5x read half of it from the half-size level, the item window's view
             // looked low-resolution).
             float panelH = Element.panel != null ? Element.panel.visualTree.layout.height : float.NaN;
-            if (!float.IsNaN(panelH) && panelH > 0f) ph = Mathf.Max(ph, 2f * h * Screen.height / panelH);
+            bool mobile = Application.isMobilePlatform;
+            if (mobile)
+            {
+                // Remake: on phones the box at its own size on screen times the game's render scale (the Mobile asset's 0.8
+                // or the option), no 2x supersampling: the screen-tall, twice-the-box texture was far more pixels than the
+                // game itself draws and the frame rate dropped in the big item window.
+                if (!float.IsNaN(panelH) && panelH > 0f) ph = h * Screen.height / panelH;
+                var urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline as UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset;
+                ph *= urp != null ? Mathf.Clamp(urp.renderScale, 0.5f, 1f) : 1f;
+            }
+            else if (!float.IsNaN(panelH) && panelH > 0f) ph = Mathf.Max(ph, 2f * h * Screen.height / panelH);
             pw = ph * w / h;
             float fit = Mathf.Min(1f, 4096f / Mathf.Max(pw, ph));   // the texture size limit
             int tw = Mathf.Max(16, Mathf.RoundToInt(pw * fit)), th = Mathf.Max(16, Mathf.RoundToInt(ph * fit));
@@ -209,7 +219,10 @@ namespace GoF2Remake.UI
             var old = rt;
             // Mipmapped: shown smaller than it is, the UI samples a matching level instead of skipping pixels (no shimmer);
             // the extra resolution is the anti-aliasing (MSAA can't be mipmapped).
-            rt = new RenderTexture(pwI, phI, 24, RenderTextureFormat.ARGB32) { useMipMap = true, autoGenerateMips = true, filterMode = FilterMode.Trilinear };
+            // On phones (shown at its own size) no mipmaps: no minification to smooth, and no mip chain to rebuild every frame.
+            rt = mobile
+                ? new RenderTexture(pwI, phI, 24, RenderTextureFormat.ARGB32) { antiAliasing = 2, filterMode = FilterMode.Bilinear }
+                : new RenderTexture(pwI, phI, 24, RenderTextureFormat.ARGB32) { useMipMap = true, autoGenerateMips = true, filterMode = FilterMode.Trilinear };
             cam.targetTexture = rt;
             cam.ResetAspect();
             image.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));

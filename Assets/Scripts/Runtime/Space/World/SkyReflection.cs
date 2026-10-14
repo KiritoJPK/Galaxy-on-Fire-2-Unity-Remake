@@ -40,6 +40,40 @@ namespace GoF2Remake.World
             RenderSettings.customReflectionTexture = cube;
         }
 
+        /// <summary>Remake: in a hangar its own race's cubemap (Resources/GoF2Reflections/cubemap_hangar_*, the original's
+        /// unused 0x2ef4..0x2ef7) instead of the system's: Terran, Vossk, Nivelian, Midorian (StationTables.HangarIndex
+        /// 0..3, also in the Supernova systems). The Valkyrie hangars (7, 8) have none yet: a black cubemap, no reflection
+        /// (the rim light stays). Call after SetSystem, which the lounge and space go back to.</summary>
+        public static void SetHangar(int hangarIndex)
+        {
+            Cubemap cube;
+            if (hangarIndex >= 0 && hangarIndex < HangarCubes.Length)
+            {
+                cube = Resources.Load<Cubemap>("GoF2Reflections/" + HangarCubes[hangarIndex]);
+                if (cube == null) return;   // not found: the system's stays
+            }
+            else if (hangarIndex == 7 || hangarIndex == 8) cube = Black;
+            else return;
+            Shader.SetGlobalTexture(CubeId, cube);
+            RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
+            RenderSettings.customReflectionTexture = cube;
+        }
+
+        static readonly string[] HangarCubes = { "cubemap_hangar_terran", "cubemap_hangar_vossk", "cubemap_hangar_nivelian", "cubemap_hangar_midorian" };
+
+        static Cubemap black;
+        static Cubemap Black
+        {
+            get
+            {
+                if (black != null) return black;
+                black = new Cubemap(1, TextureFormat.RGBA32, false) { name = "GoF2BlackReflection", hideFlags = HideFlags.DontSave };
+                for (int f = 0; f < 6; f++) black.SetPixel((CubemapFace)f, 0, 0, Color.black);
+                black.Apply(false, true);
+                return black;
+            }
+        }
+
         static readonly int ReflectionId = Shader.PropertyToID("_GoF2HullReflection"), RimId = Shader.PropertyToID("_GoF2HullRimColor"),
             CubeId = Shader.PropertyToID("_GoF2ReflectionCube");
 

@@ -134,6 +134,14 @@
 .list-bar {
     position: absolute;
     width: 12px;
+}
+
+.list-bar-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
     background-color: rgba(255, 255, 255, 0.06);
     border-radius: 6px;
 }
@@ -145,6 +153,17 @@
     min-height: 30px;
     background-color: rgba(62, 200, 255, 0.45);
     border-radius: 6px;
+}
+
+/* Remake: on phones a finger-wide touch area (the bar, transparent) around the same slim track and handle. */
+.layout-phone .list-bar {
+    width: 56px;
+}
+
+.layout-phone .list-bar-track,
+.layout-phone .list-bar-thumb {
+    left: 22px;
+    right: 22px;
 }
 
 .can-hover .list-bar-thumb:hover,
@@ -1093,6 +1112,13 @@
     flex-grow: 1;
     height: auto;
     margin-bottom: 0;
+}
+
+/* Remake: on phones the ship view keeps the desktop's 1300 x 800 box (the details box goes full screen there for its
+   text columns; the ship alone filled the whole screen and looked oversized). */
+.layout-phone .info-box--view {
+    width: 1300px;
+    height: 800px;
 }
 
 /* Remake: the hangar details' description title (the item window's), under a ship's view. */
