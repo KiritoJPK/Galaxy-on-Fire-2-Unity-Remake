@@ -227,6 +227,18 @@ namespace GoF2Remake.Visuals
             return false;
         }
 
+        /// <summary>Remake: 'part' stays at local x 'x' (its X keys dropped, its other channels still played): a part whose
+        /// keyed place is wrong in the remake (StationLevel: the Valkyrie hangar's v_hangar_battlestation_add_part32 / 33). False
+        /// when no track of this animation moves it (it is then only placed).</summary>
+        public bool PinLocalX(Transform part, float x)
+        {
+            if (part == null) return false;
+            part.localPosition = new Vector3(x, part.localPosition.y, part.localPosition.z);
+            foreach (var tk in tracks)
+                if (tk.tr == part) { tk.pos[0] = null; tk.basePos.x = x; return true; }
+            return false;
+        }
+
         /// <summary>Remake: 'part's keyed turn becomes a steady spin (Spin) at the same average rate: the keys' blend
         /// (a normalized lerp) isn't even, and a turn that isn't a whole step of the part's symmetry snaps back a little
         /// when the loop wraps (the Terran gate's light ring: 44 deg per loop on a 45 deg pattern). False when no track of

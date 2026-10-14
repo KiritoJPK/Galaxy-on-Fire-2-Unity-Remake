@@ -290,6 +290,23 @@ namespace GoF2Remake.World
         int VisitorSlotCount => customBar != null ? customBar.visitors.Count : StationTables.VisitorSlots[BarRace].Length;
         Vector3 SlotFeet(int slot) => customBar != null ? customBar.visitors[slot] : OrbitLayout.ToUnity(StationTables.VisitorSlots[BarRace][slot]);
 
+        /// <summary>Remake: the Valkyrie battlestation hangar's v_hangar_battlestation_add_part32 / 33 sat off their place (their
+        /// X keys are the absolute place while the import baked it into their vertices too): held at a local x placed by eye
+        /// in the remake (their other keys still play).</summary>
+        static void PlaceValkyrieHangarParts(GameObject room)
+        {
+            if (room == null) return;
+            foreach (var t in room.GetComponentsInChildren<Transform>(true))
+            {
+                float x;
+                if (t.name == "v_hangar_battlestation_add_part32") x = -57.2f;
+                else if (t.name == "v_hangar_battlestation_add_part33") x = -57.1f;
+                else continue;
+                var anim = t.GetComponentInParent<PartAnimation>(true);
+                if (anim == null || !anim.PinLocalX(t, x)) t.localPosition = new Vector3(x, t.localPosition.y, t.localPosition.z);
+            }
+        }
+
         void BuildHangar()
         {
             hangarRoot = new GameObject("Hangar").transform;
@@ -311,6 +328,7 @@ namespace GoF2Remake.World
                     // Remake: and the Nivelian hangar's flashing light (hangar_nivelian_add, PartAnimation.HasSignedExtra).
                     if (a.gameObject.name.Contains("_anim") || a.HasSignedExtra) a.applyMaterialChannels = true;
                 }
+            if (customHangar == null) PlaceValkyrieHangarParts(roomGo);
             CollectRoomHighlights(roomGo);
 
             shipPivot = PadPosition(shipIndex);   // clear of the pad (remake)

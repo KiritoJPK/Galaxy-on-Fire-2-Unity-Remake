@@ -6,6 +6,8 @@
 // of the hull (a station's lit panels, a gate's inner ring), and drawn unlit they hid the reflection the hull shows
 // around them. Same globals as GoF2/Hull: _GoF2HullReflection (strength), _GoF2HullRimColor; the cubemap is the
 // environment reflection (unity_SpecCube0: the system's cubemap, SkyReflection).
+// Remake: the GoF2/AlphaTest layers too (a wrecked station's torn panels, *_alpha_emissive): _ALPHATEST_ON clips as
+// Assets/Shaders/AlphaTest.shadergraph does (alpha of the same product below 0.5, both faces drawn: _Cull 0).
 
 Shader "GoF2/EmissiveCube"
 {
@@ -17,6 +19,7 @@ Shader "GoF2/EmissiveCube"
         _Glow ("Glow Intensity", Float) = 1
         _BumpMap ("Normal Map (the hull's)", 2D) = "bump" {}
         _MetallicGlossMap ("Specular in alpha (the hull's)", 2D) = "black" {}
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
     }
     SubShader
     {
@@ -34,14 +37,24 @@ Shader "GoF2/EmissiveCube"
             half4 _Color;
             half _UseVertexColor;
             half _Glow;
+            half _Cull;
         CBUFFER_END
+
+        // Remake: GoF2/AlphaTest's cut (Alpha Clip Threshold 0.5 on the alpha of texture * vertex colour * tint * glow).
+        void GoF2AlphaClip(float2 uv, half4 vertexColor)
+        {
+        #if defined(_ALPHATEST_ON)
+            half a = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv).a * lerp(1.0h, vertexColor.a, _UseVertexColor) * _Color.a * _Glow;
+            clip(a - 0.5h);
+        #endif
+        }
         ENDHLSL
 
         Pass
         {
             Name "Forward"
             Tags { "LightMode" = "UniversalForward" }
-            Cull Back
+            Cull [_Cull]
             ZWrite On
             ZTest LEqual
 
@@ -50,6 +63,7 @@ Shader "GoF2/EmissiveCube"
             #pragma fragment frag
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
+            #pragma multi_compile_local _ _ALPHATEST_ON   // multi_compile: only run-time materials use it (EmissiveReflection)
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             half _GoF2HullReflection;
@@ -109,19 +123,21 @@ Shader "GoF2/EmissiveCube"
                 o.normalWS = nrm.normalWS;
                 o.tangentWS = float4(nrm.tangentWS, v.tangentOS.w * GetOddNegativeScale());
                 o.uv = float4(TRANSFORM_TEX(v.uv, _MainTex), v.uv);
-                o.color = lerp(half4(1, 1, 1, 1), v.color, _UseVertexColor);
+                o.color = v.color;   // Remake: raw, the clip needs its alpha (the lerp by _UseVertexColor is in frag)
                 o.fogFactor = ComputeFogFactor(p.positionCS.z);
                 return o;
             }
 
-            half4 frag(Varyings i) : SV_Target
+            half4 frag(Varyings i, bool front : SV_IsFrontFace) : SV_Target
             {
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
-                half3 color = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv.xy).rgb * i.color.rgb * _Color.rgb * _Glow;
+                GoF2AlphaClip(i.uv.xy, i.color);
+                half3 color = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv.xy).rgb * lerp(half3(1, 1, 1), i.color.rgb, _UseVertexColor)
+                    * _Color.rgb * _Glow;
 
                 // GoF2/Hull's BumpRimCubeShader terms, from the hull's normal map and specular.
                 half spec = SAMPLE_TEXTURE2D(_MetallicGlossMap, sampler_MetallicGlossMap, i.uv.zw).a;
-                float3 n = normalize(i.normalWS);
+                float3 n = normalize(i.normalWS) * (front ? 1.0 : -1.0);   // Remake: back faces (the AlphaTest layers' Cull Off)
                 if (dot(i.tangentWS.xyz, i.tangentWS.xyz) > 1e-6)
                 {
                     half3 nTS = UnpackNormal(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, i.uv.zw));
@@ -150,23 +166,26 @@ Shader "GoF2/EmissiveCube"
             Tags { "LightMode" = "DepthOnly" }
             ZWrite On
             ColorMask R
-            Cull Back
+            Cull [_Cull]
 
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing
-            struct Attributes { float4 positionOS : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };
-            struct Varyings { float4 positionCS : SV_POSITION; UNITY_VERTEX_OUTPUT_STEREO };
+            #pragma multi_compile_local _ _ALPHATEST_ON
+            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; half4 color : COLOR; UNITY_VERTEX_OUTPUT_STEREO };
             Varyings vert(Attributes v)
             {
                 Varyings o = (Varyings)0;
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
+                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                o.color = v.color;
                 return o;
             }
-            half frag(Varyings i) : SV_Target { return i.positionCS.z; }
+            half frag(Varyings i) : SV_Target { GoF2AlphaClip(i.uv, i.color); return i.positionCS.z; }
             ENDHLSL
         }
 
@@ -175,14 +194,15 @@ Shader "GoF2/EmissiveCube"
             Name "DepthNormals"
             Tags { "LightMode" = "DepthNormals" }
             ZWrite On
-            Cull Back
+            Cull [_Cull]
 
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_instancing
-            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; UNITY_VERTEX_INPUT_INSTANCE_ID };
-            struct Varyings { float4 positionCS : SV_POSITION; float3 normalWS : TEXCOORD0; UNITY_VERTEX_OUTPUT_STEREO };
+            #pragma multi_compile_local _ _ALPHATEST_ON
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; half4 color : COLOR; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct Varyings { float4 positionCS : SV_POSITION; float3 normalWS : TEXCOORD0; float2 uv : TEXCOORD1; half4 color : COLOR; UNITY_VERTEX_OUTPUT_STEREO };
             Varyings vert(Attributes v)
             {
                 Varyings o = (Varyings)0;
@@ -190,9 +210,16 @@ Shader "GoF2/EmissiveCube"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(v.positionOS.xyz);
                 o.normalWS = TransformObjectToWorldNormal(v.normalOS);
+                o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+                o.color = v.color;
                 return o;
             }
-            half4 frag(Varyings i) : SV_Target { return half4(NormalizeNormalPerPixel(i.normalWS), 0); }
+            half4 frag(Varyings i, bool front : SV_IsFrontFace) : SV_Target
+            {
+                GoF2AlphaClip(i.uv, i.color);
+                float3 n = NormalizeNormalPerPixel(i.normalWS);
+                return half4(front ? n : -n, 0);
+            }
             ENDHLSL
         }
     }

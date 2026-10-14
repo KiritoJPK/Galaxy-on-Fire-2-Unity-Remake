@@ -5,6 +5,8 @@
 // flat next to the shining hull around them. The hull material in the same object that uses the same atlas lends its
 // normal map and specular (the emissive material has the diffuse only). Station interiors keep URP Lit (no GoF2/Hull),
 // so their emissive layers stay as they are; so do layers whose atlas no hull of the object uses.
+// Remake: GoF2/AlphaTest layers too (sn_station_*_wrecked_alpha_emissive: a wrecked station's torn panels had no
+// reflection): the copy clips like them (_ALPHATEST_ON) and draws both faces, in their render queue.
 
 using System.Collections.Generic;
 using UnityEngine;
@@ -22,7 +24,7 @@ namespace GoF2Remake.Visuals
 
         static readonly int MainTexId = Shader.PropertyToID("_MainTex"), BaseMapId = Shader.PropertyToID("_BaseMap"),
             BumpMapId = Shader.PropertyToID("_BumpMap"), GlossMapId = Shader.PropertyToID("_MetallicGlossMap"),
-            ColorId = Shader.PropertyToID("_Color"), GlowId = Shader.PropertyToID("_Glow"), VertexColorId = Shader.PropertyToID("_UseVertexColor");
+            ColorId = Shader.PropertyToID("_Color"), CullId = Shader.PropertyToID("_Cull"), GlowId = Shader.PropertyToID("_Glow"), VertexColorId = Shader.PropertyToID("_UseVertexColor");
 
         /// <summary>Gives the emissive layers under 'root' the hull's reflection (AssembledObject.Awake).</summary>
         public static void Apply(GameObject root)
@@ -40,7 +42,9 @@ namespace GoF2Remake.Visuals
                 for (int i = 0; i < mats.Length; i++)
                 {
                     var m = mats[i];
-                    if (m == null || m.shader == null || m.shader.name != "GoF2/Unlit" || !m.HasProperty(MainTexId)) continue;
+                    if (m == null || m.shader == null || !m.HasProperty(MainTexId)) continue;
+                    bool alphaTest = m.shader.name == "GoF2/AlphaTest";
+                    if (!alphaTest && m.shader.name != "GoF2/Unlit") continue;
                     var atlas = m.GetTexture(MainTexId);
                     if (atlas == null) continue;
                     hulls ??= Hulls(renderers);
@@ -56,6 +60,12 @@ namespace GoF2Remake.Visuals
                         if (m.HasProperty(VertexColorId)) shine.SetFloat(VertexColorId, m.GetFloat(VertexColorId));
                         shine.SetTexture(BumpMapId, hull.GetTexture(BumpMapId));
                         shine.SetTexture(GlossMapId, hull.GetTexture(GlossMapId));
+                        if (alphaTest)
+                        {
+                            shine.EnableKeyword("_ALPHATEST_ON");
+                            shine.SetFloat(CullId, (float)UnityEngine.Rendering.CullMode.Off);   // the graph's Render Face: Both
+                            shine.renderQueue = m.renderQueue;
+                        }
                         cache[(m, hull)] = shine;
                     }
                     mats[i] = shine;
