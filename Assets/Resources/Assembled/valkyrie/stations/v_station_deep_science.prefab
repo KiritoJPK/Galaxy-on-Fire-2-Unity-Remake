@@ -50,7 +50,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 16931
   origin: PlayerStation::PlayerStation, index==100 (Kothar / Beidan), campaign mission != 0x50 and dlc1Won()==0
   lodDistancesGameUnits:

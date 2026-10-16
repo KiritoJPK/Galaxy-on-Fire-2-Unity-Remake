@@ -45,7 +45,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 18881
   origin: PlayerTurret::PlayerTurret (0x182640) via Level::createStaticObject (0xcda54) branch 0x49c0+1 (Level::createSentryGuns creates 9; index/3 selects the type)
   lodDistancesGameUnits: []

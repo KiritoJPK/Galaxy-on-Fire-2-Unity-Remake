@@ -50,7 +50,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 17000
   origin: Globals::getShipGroup idx 0 (generic)
   lodDistancesGameUnits:
@@ -86,7 +86,7 @@ LODGroup:
     - renderer: {fileID: 6670775676721860346}
     - renderer: {fileID: 954991297984650555}
     - renderer: {fileID: 2802381478279553132}
-  - screenRelativeHeight: 0.0651098
+  - screenRelativeHeight: 0.06510979
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 954991297984650555}

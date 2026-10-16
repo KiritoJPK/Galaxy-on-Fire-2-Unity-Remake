@@ -290,21 +290,34 @@ namespace GoF2Remake.World
         int VisitorSlotCount => customBar != null ? customBar.visitors.Count : StationTables.VisitorSlots[BarRace].Length;
         Vector3 SlotFeet(int slot) => customBar != null ? customBar.visitors[slot] : OrbitLayout.ToUnity(StationTables.VisitorSlots[BarRace][slot]);
 
-        /// <summary>Remake: the Valkyrie battlestation hangar's v_hangar_battlestation_add_part32 / 33 sat off their place (their
-        /// X keys are the absolute place while the import baked it into their vertices too): held at a local x placed by eye
-        /// in the remake (their other keys still play).</summary>
-        static void PlaceValkyrieHangarParts(GameObject room)
+        /// <summary>Remake: animated room parts that sat off their place: their position keys are the absolute place while the
+        /// import baked it into their vertices too. Held at a local x / z set in the remake (null: still keyed; Keep: where the
+        /// prefab puts it, so a copy or a part moved in the prefab keeps its place; their other keys still play): the Valkyrie
+        /// battlestation hangar's part32 / 33 (placed by eye), the Vossk lounge's rising lights (bar_vossk_anim_add_part1-6:
+        /// only their climb left).</summary>
+        const float Keep = float.NaN;
+        static readonly (string name, float? x, float? z)[] PinnedRoomParts =
+        {
+            ("v_hangar_battlestation_add_part32", -57.2f, null),
+            ("v_hangar_battlestation_add_part33", -57.1f, null),
+            ("bar_vossk_anim_add_part1", Keep, Keep), ("bar_vossk_anim_add_part2", Keep, Keep), ("bar_vossk_anim_add_part3", Keep, Keep),
+            ("bar_vossk_anim_add_part4", Keep, Keep), ("bar_vossk_anim_add_part5", Keep, Keep), ("bar_vossk_anim_add_part6", Keep, Keep),
+        };
+
+        static void PinRoomParts(GameObject room)
         {
             if (room == null) return;
             foreach (var t in room.GetComponentsInChildren<Transform>(true))
-            {
-                float x;
-                if (t.name == "v_hangar_battlestation_add_part32") x = -57.2f;
-                else if (t.name == "v_hangar_battlestation_add_part33") x = -57.1f;
-                else continue;
-                var anim = t.GetComponentInParent<PartAnimation>(true);
-                if (anim == null || !anim.PinLocalX(t, x)) t.localPosition = new Vector3(x, t.localPosition.y, t.localPosition.z);
-            }
+                foreach (var (name, pinX, pinZ) in PinnedRoomParts)
+                {
+                    if (t.name != name) continue;
+                    float? x = pinX.HasValue && float.IsNaN(pinX.Value) ? t.localPosition.x : pinX;   // Keep: the prefab's own
+                    float? z = pinZ.HasValue && float.IsNaN(pinZ.Value) ? t.localPosition.z : pinZ;
+                    var anim = t.GetComponentInParent<PartAnimation>(true);
+                    if (anim == null || !anim.PinLocal(t, x, null, z))
+                        t.localPosition = new Vector3(x ?? t.localPosition.x, t.localPosition.y, z ?? t.localPosition.z);
+                    break;
+                }
         }
 
         void BuildHangar()
@@ -328,7 +341,7 @@ namespace GoF2Remake.World
                     // Remake: and the Nivelian hangar's flashing light (hangar_nivelian_add, PartAnimation.HasSignedExtra).
                     if (a.gameObject.name.Contains("_anim") || a.HasSignedExtra) a.applyMaterialChannels = true;
                 }
-            if (customHangar == null) PlaceValkyrieHangarParts(roomGo);
+            if (customHangar == null) PinRoomParts(roomGo);
             CollectRoomHighlights(roomGo);
 
             shipPivot = PadPosition(shipIndex);   // clear of the pad (remake)
@@ -462,6 +475,40 @@ namespace GoF2Remake.World
             return list[Random.Range(0, list.Length)];
         }
 
+        /// <summary>Remake: extra rising lights in the Vossk lounge, copies of bar_vossk_anim_add's lights (each its own copy of
+        /// the layer, so it plays its own part's keys) at a local place and turn set in the remake. Added in code, not in the
+        /// assembled prefab, which "GoF2 > Build > Assembled Prefabs" rebuilds from assemblies.json.</summary>
+        static readonly (string part, Vector3 position, float yaw)[] ExtraVosskLights =
+        {
+            ("bar_vossk_anim_add_part5", new Vector3(-37.4f, 0f, 9f), 90f),
+            ("bar_vossk_anim_add_part6", new Vector3(-37.4f, 0f, 9f), 90f),
+            ("bar_vossk_anim_add_part1", new Vector3(-36.5f, 0f, 9.4f), 90f),
+            ("bar_vossk_anim_add_part2", new Vector3(-36.5f, 0f, 9.4f), 90f),
+        };
+
+        static void AddVosskLights(GameObject room)
+        {
+            if (room == null) return;
+            Transform layer = null;
+            foreach (var t in room.GetComponentsInChildren<Transform>(true))
+                if (t.name == "bar_vossk_anim_add") { layer = t; break; }
+            if (layer == null) return;
+            foreach (var (part, position, yaw) in ExtraVosskLights)
+            {
+                var copy = Instantiate(layer.gameObject, layer.parent, false);
+                copy.name = $"{layer.name} (extra {part})";
+                Transform light = null;
+                foreach (Transform child in copy.transform)
+                    if (child.name == part) light = child;
+                    else child.gameObject.SetActive(false);   // only this light (part0 is the room's fixed piece)
+                if (light == null) { Destroy(copy); continue; }
+                light.localRotation = Quaternion.Euler(0f, yaw, 0f);
+                // Its x / z held (the climb, y, still keyed), as PinRoomParts does for the room's own lights.
+                var anim = copy.GetComponent<PartAnimation>();
+                if (anim == null || !anim.PinLocal(light, position.x, null, position.z)) light.localPosition = position;
+            }
+        }
+
         void BuildBar()
         {
             barRoot = new GameObject("Space Lounge").transform;
@@ -469,6 +516,7 @@ namespace GoF2Remake.World
             GameObject room;
             if (customBar != null) { room = Instantiate(customBar.template, Vector3.zero, Quaternion.identity, barRoot); room.name = "Room (" + customBar.def.key + ")"; }
             else room = Spawn(StationTables.BarRoom[BarRace], Vector3.zero, OrbitLayout.RotationToUnity(Vector3.zero), barRoot, "Room");
+            if (customBar == null) { PinRoomParts(room); AddVosskLights(room); }
             // As in the hangar: the loops (and the Midorian prop's replays) skip their one-off first key, where every part
             // sits at the origin for 33 / 50 ms; played, it flashed for a frame on every wrap (the Nivelian bar's 6.5 s
             // bar_nivelian_anim_add, the Midorian prop each time it replayed).

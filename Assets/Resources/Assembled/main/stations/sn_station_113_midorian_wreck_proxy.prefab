@@ -44,7 +44,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 16800
   origin: 'Level::createStaticObject param 0x5279: PlayerFixedObject(0x41a0) whose geometry is col_box (16800) and whose WRECK mesh is 0x5279; createCampaignMission case 0x66 (mission 102)'
   lodDistancesGameUnits: []

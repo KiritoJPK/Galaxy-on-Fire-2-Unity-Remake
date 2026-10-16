@@ -46,7 +46,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 21094
   origin: 'PlayerStation::PlayerStation @0x146cf0 default path: root=21000+index; race 0 (Terran) -> (race|2)==2 branch: children 0x5528+index (=21800+i, emissive) then 22000+index (lights)'
   lodDistancesGameUnits: []

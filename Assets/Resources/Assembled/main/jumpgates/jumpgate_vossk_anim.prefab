@@ -52,7 +52,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 15004
   origin: 'Level::createSpace (0xbbba0) jumpgate loop; mesh table DAT_00254360[race*4+0..3] (u16: main, emissive, anim_add, jump_anim_add); LOD table DAT_00251fa0[race*2+0..1] (u16); race = SolarSystem::getRace (0 in alien orbit)'
   lodDistancesGameUnits:

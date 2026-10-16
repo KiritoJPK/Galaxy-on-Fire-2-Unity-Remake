@@ -48,7 +48,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 16900
   origin: Level::createAsteroids (0xbcfd0); mesh table UNK_00251fb0[type] (int32) = {16900,16921,16904,18836}; LOD meshes = id+1,+2,+3
   lodDistancesGameUnits:
@@ -80,7 +80,7 @@ LODGroup:
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 5343446089626760079}
-  - screenRelativeHeight: 0.042276762
+  - screenRelativeHeight: 0.042276766
     fadeTransitionWidth: 0
     renderers:
     - renderer: {fileID: 2625501571888285123}

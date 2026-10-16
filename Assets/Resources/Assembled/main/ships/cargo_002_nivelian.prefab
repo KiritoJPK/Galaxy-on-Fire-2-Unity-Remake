@@ -49,7 +49,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 17060
   origin: Globals::getShipGroup idx 15, param_2(race) not 0/3 (Nivelian=2; Vossk=1 would also land here)
   lodDistancesGameUnits:

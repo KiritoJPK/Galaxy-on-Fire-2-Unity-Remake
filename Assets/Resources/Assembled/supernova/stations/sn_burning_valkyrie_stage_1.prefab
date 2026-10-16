@@ -45,7 +45,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 19095
   origin: 'LevelScript::LevelScript campaign mission 0x9d (157), not alien orbit, at the mission target station: AEGeometry(0x4a97) + child 0x4a98; hidden, positioned and shown later in LevelScript::update'
   lodDistancesGameUnits: []

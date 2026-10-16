@@ -35,7 +35,7 @@ Transform:
   - {fileID: 8429063670239928954}
   - {fileID: 2084936242867498156}
   - {fileID: 5343073249424553459}
-  - {fileID: 8130993210828767318}
+  - {fileID: 2299112296885428514}
   - {fileID: 4625603846764266525}
   - {fileID: 4244492353804399388}
   m_Father: {fileID: 0}
@@ -51,7 +51,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 21076
   origin: Level::createStaticObject param 0x495d (0x493e+0x1f branch), PlayerFixedObject kind 3; called from Level::createMission and createCampaignMission (e.g. case 0x5e)
   lodDistancesGameUnits: []
@@ -434,7 +434,7 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 8505941862260324561, guid: 8b5c07404dd327b4d9f962a83a216588, type: 3}
   m_PrefabInstance: {fileID: 3907540347700788428}
   m_PrefabAsset: {fileID: 0}
---- !u!1001 &4115120257431300990
+--- !u!1001 &6207325190484757002
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -491,10 +491,10 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: fb8b2ffd54ff78542921bbc4a048a64f, type: 3}
---- !u!4 &8130993210828767318 stripped
+--- !u!4 &2299112296885428514 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 5317853050364963624, guid: fb8b2ffd54ff78542921bbc4a048a64f, type: 3}
-  m_PrefabInstance: {fileID: 4115120257431300990}
+  m_PrefabInstance: {fileID: 6207325190484757002}
   m_PrefabAsset: {fileID: 0}
 --- !u!1001 &6813307817819750156
 PrefabInstance:

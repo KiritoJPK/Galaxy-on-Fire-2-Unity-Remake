@@ -227,15 +227,22 @@ namespace GoF2Remake.Visuals
             return false;
         }
 
-        /// <summary>Remake: 'part' stays at local x 'x' (its X keys dropped, its other channels still played): a part whose
-        /// keyed place is wrong in the remake (StationLevel: the Valkyrie hangar's v_hangar_battlestation_add_part32 / 33). False
-        /// when no track of this animation moves it (it is then only placed).</summary>
-        public bool PinLocalX(Transform part, float x)
+        /// <summary>Remake: 'part' stays at the given local coordinates (null: that axis still keyed): the keys that drive those
+        /// Unity axes (positionMap) are dropped, the other channels still play. For parts whose keyed place is wrong in the
+        /// remake (StationLevel.PinRoomParts). False when no track of this animation moves it (it is then only placed).</summary>
+        public bool PinLocal(Transform part, float? x, float? y, float? z)
         {
             if (part == null) return false;
-            part.localPosition = new Vector3(x, part.localPosition.y, part.localPosition.z);
+            var p = part.localPosition;
+            part.localPosition = new Vector3(x ?? p.x, y ?? p.y, z ?? p.z);
             foreach (var tk in tracks)
-                if (tk.tr == part) { tk.pos[0] = null; tk.basePos.x = x; return true; }
+            {
+                if (tk.tr != part) continue;
+                if (x.HasValue) { tk.pos[positionMap[0].source] = null; tk.basePos.x = x.Value; }
+                if (y.HasValue) { tk.pos[positionMap[1].source] = null; tk.basePos.y = y.Value; }
+                if (z.HasValue) { tk.pos[positionMap[2].source] = null; tk.basePos.z = z.Value; }
+                return true;
+            }
             return false;
         }
 

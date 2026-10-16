@@ -77,7 +77,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2186884dd228fc543b86769311f44436, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.AssembledObject
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.AssembledObject
   rootMeshId: 0
   origin: PlayerEgo::checkForTurret (0xa722c) (same code in CutScene::checkForTurret); turret item index -> meshes item 0xb4
   lodDistancesGameUnits: []
