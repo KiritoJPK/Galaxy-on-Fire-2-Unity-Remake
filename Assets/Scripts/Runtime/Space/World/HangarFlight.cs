@@ -12,6 +12,8 @@
 //              shrinking away beyond it. While another ship flies ('Hold') it waits at the top after the turn.
 //              Landings and take-offs are always vertical.
 // The whole flight is one sampled path (lane + corner + vertical); the speed runs along it, stopping for the turn.
+// Pillars (the lane's 'pillars', the Nivelian hangar's): the run from the forcefield to the pad goes round them, keeping
+// each pillar's radius + the ship's half width + PillarMargin clear (PillarRoute: a grid search, straightened).
 // Floor clearance: the bank and pitch are scaled down wherever they would dip the hull (its renderers' corners) below the
 // height its bottom has parked plus FloorMargin (the Vossk bays are flown into 5 m up: the H'Soc's banked wing went ~3 m
 // into the floor, the flare and the hover turn's bank a little).
@@ -25,6 +27,7 @@ using UnityEngine;
 
 namespace GoF2Remake.World
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public sealed class HangarFlight
     {
         // Outside the forcefield the ships grow from nothing to full size (arriving) or shrink away (departing) over
@@ -38,6 +41,7 @@ namespace GoF2Remake.World
         const float TurnSpeed = 65f, MinTurnSeconds = 0.6f, HoverBank = 0.2f;   // the hover turn: deg/s, s, rad
         const int LaneSamples = 800, CornerSamples = 24, VerticalSamples = 8, FilletSamples = 12;
         const float FloorMargin = 0.4f;   // m above the parked bottom that a banked / pitched hull keeps
+        public const float PillarMargin = 10f;   // m between a pillar and the ship's side (AvoidPillars)
         // The ships also shrink away (grow in) where they leave (enter) the hangar camera's view: over the last (first)
         // ViewFade metres in view (at most ViewFadeShare of the lane in view, so a ship is full size before it slows down
         // over the pad), so they scale down instead of crossing the screen edge at full size.
@@ -122,6 +126,7 @@ namespace GoF2Remake.World
                 controls.Add(At(outside, level));
                 controls.Add(At(lane.gate, level));
                 controls.Add(At(lane.gate - outward * InsideDistance, level));
+                if (lane.pillars != null) AvoidPillars(controls, over, lane.pillars, HalfWidth(hull, ship.localScale) + PillarMargin);
             }
 
             // The corner: the lane ends 'r' short of 'over' (along its last horizontal direction), a quadratic curve with
@@ -190,6 +195,131 @@ namespace GoF2Remake.World
         }
 
         static Vector3 At(Vector3 p, float y) => new Vector3(p.x, y, p.z);
+
+        /// <summary>The sampled path, start to end in the flight's own direction (tests).</summary>
+        public IReadOnlyList<Vector3> Path => point;
+
+        /// <summary>How far the hull reaches to either side of its pivot (metres, scaled): what passes a pillar beside the
+        /// run (the ship faces along it).</summary>
+        public static float HalfWidth(Vector3[] hull, Vector3 scale)
+        {
+            float r = 0f;
+            foreach (var h in hull) r = Mathf.Max(r, Mathf.Abs(h.x * scale.x));
+            return r;
+        }
+
+        /// <summary>From the last control point to 'end' round the pillars: a grid search (PillarRoute) keeping each pillar's
+        /// radius + 'clearance' (the ship's half width and PillarMargin) clear, then straightened.</summary>
+        static void AvoidPillars(List<Vector3> controls, Vector3 end, Vector3[] pillars, float clearance)
+        {
+            var a = controls[controls.Count - 1];
+            // The search takes a few ms (the hangar traffic plans a flight every 12-35 s): kept per pad, lane and width,
+            // the width rounded up to RouteWidthStep (pure: the same inputs give the same route).
+            clearance = Mathf.Ceil(clearance / RouteWidthStep) * RouteWidthStep;
+            var key = (pillars, Mathf.RoundToInt(a.x), Mathf.RoundToInt(a.z), Mathf.RoundToInt(end.x), Mathf.RoundToInt(end.z), Mathf.RoundToInt(clearance));
+            if (!routes.TryGetValue(key, out var via))
+            {
+                via = PillarRoute(new Vector2(a.x, a.z), new Vector2(end.x, end.z), pillars, clearance);
+                if (routes.Count > 256) routes.Clear();
+                routes[key] = via;
+            }
+            foreach (var v in via) controls.Add(new Vector3(v.x, a.y, v.y));
+        }
+
+        const float RouteWidthStep = 5f;
+        static readonly Dictionary<(Vector3[], int, int, int, int, int), List<Vector2>> routes = new Dictionary<(Vector3[], int, int, int, int, int), List<Vector2>>();
+
+        const float RouteCell = 4f, RouteBorder = 160f, RouteNearCost = 30f;
+        const float PillarSwing = 1.2f;   // the straightened route's legs keep this x the distance (the bends' fillets cut inside)
+
+        /// <summary>The points a run from 'a' to 'e' bends at to keep every pillar's radius + 'clearance' away: an A* search
+        /// over a RouteCell grid round them (cells nearer a pillar cost more, so it takes the middle of the gaps; the
+        /// pillars stand in rows), then string-pulled: each leg as long as it keeps PillarSwing x the distance. None when the
+        /// straight run is clear. (Pushing the run aside from one pillar at a time took it into the next one of the row.)</summary>
+        public static List<Vector2> PillarRoute(Vector2 a, Vector2 e, Vector3[] pillars, float clearance)
+        {
+            var via = new List<Vector2>();
+            if (Clear(a, e, pillars, clearance, 1f)) return via;
+            var min = Vector2.Min(a, e) - Vector2.one * RouteBorder;
+            var max = Vector2.Max(a, e) + Vector2.one * RouteBorder;
+            int w = Mathf.CeilToInt((max.x - min.x) / RouteCell) + 1, h = Mathf.CeilToInt((max.y - min.y) / RouteCell) + 1;
+            Vector2 Cell(int x, int y) => min + new Vector2(x, y) * RouteCell;
+            float Surface(Vector2 q)
+            {
+                float d = float.MaxValue;
+                foreach (var pl in pillars) d = Mathf.Min(d, (q - new Vector2(pl.x, pl.y)).magnitude - pl.z - clearance);
+                return d;
+            }
+            int Index(Vector2 q) => Mathf.Clamp(Mathf.RoundToInt((q.y - min.y) / RouteCell), 0, h - 1) * w
+                                    + Mathf.Clamp(Mathf.RoundToInt((q.x - min.x) / RouteCell), 0, w - 1);
+            int start = Index(a), goal = Index(e);
+            var cost = new float[w * h];
+            var from = new int[w * h];
+            var closed = new bool[w * h];
+            for (int k = 0; k < cost.Length; k++) { cost[k] = float.MaxValue; from[k] = -1; }
+            var open = new SortedSet<(float f, int i)>();
+            cost[start] = 0f;
+            open.Add(((e - a).magnitude, start));
+            while (open.Count > 0)
+            {
+                var top = open.Min;
+                open.Remove(top);
+                int cur = top.i;
+                if (cur == goal) break;
+                if (closed[cur]) continue;
+                closed[cur] = true;
+                int cx = cur % w, cy = cur / w;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = cx + dx, ny = cy + dy;
+                        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                        int n = ny * w + nx;
+                        if (closed[n]) continue;
+                        var q = Cell(nx, ny);
+                        float surface = Surface(q);
+                        if (surface < 0f && n != goal) continue;
+                        float step = RouteCell * (dx != 0 && dy != 0 ? 1.4142f : 1f);
+                        float c = cost[cur] + step * (1f + RouteNearCost / Mathf.Max(surface + 10f, 1f));
+                        if (c >= cost[n]) continue;
+                        cost[n] = c;
+                        from[n] = cur;
+                        open.Add((c + (e - q).magnitude, n));
+                    }
+            }
+            if (from[goal] < 0) return via;   // no way round: the straight run
+            var cells = new List<Vector2>();
+            for (int c = goal; c >= 0; c = from[c]) cells.Add(Cell(c % w, c / w));
+            cells.Reverse();
+            cells[0] = a;
+            cells[cells.Count - 1] = e;
+            // string pulling: from each point on to the farthest one a straight leg reaches with the margin kept
+            int at = 0;
+            while (at < cells.Count - 1)
+            {
+                int next = at + 1;
+                for (int k = cells.Count - 1; k > at + 1; k--)
+                    if (Clear(cells[at], cells[k], pillars, clearance, PillarSwing)) { next = k; break; }
+                if (next < cells.Count - 1) via.Add(cells[next]);
+                at = next;
+            }
+            return via;
+        }
+
+        static bool Clear(Vector2 a, Vector2 b, Vector3[] pillars, float clearance, float k)
+        {
+            foreach (var q in pillars)
+                if (SegmentDistance(a, b, new Vector2(q.x, q.y)) < (q.z + clearance) * k) return false;
+            return true;
+        }
+
+        static float SegmentDistance(Vector2 a, Vector2 b, Vector2 p)
+        {
+            var ab = b - a;
+            float t = ab.sqrMagnitude > 1e-6f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+            return (a + ab * t - p).magnitude;
+        }
 
         /// <summary>Where the sampled path crosses the edge of 'cam''s view: a departure's first point out of it after
         /// having been in it (after the climb), an arrival's first point of the stretch that stays in it; -1 when it

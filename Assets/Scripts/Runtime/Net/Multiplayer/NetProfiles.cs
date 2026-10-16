@@ -199,6 +199,52 @@ namespace GoF2Remake.Multiplayer
             SaveIndex();
         }
 
+        // Credits the server moves itself (the faction bank, tolls, trades) are checked against the profile's saved game,
+        // not the player's own: a game is client-authoritative, and one that only claimed to pay (an edited credit count)
+        // fed a faction bank billions while its own uploads were turned away. The saved game is the last accepted upload,
+        // so the server moves the credits in it too: closing the game before the next upload no longer gets them back.
+
+        /// <summary>The credits a profile may spend through the server: its saved game's. The hosting player's own game
+        /// (never doubted) any amount.</summary>
+        internal static long SpendableCredits(ulong client, string id)
+        {
+            if (IsHostClient(client)) return long.MaxValue;
+            return ReadSave(id)?.credits ?? 0;
+        }
+
+        /// <summary>Credits the server moved out of (negative) or into a profile: its saved game and its recorded worth.
+        /// False, nothing changed, when the saved game hasn't that many. The hosting player's own game only moves the worth
+        /// (its profile is written when it leaves).</summary>
+        internal static bool MoveCredits(ulong client, string id, long delta)
+        {
+            if (id == null) return false;
+            if (IsHostClient(client)) { AdjustWorth(id, delta); return true; }
+            var save = ReadSave(id);
+            if (save == null)
+            {
+                if (delta < 0) return false;
+                AdjustWorth(id, delta);   // no saved game yet: its first upload carries the credits
+                return true;
+            }
+            long now = save.credits + delta;
+            if (now < 0) return false;
+            save.credits = (int)Math.Min(int.MaxValue, now);
+            if (!Write(ProfilePath(id), JsonUtility.ToJson(save, false))) return false;
+            AdjustWorth(id, delta);
+            return true;
+        }
+
+        static SaveData ReadSave(string id)
+        {
+            if (id == null || folder == null) return null;
+            try
+            {
+                string path = ProfilePath(id);
+                return File.Exists(path) ? JsonUtility.FromJson<SaveData>(File.ReadAllText(path)) : null;
+            }
+            catch (Exception e) { Debug.LogError($"NetProfiles: profile {id} unreadable: {e.Message}"); return null; }
+        }
+
         /// <summary>A profile's worth at its last accepted upload (credits + ships + items), 0 = unknown.</summary>
         internal static long WorthOf(string id) => id == null ? 0 : index?.accounts.Find(x => x.id == id)?.worth ?? 0;
 

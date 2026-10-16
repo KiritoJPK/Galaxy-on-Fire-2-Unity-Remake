@@ -877,11 +877,12 @@
     display: flex;
 }
 
+/* Opaque like the station's menu: the panel colour's 93 % let the HUD's markers read through it. */
 .pause-panel {
     width: 620px;
     max-height: 86%;
     padding: 18px 20px 20px 20px;
-    background-color: var(--gof-panel);
+    background-color: rgb(4, 10, 18);
     border-width: 1px;
     border-color: var(--gof-line);
     border-left-width: 3px;
@@ -976,15 +977,24 @@
     margin-bottom: 10px;
 }
 
-/* A small high-density screen (UiScale, the root's ui-large: a phone, the Retroid Pocket G2): the pause menu and its
-   Debug page fill the screen with bigger text and rows. */
+/* A small high-density screen (UiScale, the root's ui-large: a phone, the Retroid Pocket G2): bigger text and rows, the
+   sizes of the station's menu (StationMenu.uss .ui-large .system-menu): a full-width list of short entries looked
+   stretched, the Debug page covered the whole screen. */
 .ui-large .pause-panel {
-    width: 80%;
+    width: 94%;
+    max-width: 600px;
     max-height: 94%;
 }
 
 .ui-large .pause-panel--wide {
-    width: 96%;
+    max-width: 1400px;
+    height: 80%;
+    max-height: 80%;
+}
+
+.ui-large .pause-panel--wide .pause-body,
+.ui-large .pause-panel--wide .debug-scroll {
+    flex-grow: 1;   /* Back at the bottom, as on the station's Debug page */
 }
 
 .ui-large .pause-option,

@@ -1,0 +1,86 @@
+// HangarPillarTests.cs
+// Feature: CLAUDE.md "Station scene" > Hangar flights (remake): the Nivelian hangar's lanes steer round its six roof pillars
+// (StationTables.HangarLane.pillars, HangarFlight.AvoidPillars); a player's report 2026-10-16: ships flew through the pillar
+// in front of the right pad. Expected values: the pillars measured on hangar_nivelian's mesh (StationTables), the pads
+// (the turntable at the origin, ParkedSlots[2] through OrbitLayout.ToUnity); along every arrival and departure the ship's
+// outline from above (its width x length, facing along the path) keeps clear of each pillar's radius.
+
+using System.Linq;
+using GoF2Remake.World;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace GoF2Remake.Tests
+{
+    public class HangarPillarTests
+    {
+        GameObject ship;
+        Vector3 size;   // the ship's own scale (an arrival grows it from nothing outside the forcefield)
+
+        [TearDown]
+        public void TearDown() { if (ship != null) Object.DestroyImmediate(ship); }
+
+        static readonly Vector3[] NivelianPads = { new Vector3(0f, 8f, 0f), new Vector3(204.8f, 8f, 0f), new Vector3(204.8f, 8f, -204.8f) };
+
+        /// <summary>The least gap (metres) between the ship's outline from above (a 'width' x 'length' rectangle round the
+        /// pivot, facing along the path) and any pillar's surface over the flight's level part (the vertical part is over
+        /// the pad).</summary>
+        static float LeastClearance(HangarFlight f, Vector3[] pillars, float width, float length)
+        {
+            float least = float.MaxValue;
+            var path = f.Path;
+            for (int k = 1; k < path.Count; k++)
+            {
+                var fwd = new Vector2(path[k].x - path[k - 1].x, path[k].z - path[k - 1].z);
+                if (fwd.sqrMagnitude < 1e-4f) continue;
+                fwd.Normalize();
+                var right = new Vector2(fwd.y, -fwd.x);
+                foreach (var q in pillars)
+                {
+                    var rel = new Vector2(q.x - path[k].x, q.y - path[k].z);
+                    float dx = Mathf.Max(0f, Mathf.Abs(Vector2.Dot(rel, right)) - width / 2f);
+                    float dz = Mathf.Max(0f, Mathf.Abs(Vector2.Dot(rel, fwd)) - length / 2f);
+                    least = Mathf.Min(least, new Vector2(dx, dz).magnitude - q.z);
+                }
+            }
+            return least;
+        }
+
+        HangarFlight Fly(StationTables.HangarLane lane, Vector3 pad, bool arriving)
+        {
+            ship.transform.position = pad;
+            ship.transform.rotation = Quaternion.identity;
+            ship.transform.localScale = size;
+            return arriving ? HangarFlight.Arrival(ship.transform, lane, pad, null, null, 0f) : HangarFlight.Departure(ship.transform, lane, null, 0f);
+        }
+
+        [TestCase(20f, 30f)]   // a fighter
+        [TestCase(45f, 75f)]   // a big hull
+        [TestCase(90f, 125f)]  // the biggest that dock (the Rhino, a Most Wanted ship)
+        public void NivelianFlightsClearThePillars(float width, float length)
+        {
+            var lane = StationTables.HangarLanes[2];
+            Assert.IsNotNull(lane.pillars);
+            Assert.AreEqual(6, lane.pillars.Length);
+            ship = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            size = new Vector3(width, 8f, length);
+            foreach (var pad in NivelianPads)
+                foreach (bool arriving in new[] { true, false })
+                {
+                    float clear = LeastClearance(Fly(lane, pad, arriving), lane.pillars, width, length);
+                    Assert.GreaterOrEqual(clear, 1f, $"pad {pad}, {(arriving ? "arriving" : "departing")}: {clear:F1} m");
+                }
+        }
+
+        [Test]
+        public void WithoutTheAvoidanceTheRightPadsLaneHitsAPillar()
+        {
+            // the report's case: the straight run to the right pad passed ~7 m from the pillar at (303, -307)
+            var lane = StationTables.HangarLanes[2];
+            var bare = new StationTables.HangarLane { gate = lane.gate, outward = lane.outward, gateSpan = lane.gateSpan, cruise = lane.cruise };
+            ship = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            size = new Vector3(20f, 8f, 30f);
+            Assert.Less(LeastClearance(Fly(bare, NivelianPads[1], true), lane.pillars, 20f, 30f), 0f);
+        }
+    }
+}

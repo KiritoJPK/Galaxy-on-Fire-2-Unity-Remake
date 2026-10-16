@@ -200,6 +200,18 @@ namespace GoF2Remake.Multiplayer
 
         static void RefreshStationCredits() => UI.UiHooks.RefreshStationCredits?.Invoke();
 
+        /// <summary>The server didn't take the toll paid at 'station' (the profile's saved game hasn't the credits): they come
+        /// back, and the holder's fighters treat this pilot as unpaid again.</summary>
+        internal static void OnTollRefused(int station, int amount)
+        {
+            if (amount > 0) Session.Credits += amount;
+            if (TollStation == station) TollStation = -1;
+            NetChat.Notice(string.Format(Localization.Extra("mpTollRefused",
+                "The toll wasn't taken: your saved game holds fewer than {0:N0} credits. Dock to save it; until then the station's fighters treat you as unpaid."), amount));
+            NetProfileClient.Upload();
+            RefreshStationCredits();
+        }
+
         /// <summary>Credits from the faction bank.</summary>
         internal static void OnGrant(int amount)
         {

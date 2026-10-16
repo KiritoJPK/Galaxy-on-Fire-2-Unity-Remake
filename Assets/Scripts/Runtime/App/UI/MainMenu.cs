@@ -1718,12 +1718,15 @@ namespace GoF2Remake.UI
             var left = new VisualElement();
             left.AddToClassList("debug-column");
             left.AddToClassList("debug-column--missions");
-            // The cheats scroll on a short screen (the panel is sized to the screen, MainMenu.uss .debug-panel).
-            var right = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
-            right.AddManipulator(new DragScroll(right));
-            right.RegisterCallback<FocusInEvent>(e => { if (e.target is VisualElement v && v != right) right.ScrollTo(v); });   // follows the D-pad
+            // The cheats scroll on a short screen (the panel is sized to the screen, MainMenu.uss .debug-panel); the heading
+            // and the note under them stay put (the note scrolled with them and showed cut off mid-line).
+            var right = new VisualElement();
             right.AddToClassList("debug-column");
             right.AddToClassList("debug-column--cheats");
+            var cheatList = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
+            cheatList.AddManipulator(new DragScroll(cheatList));
+            cheatList.RegisterCallback<FocusInEvent>(e => { if (e.target is VisualElement v && v != cheatList) cheatList.ScrollTo(v); });   // follows the D-pad
+            cheatList.AddToClassList("debug-cheat-list");
             columns.Add(left);
             columns.Add(right);
             panel.Add(columns);
@@ -1743,6 +1746,7 @@ namespace GoF2Remake.UI
             heading.AddToClassList("debug-heading");
             heading.AddToClassList("gof-semibold");
             right.Add(heading);
+            right.Add(cheatList);
             foreach (var def in CheatsCatalog.Toggles())
             {
                 var c = new OptionControl(def);
@@ -1750,7 +1754,7 @@ namespace GoF2Remake.UI
                 c.Root.AddToClassList("debug-option");
                 HookFocusSound(c.Field);
                 c.Changed += () => Play(buttonRelease);
-                right.Add(c.Root);
+                cheatList.Add(c.Root);
                 debugControls.Add(c);
             }
             var note = new Label { name = "debugNote", pickingMode = PickingMode.Ignore };

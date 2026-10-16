@@ -165,8 +165,12 @@
 
 /* ---- panels ------------------------------------------------------------------------- */
 
+/* The host takes the width the menu column leaves (its own width is set): sized by its content, a wide panel (the Debug
+   panel's wrapping note counts its whole sentence on one line) squeezed the column and pushed the panel under the logo. */
 .panel-host {
     flex-grow: 1;
+    flex-basis: 0;
+    min-width: 0;
     justify-content: center;
     align-items: flex-start;
     padding-left: 2%;
@@ -216,27 +220,40 @@
    overflowed short screens and wasted tall ones). */
 .debug-panel {
     max-width: 1500px;
-    height: 88%;
-    max-height: 88%;
+    height: 82%;
+    max-height: 82%;
+    margin-bottom: 70px;   /* clear of the footer's key hints at the bottom right (they ran over its edge) */
 }
 
-.debug-columns {
+/* The columns stretch to the panel's height, so the lists fill it. GoF2Common.uss's .debug-columns (the in-game Debug
+   pages' cards) sets align-items: flex-start, which shrank them to their first row once it won over this sheet (Unity
+   7000.0.0a10): the panel-scoped selector outranks it whichever sheet comes first. */
+.debug-panel .debug-columns {
     flex-direction: row;
     flex-grow: 1;
     flex-shrink: 1;
     min-height: 0;
+    align-items: stretch;
 }
 
 .debug-column--missions {
-    width: 60%;
+    width: 55%;
     flex-shrink: 0;
     margin-right: 3%;
 }
 
+/* Wide enough for the longest cheat ("No secondary weapon cooldown" ran into its checkbox at 37 %). */
 .debug-column--cheats {
-    width: 37%;
+    width: 42%;
     flex-grow: 0;
     flex-shrink: 0;
+}
+
+/* The toggles scroll between the heading and the note. */
+.debug-cheat-list {
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
 }
 
 .debug-column--cheats .option-item {

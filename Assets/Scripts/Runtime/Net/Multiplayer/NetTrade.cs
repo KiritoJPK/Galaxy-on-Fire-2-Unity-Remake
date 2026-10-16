@@ -12,7 +12,9 @@
 //     back (a payment arriving after that is sent back too);
 //   either side cancels, takes off, leaves the station or the session: the trade ends (before the payment).
 // A profile's recorded worth moves with what it gave and got (NetProfiles.AdjustWorth), so the upload check neither turns
-// the next upload away nor lets a trade nobody paid for through. Story items (Session.Unsaleable) are refused by the paying
+// the next upload away nor lets a trade nobody paid for through; the credits move in its saved game too
+// (NetProfiles.MoveCredits): each side's offer out as its payment comes in (Debit), back if the trade fails, the other
+// side's in when it completes. Story items (Session.Unsaleable) are refused by the paying
 // game; the Courier's secure containers and the passenger cabins by the server too.
 
 using System.Collections.Generic;
@@ -73,6 +75,10 @@ namespace GoF2Remake.Multiplayer
             public ulong a, b;
             public Offer offerA = new Offer(), offerB = new Offer();
             public bool acceptA, acceptB, answeredA, answeredB, paidA, paidB;
+            /// <summary>The sides' profiles (taken when the payments start: a side leaving takes its login with it) and
+            /// whether their offered credits are out of the saved game (Debit).</summary>
+            public string accA, accB;
+            public bool debitedA, debitedB;
             public Phase phase;
             public float payStart, failedAt;
 
@@ -218,8 +224,18 @@ namespace GoF2Remake.Multiplayer
 
         static void StartPaying(Trade t)
         {
+            // Credits are checked against each profile's saved game (NetProfiles.MoveCredits): a game claiming credits it
+            // never had can't hand them to another player.
+            string who = NetProfiles.Enabled ? Unsaved(t.a, t.offerA) ?? Unsaved(t.b, t.offerB) : null;
+            if (who != null)
+            {
+                End(t, string.Format(X("mpTradeUnsaved", "The trade fell through: {0}'s saved game doesn't hold the credits offered (dock again to save it)."), who));
+                return;
+            }
             t.phase = Phase.Paying;
             t.payStart = Time.unscaledTime;
+            t.accA = NetProfiles.AccountOf(t.a);
+            t.accB = NetProfiles.AccountOf(t.b);
             SendState(t);
             NetState.Instance?.TradePay(t.a, t.id, t.offerA.Pack());
             NetState.Instance?.TradePay(t.b, t.id, t.offerB.Pack());
@@ -247,7 +263,29 @@ namespace GoF2Remake.Multiplayer
                 Fail(t, string.Format(X("mpTradeNotPaid", "The trade fell through: {0} no longer has everything offered."), me != null ? me.DisplayName : "?"));
                 return;
             }
+            if (!Debit(t, client))
+            {
+                // Spent since StartPaying's check: the game paid, so Fail gives it back.
+                var me = NetSquad.Find(client);
+                Fail(t, string.Format(X("mpTradeUnsaved", "The trade fell through: {0}'s saved game doesn't hold the credits offered (dock again to save it)."),
+                                      me != null ? me.DisplayName : "?"));
+                return;
+            }
             if (t.answeredA && t.answeredB) Complete(t);
+        }
+
+        /// <summary>A side's offered credits out of its profile's saved game, as its payment comes in. Then, not at Complete:
+        /// the answer and the game's uploads travel in order (the reliable pipeline), so an upload sent after paying (the
+        /// periodic one, while the other side still pays) already has them out, and taking them at Complete took them twice.
+        /// False when the saved game hasn't them.</summary>
+        static bool Debit(Trade t, ulong client)
+        {
+            string account = client == t.a ? t.accA : t.accB;
+            int credits = t.OfferOf(client).credits;
+            if (account == null || credits <= 0) return true;
+            if (!NetProfiles.MoveCredits(client, account, -credits)) return false;
+            if (client == t.a) t.debitedA = true; else t.debitedB = true;
+            return true;
         }
 
         static void Complete(Trade t)
@@ -258,11 +296,19 @@ namespace GoF2Remake.Multiplayer
             var pb = NetSquad.Find(t.b);
             NetState.Instance?.TradeDeliver(t.a, t.id, t.offerB.Pack(), false, pb != null ? pb.DisplayName : "");
             NetState.Instance?.TradeDeliver(t.b, t.id, t.offerA.Pack(), false, pa != null ? pa.DisplayName : "");
-            // The profiles' recorded worth: what each got minus what each gave.
-            long va = Value(t.offerA), vb = Value(t.offerB);
-            string accA = NetProfiles.AccountOf(t.a), accB = NetProfiles.AccountOf(t.b);
-            if (accA != null) NetProfiles.AdjustWorth(accA, vb - va);
-            if (accB != null) NetProfiles.AdjustWorth(accB, va - vb);
+            // The profiles: the goods' value in their recorded worth, the other side's credits into their saved games (their
+            // own went out as they paid, Debit).
+            long ga = Value(t.offerA) - t.offerA.credits, gb = Value(t.offerB) - t.offerB.credits;
+            if (t.accA != null)
+            {
+                NetProfiles.AdjustWorth(t.accA, gb - ga);
+                MoveCredits(t.a, t.accA, t.offerB.credits);
+            }
+            if (t.accB != null)
+            {
+                NetProfiles.AdjustWorth(t.accB, ga - gb);
+                MoveCredits(t.b, t.accB, t.offerA.credits);
+            }
             Debug.Log($"Server: trade {t.id} between {(pa != null ? pa.DisplayName : t.a.ToString())} and {(pb != null ? pb.DisplayName : t.b.ToString())} done "
                       + $"({t.offerA.credits:N0} cr + {t.offerA.items.Count} item(s) for {t.offerB.credits:N0} cr + {t.offerB.items.Count} item(s)).");
             NetState.Instance?.TradeEnded(t.a, t.id, "");
@@ -284,6 +330,14 @@ namespace GoF2Remake.Multiplayer
 
         static void Refund(Trade t, ulong client)
         {
+            // Credits Debit took out of the saved game go back into it, also for a side that has left: its game's last
+            // upload (leaving, after paying) or the saved game before the payment, either way it is owed them.
+            bool debited = client == t.a ? t.debitedA : t.debitedB;
+            if (debited)
+            {
+                if (client == t.a) t.debitedA = false; else t.debitedB = false;
+                MoveCredits(client, client == t.a ? t.accA : t.accB, t.OfferOf(client).credits);
+            }
             if (NetSquad.Find(client) == null) return;   // gone: their game never kept the payment (the profile has the last upload)
             NetState.Instance?.TradeDeliver(client, t.id, t.OfferOf(client).Pack(), true, "");
         }
@@ -294,6 +348,25 @@ namespace GoF2Remake.Multiplayer
             trades.Remove(t.id);
             NetState.Instance?.TradeEnded(t.a, t.id, reason);
             NetState.Instance?.TradeEnded(t.b, t.id, reason);
+        }
+
+        /// <summary>The pilot's name when 'client''s saved game holds fewer credits than its offer, else null.</summary>
+        static string Unsaved(ulong client, Offer offer)
+        {
+            if (offer.credits <= 0) return null;
+            string account = NetProfiles.AccountOf(client);
+            if (account == null || NetProfiles.SpendableCredits(client, account) >= offer.credits) return null;
+            var p = NetSquad.Find(client);
+            return p != null ? p.DisplayName : "?";
+        }
+
+        /// <summary>Credits a trade gives 'client' (received, or its own back) in its saved game; the worth alone if the saved
+        /// game can't take them (unwritable: its next upload settles it).</summary>
+        static void MoveCredits(ulong client, string account, long delta)
+        {
+            if (delta == 0 || NetProfiles.MoveCredits(client, account, delta)) return;
+            Debug.LogWarning($"Server: trade credits {delta:N0} didn't fit profile {account}'s saved game: only its worth moved.");
+            NetProfiles.AdjustWorth(account, delta);
         }
 
         /// <summary>What an offer is worth to the profiles' upload check (NetProfiles.Worth: items at their lowest price).</summary>

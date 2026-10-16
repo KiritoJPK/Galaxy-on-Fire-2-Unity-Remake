@@ -235,7 +235,9 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     align-items: flex-end;
-    max-width: 1000px;
+    /* A set width, the hints right-aligned in it: sized to its hints the row came out a few pixels short of them and
+       wrapped the last one (ESC BACK) onto the ticker. It still wraps the hangar window's eight. */
+    width: 1000px;
 }
 
 .input-keyboard .station-hints,
@@ -311,12 +313,13 @@
 
 /* ---- system menu (Menu 172: Save game, Back to Main Menu) ------------------------------ */
 
+/* Opaque like .station-dialog: the panel colour's 93 % let the station's own buttons read through it (#31's cause). */
 .system-menu {
     width: 90%;
     max-width: 820px;
     max-height: 92%;
     padding: 32px 40px;
-    background-color: var(--gof-panel);
+    background-color: rgb(4, 10, 18);
     border-width: 1px;
     border-color: var(--gof-line);
     border-top-width: 3px;
@@ -452,15 +455,25 @@
     min-height: 140px;
 }
 
-/* A small high-density screen (UiScale, the root's ui-large): the menu fills the screen, bigger rows. */
+/* A small high-density screen (UiScale, the root's ui-large): bigger rows in a narrow menu (a full-width list of eight
+   short entries looked stretched), the save slots wider. */
 .ui-large .system-menu {
     width: 94%;
-    max-width: none;
+    max-width: 600px;
     max-height: 96%;
 }
 
+/* The save slots need the room: at 600 a slot's credits and playing time wrapped. */
+.ui-large .system-menu--slots {
+    max-width: 860px;
+}
+
+/* The Debug page as on a big screen (seven Give items icons to a row), not the whole screen: clear of the header and
+   the ticker. */
 .ui-large .system-menu--wide {
-    height: 96%;
+    max-width: 1400px;
+    height: 80%;
+    max-height: 80%;
 }
 
 .ui-large .system-option,

@@ -549,6 +549,9 @@ namespace GoF2Remake.Multiplayer
             if (faction == null) return Localization.Extra("mpFactionNone", "You aren't in a faction.");
             if (!TryAmount(arg, out int amount)) return "/faction deposit N";
             if (!NetProfiles.Controls(client)) return Localization.Extra("mpFactionController", "Do that on the device that controls your profile.");
+            long saved = NetProfiles.SpendableCredits(client, me);
+            if (amount > saved)
+                return string.Format(Localization.Extra("mpFactionSavedShort", "Your saved game has {0:N0} credits: dock to save it, then deposit."), saved);
             int token = nextCharge++;
             charges[token] = (me, faction.id, amount, Time.realtimeSinceStartup + ChargeSeconds);
             NetState.Instance?.Charge(client, token, amount);
@@ -566,7 +569,15 @@ namespace GoF2Remake.Multiplayer
             charges.Remove(token);
             var faction = list?.factions.Find(x => x.id == c.faction);
             if (!paid) { NetState.Instance?.Notify(client, Localization.Extra("mpFactionNoCredits", "You don't have that many credits.")); return; }
-            NetProfiles.AdjustWorth(c.account, -c.amount);
+            if (!NetProfiles.MoveCredits(client, c.account, -c.amount))
+            {
+                // The game says it paid, but its saved game hasn't that much (spent since, or a game that only claims to
+                // have the credits): nothing banked, the game's credits back.
+                Debug.LogWarning($"Server: profile {c.account} ({NameOf(c.account)}, client {client}) paid a {c.amount:N0} credits deposit its saved game doesn't hold: refused.");
+                NetState.Instance?.Grant(client, c.amount);
+                NetState.Instance?.Notify(client, string.Format(Localization.Extra("mpFactionSavedShort", "Your saved game has {0:N0} credits: dock to save it, then deposit."), NetProfiles.SpendableCredits(client, c.account)));
+                return;
+            }
             if (faction == null) { Grant(client, c.account, c.amount); return; }   // the faction went meanwhile: back to the player
             faction.bank += c.amount;
             Save();
@@ -590,7 +601,7 @@ namespace GoF2Remake.Multiplayer
         /// <summary>Credits to the player's game; their profile's worth moves with it (the upload check).</summary>
         static void Grant(ulong client, string account, int amount)
         {
-            NetProfiles.AdjustWorth(account, amount);
+            NetProfiles.MoveCredits(client, account, amount);
             NetState.Instance?.Grant(client, amount);
         }
 
@@ -1159,13 +1170,22 @@ namespace GoF2Remake.Multiplayer
             string account = NetProfiles.AccountOf(client);
             var payer = Of(account);
             if (held == null || account == null || payer == null || payer.id == held.faction || Toll == 0) return;
+            if (!NetGuard.InOrbit(client, station)) return;   // a toll is paid on arriving there (TerritoryView)
             var owner = list.factions.Find(c => c.id == held.faction);
             if (owner == null) return;
             // A fixed toll is the server's own amount; a percentage is what the pilot's game says it paid, at most that share
             // of the profile's recorded worth (its credits are part of it) and at least 1.
             int paid = Toll > 0 ? Toll : Mathf.Clamp(amount, 1, TollFor(Toll, NetProfiles.WorthOf(account)));
+            if (!NetProfiles.MoveCredits(client, account, -paid))
+            {
+                // Not in the saved game: the game's credits back, nothing to the holder (a game that only claims to pay,
+                // or one sending the toll again and again), and the toll counts as unpaid: the game marked it paid when it
+                // sent it, so the holder's fighters would have spared the pilot for nothing.
+                Debug.LogWarning($"Server: profile {account} ({NameOf(account)}, client {client}) paid a {paid:N0} credits toll its saved game doesn't hold: refused.");
+                NetState.Instance?.TollRefused(client, station, paid);
+                return;
+            }
             owner.bank += paid;
-            NetProfiles.AdjustWorth(account, -paid);
             Save();
             TellFaction(owner, string.Format(Localization.Extra("mpTollReceived", "[{0}] {1} paid the {2:N0} credits toll at {3}."), payer.tag, NameOf(account), paid, StationName(station)));
         }

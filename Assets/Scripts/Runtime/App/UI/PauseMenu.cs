@@ -220,10 +220,24 @@ namespace GoF2Remake.UI
             scroll = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
             scroll.AddToClassList("pause-scroll");
             // A ScrollView doesn't grow with its content: size it to the content, up to 560 px, then it scrolls.
-            var sv = scroll;
-            sv.contentContainer.RegisterCallback<GeometryChangedEvent>(e => sv.style.height = Mathf.Min(560f, e.newRect.height));
+            FitToContent(scroll, 560f);
             body.Add(scroll);
             return scroll;
+        }
+
+        /// <summary>Sizes a ScrollView to its content, up to 'max'. Only ever grows (a page builds a new one each time): the
+        /// content's height also follows the view's (in 7000.0.0a10 it alternated between two heights 2 px apart as each set
+        /// the other), so following it both ways never settled ("Layout update failed to stabilize", ~2000 errors per page).</summary>
+        static void FitToContent(ScrollView sv, float max)
+        {
+            float set = 0f;
+            sv.contentContainer.RegisterCallback<GeometryChangedEvent>(e =>
+            {
+                float want = Mathf.Min(max, Mathf.Ceil(e.newRect.height));
+                if (want <= set + 0.5f) return;
+                set = want;
+                sv.style.height = want;
+            });
         }
 
         /// <summary>MissionsWindow's two panels as text: the story objective and the freelance offer.</summary>
@@ -431,7 +445,7 @@ namespace GoF2Remake.UI
             var debugScroll = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
             debugScroll.AddToClassList("debug-scroll");
             debugScroll.AddManipulator(new DragScroll(debugScroll));
-            debugScroll.contentContainer.RegisterCallback<GeometryChangedEvent>(e => debugScroll.style.height = e.newRect.height);
+            FitToContent(debugScroll, float.MaxValue);
             body.Add(debugScroll);
             scroll = debugScroll;
             var content = new VisualElement();

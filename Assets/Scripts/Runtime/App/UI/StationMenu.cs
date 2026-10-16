@@ -1499,6 +1499,7 @@ namespace GoF2Remake.UI
             systemOptions?.EnableInClassList("system-menu-page--shown", page == SysPage.Debug);
             var menuPanel = root.Q(className: "system-menu");
             menuPanel?.EnableInClassList("system-menu--wide", page == SysPage.Debug);
+            menuPanel?.EnableInClassList("system-menu--slots", slots);
             if (optionsView != null) { optionsView.Root.RemoveFromHierarchy(); optionsView = null; }
             if (menuPanel != null) menuPanel.style.display = page == SysPage.Options ? DisplayStyle.None : StyleKeyword.Null;
             if (page == SysPage.Options) BuildOptionsView();

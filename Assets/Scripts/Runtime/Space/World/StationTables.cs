@@ -188,14 +188,26 @@ namespace GoF2Remake.World
             public bool bays;
             public Vector3 hub;
             public float approach, hover;
+            /// <summary>Pillars from floor to ceiling the lane steers round (x, z and radius, metres; HangarFlight
+            /// AvoidPillars), null = none.</summary>
+            public Vector3[] pillars;
         }
+
+        /// <summary>The Nivelian hangar's six roof pillars (x, z, radius), measured on hangar_nivelian's mesh (rays at 50 m
+        /// up: 5-7 m round, up to 148 m): a player's report 2026-10-16, ships flew through the one in front of the right pad.</summary>
+        static readonly Vector3[] NivelianPillars =
+        {
+            new Vector3(99.6f, -304.9f, 8f), new Vector3(99.5f, -102.9f, 8f), new Vector3(99.3f, 101.8f, 8f),
+            new Vector3(303.4f, -306.9f, 8f), new Vector3(303.3f, -101.3f, 8f), new Vector3(304.6f, 103f, 8f),
+        };
 
         public static readonly HangarLane[] HangarLanes =
         {
             new HangarLane { gate = new Vector3(0f, 55f, -549f), outward = Vector3.back, gateSpan = new Vector2(30f, 115f), cruise = 45f },     // Terran
             new HangarLane { gate = new Vector3(-625f, 5f, -543f), outward = Vector3.left, gateSpan = new Vector2(-250f, 120f), bays = true,   // Vossk
                              hub = new Vector3(0f, 0f, -543f), approach = 70f, hover = 5f },
-            new HangarLane { gate = new Vector3(357f, 70f, -565f), outward = Vector3.back, gateSpan = new Vector2(25f, 130f), cruise = 50f },   // Nivelian
+            new HangarLane { gate = new Vector3(357f, 70f, -565f), outward = Vector3.back, gateSpan = new Vector2(25f, 130f), cruise = 50f,    // Nivelian
+                             pillars = NivelianPillars },
             new HangarLane { gate = new Vector3(-203f, 50f, -407f), outward = Vector3.back, gateSpan = new Vector2(20f, 80f), cruise = 45f },   // Midorian
             null, null, null,
             new HangarLane { gate = new Vector3(177f, 80f, -633f), outward = Vector3.back, gateSpan = new Vector2(10f, 180f), cruise = 50f },   // Deep Science

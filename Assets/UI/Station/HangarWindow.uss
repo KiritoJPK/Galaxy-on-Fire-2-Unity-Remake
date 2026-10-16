@@ -30,6 +30,7 @@
     left: 48px;
     right: 40px;
     bottom: 34px;
+    width: auto;   /* the main view's set 1000 px would squeeze the hints between left and right */
     max-width: none;
     flex-wrap: nowrap;
 }

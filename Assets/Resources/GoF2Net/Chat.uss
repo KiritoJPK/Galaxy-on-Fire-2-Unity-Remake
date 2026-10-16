@@ -5,7 +5,7 @@
 .chat {
     position: absolute;
     left: 1.5%;
-    top: 36%;
+    top: 38%;   /* clear of the recharge icons under the HUD's status bars (at 36 % the Chat button overlapped the booster icon) */
     width: 30%;
     min-width: 440px;
     max-width: 760px;

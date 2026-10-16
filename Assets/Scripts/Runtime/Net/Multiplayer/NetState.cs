@@ -2,8 +2,9 @@
 // The multiplayer world (NetGame: the host spawns one; it lives in DontDestroyOnLoad for the whole session):
 //   the world seed: reaching a client it starts that player's game (NetGame.EnterWorld); every orbit's asteroid field is
 //     built from it (NetGame.OrbitSeed), so the players in one orbit share it;
-//   destroyed asteroids per station, kept for the session: a player arriving in an orbit gets its list (the asteroids stay
-//     gone), and a destruction reaches everyone (each applies it to its own orbit);
+//   destroyed asteroids per station, kept while someone is there: a player arriving in an orbit gets its list (the asteroids stay
+//     gone), and a destruction reaches everyone (each applies it to its own orbit); an orbit left empty for
+//     AsteroidRespawnSeconds gets its whole field back (RespawnEmptyAsteroidFields);
 //   the spawn / despawn requests of an orbit's authority (NetOrbit): the NetProxy and NetCrate objects it shows the others
 //     there are spawned by the host and owned by that player; the host also removes them once their owner is no longer in
 //     that orbit (docked, jumped, gone);
@@ -39,6 +40,9 @@ namespace GoF2Remake.Multiplayer
     public sealed class NetState : NetworkBehaviour
     {
         const float SweepSeconds = 0.5f, PruneSeconds = 10f;
+        /// <summary>An orbit nobody has flown in for this long gets its asteroid field back (the destroyed list is cleared). Not
+        /// at once: docking to sell ore and launching again would refill the field on every trip.</summary>
+        const float AsteroidRespawnSeconds = 120f;      // Maybe add as a future server setting
         /// <summary>The asteroid indices an orbit's field may have (OrbitBuilder.SpawnAsteroids makes far fewer).</summary>
         const int MaxAsteroids = 10000;
         /// <summary>The NetProxy / NetCrate objects one player may own at once (a busy orbit's traffic, a mission's ships and
@@ -64,6 +68,7 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<bool> freeForAll = new NetworkVariable<bool>();     // /pvp, an event's Free For All: every player an enemy
         readonly NetworkVariable<Unity.Collections.FixedString4096Bytes> sessionMods = new NetworkVariable<Unity.Collections.FixedString4096Bytes>();   // NetMods.SessionList
         readonly Dictionary<int, HashSet<int>> destroyed = new Dictionary<int, HashSet<int>>();
+        readonly Dictionary<int, float> emptySince = new Dictionary<int, float>();   // orbit -> when its last player left (asteroid respawn)
         GameObject proxyPrefab, cratePrefab;
         int pendingSeed;
         bool pendingDedicated;
@@ -802,6 +807,16 @@ namespace GoF2Remake.Multiplayer
         [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
         void GrantRpc(int amount, RpcParams rpc = default) => NetFactionsClient.OnGrant(amount);
 
+        /// <summary>Server: the toll the player's game paid at 'station' wasn't taken (its profile's saved game hasn't the
+        /// credits): 'amount' back to the game, and the toll unpaid.</summary>
+        internal void TollRefused(ulong client, int station, int amount)
+        {
+            if (IsServer) TollRefusedRpc(station, amount, RpcTarget.Single(client, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void TollRefusedRpc(int station, int amount, RpcParams rpc = default) => NetFactionsClient.OnTollRefused(station, amount);
+
         /// <summary>A pilot calls their squad for help ('on') or is safe again: a notice to the squadmates with where (NetDistress).</summary>
         [Rpc(SendTo.Server)]
         public void DistressRpc(bool on, RpcParams rpc = default)
@@ -1533,6 +1548,7 @@ namespace GoF2Remake.Multiplayer
             // An orbit's objects go once their owner isn't in that orbit any more.
             var owners = new Dictionary<ulong, NetPlayer>();
             foreach (var p in NetPlayer.All) if (p != null && p.IsSpawned) owners[p.OwnerClientId] = p;
+            RespawnEmptyAsteroidFields(owners);
             var stale = new List<NetworkObject>();
             owned.Clear();
             foreach (var obj in NetworkManager.SpawnManager.SpawnedObjectsList)
@@ -1557,6 +1573,25 @@ namespace GoF2Remake.Multiplayer
                 if (!watched || Time.unscaledTime - since > 5f) stale.Add(obj);
             }
             foreach (var obj in stale) { staleSince.Remove(obj.NetworkObjectId); if (obj.IsSpawned) obj.Despawn(); }
+        }
+
+        /// <summary>Host, each sweep: an orbit with destroyed asteroids and no player in it for AsteroidRespawnSeconds gets its whole
+        /// field back (the list is dropped; whoever arrives next asks for it and finds it empty). Someone arriving first restarts the wait.</summary>
+        void RespawnEmptyAsteroidFields(Dictionary<ulong, NetPlayer> owners)
+        {
+            if (destroyed.Count == 0) { emptySince.Clear(); return; }
+            float now = Time.unscaledTime;
+            List<int> respawn = null;
+            foreach (var station in destroyed.Keys)
+            {
+                bool occupied = false;
+                foreach (var p in owners.Values) if (p.InSpace && p.Station == station) { occupied = true; break; }
+                if (occupied) { emptySince.Remove(station); continue; }
+                if (!emptySince.TryGetValue(station, out float since)) { emptySince[station] = now; continue; }
+                if (now - since >= AsteroidRespawnSeconds) (respawn ?? (respawn = new List<int>())).Add(station);
+            }
+            if (respawn == null) return;
+            foreach (int station in respawn) { destroyed.Remove(station); emptySince.Remove(station); }
         }
 
         /// <summary>Host, every PruneSeconds: the bookkeeping of players who left and of the past goes (the hits, invitations,
