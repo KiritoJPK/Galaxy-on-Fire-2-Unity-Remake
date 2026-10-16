@@ -704,7 +704,7 @@ namespace GoF2Remake.UI
                 safeArea.Add(mouseReticle);
             }
             if (mouseReticle == null) return;
-            UpdateStickRing(on && ship.Model.FreeFlight, !ship.MouseInDeadzone);
+            UpdateStickRing(on && ship.Model.FreeFlight, ship.MouseOffset.magnitude / Mathf.Max(1f, Screen.height * ShipController.StickRadius));
             // Only once the mouse steers away from the centre (beyond ~4 % of the half screen height and the dead zone).
             bool show = on && !ship.MouseInDeadzone && ship.MouseOffset.magnitude > Screen.height * 0.02f;
             mouseReticle.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
@@ -720,13 +720,15 @@ namespace GoF2Remake.UI
         /// <summary>The reach circle's fade (0 hidden .. 1 shown).</summary>
         float stickRingShown;
         const float StickRingFadeInMs = 150f, StickRingFadeOutMs = 400f;
+        const float StickRingFrom = 0.6f, StickRingFull = 0.9f;
 
         /// <summary>Free flight's mouse: a faint circle round the centre, the virtual joystick's reach
-        /// (ShipController.StickRadius); it fades in only while the aim dot is outside the dead zone ('steering') and out
-        /// again when the mouse is centred (always shown it looked like a second radar ellipse).</summary>
-        void UpdateStickRing(bool mode, bool steering)
+        /// (ShipController.StickRadius); it fades in as the aim dot nears it ('reach': the dot's offset of the radius, from
+        /// StickRingFrom, fully shown at StickRingFull) and out again as it comes back (always shown it looked like a second
+        /// radar ellipse; shown for any steering it came up for every small correction, players' feedback).</summary>
+        void UpdateStickRing(bool mode, float reach)
         {
-            float target = mode && steering ? 1f : 0f;
+            float target = mode ? Mathf.InverseLerp(StickRingFrom, StickRingFull, reach) : 0f;
             float ms = Time.unscaledDeltaTime * 1000f;
             stickRingShown = Mathf.MoveTowards(stickRingShown, target, ms / (target > stickRingShown ? StickRingFadeInMs : StickRingFadeOutMs));
             if (!mode) stickRingShown = 0f;

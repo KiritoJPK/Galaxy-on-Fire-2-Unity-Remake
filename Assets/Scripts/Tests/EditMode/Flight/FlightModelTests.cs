@@ -708,5 +708,34 @@ namespace GoF2Remake.Tests
                 lastTurn = m.TurnScale; lastSide = m.SideScale; lastRoll = m.RollScale; lastInertia = m.Inertia;
             }
         }
+
+        // The chase camera follows free flight that many times faster (ChaseCamera): an Inflict (handling 125, H 25) turns at
+        // 125 deg/s x (25 / 20)^0.75 = 147.77, softly capped: 125 + 22.77 / 10 = 127.28 deg/s, against the original's full
+        // stick 750 x 25 / 63 = 297.6 units = 53.95 deg/s.
+        [Test]
+        public void FreeTurnSpeedupIsTheFreeRateOverTheOriginal()
+        {
+            using var sens = new SettingsScope<float>(() => Settings.Sensitivity, v => Settings.Sensitivity = v);
+            Settings.Sensitivity = 1f;
+            var m = Model(handling: 125f);
+            Assert.AreEqual(1f, m.FreeTurnSpeedup, 1e-6f, "the original flight");
+            m.FreeFlight = true;
+            Assert.AreEqual(127.28f / 53.95f, m.FreeTurnSpeedup, 0.01f);
+        }
+
+        // The free turn rate's soft cap (players' feedback): up to EVERSPACE 2's 125 deg/s (handling 100, H 20) by the
+        // handling, past it a tenth of the rest. Read through FreeTurnSpeedup x the original's full-stick rate.
+        [TestCase(80f, 125f * 0.84590f)]    // H 16: (16/20)^0.75 = 0.8459, below the cap: unchanged
+        [TestCase(100f, 125f)]              // H 20: exactly EVERSPACE 2's
+        [TestCase(200f, 125f * 1.06818f)]   // H 40: (40/20)^0.75 = 1.6818 -> 1 + 0.06818 (it was 210 deg/s)
+        public void FreeTurnRateIsSoftlyCappedAtEverspace2s(float handling, float degPerSec)
+        {
+            using var sens = new SettingsScope<float>(() => Settings.Sensitivity, v => Settings.Sensitivity = v);
+            Settings.Sensitivity = 1f;
+            var m = Model(handling: handling);
+            m.FreeFlight = true;
+            float original = 750f * (handling / 5f) / 63f * RateToRad * 1000f * Mathf.Rad2Deg;
+            Assert.AreEqual(degPerSec, Mathf.Max(1f, m.FreeTurnSpeedup) * original, 0.1f);
+        }
     }
 }

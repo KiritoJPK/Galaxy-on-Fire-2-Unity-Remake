@@ -31,6 +31,21 @@ namespace GoF2Remake.UI
             Toggle("cheatJumps", () => X("cheatFreeJumps", "Free jumps (no energy cells)"), () => Cheats.FreeJumps, v => Cheats.FreeJumps = v),
         };
 
+        /// <summary>The toggles for a grid two to a row (it fills across): down the left column first, so each column reads in
+        /// the list's order like the main menu's single column (No secondary under No primary, not beside it).</summary>
+        public static List<OptionDef> TogglesByColumn()
+        {
+            var list = Toggles();
+            int half = (list.Count + 1) / 2;
+            var grid = new List<OptionDef>(list.Count);
+            for (int i = 0; i < half; i++)
+            {
+                grid.Add(list[i]);
+                if (half + i < list.Count) grid.Add(list[half + i]);
+            }
+            return grid;
+        }
+
         public static List<OptionDef> Actions(Database db, Action<string> notify, World.SpaceLevel flight = null) => new List<OptionDef>
         {
             Button("cheat100k", () => X("cheatCredits100k", "+100 000 credits"), () => { Cheats.AddCredits(100000); notify?.Invoke(Credits()); }),

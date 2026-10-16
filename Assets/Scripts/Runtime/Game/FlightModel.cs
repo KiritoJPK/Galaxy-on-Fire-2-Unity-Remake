@@ -253,7 +253,10 @@ namespace GoF2Remake.Flight
                                                  // whose original boost is x3; every booster keeps its original ratio to it
         const float FreeBoostFallback = 3.2f;    // a booster without a boost speed (a mod's)
         const float FreeTurnExponent = 0.75f;    // the turn rate grows with H^0.75: between EVERSPACE 2's single ship and the
-                                                 // original's linear spread (Rhino 51, handling 100 125, a tuned Dace 335 deg/s)
+                                                 // original's linear spread (Rhino 51, handling 100 125 deg/s)
+        const float FreeTurnAboveShare = 0.1f;   // past EVERSPACE 2's 125 deg/s only a tenth of the rest counts (an Inflict 127
+                                                 // instead of 148, a tuned Dace 146 instead of 335: players' feedback, the
+                                                 // nimble ships whipped round too sharply)
         const float FreeBoostEaseMs = 3100f;     // the boost's cubic ease-out over the gap from the top speed (the gauge)
         const float FreeBoostDurationMs = 3500f; // a full energy pool without a booster duration (the blueprint's value); with
                                                  // one, the booster's duration (attribute 27), refilled in its recharge time
@@ -269,10 +272,28 @@ namespace GoF2Remake.Flight
             : boostSpeedValue > BaseSpeed ? boostSpeedValue / BaseSpeed * FreeBoostScale : FreeBoostFallback;
 
         /// <summary>Free flight: the top turn rate (rad / ms) for this ship: EVERSPACE 2's 125 deg/s at handling 100,
-        /// scaled by (H / 20)^0.75, the steering sensitivity option x0.6..1.6 (1 at its default). The option
-        /// itself, not Sensitivity: that one is the original's ramp setting, a fixed 2.7 under mouse steering.</summary>
-        float FreeTopTurnRate(float he) =>
-            FreeTurnRate * Mathf.Pow(Mathf.Max(1f, he) / 20f, FreeTurnExponent) * Style.turnScale * TurnScale * Mathf.Clamp(0.5f + 0.5f * Data.Settings.Sensitivity, 0.6f, 1.6f);
+        /// scaled by (H / 20)^0.75, softly capped there (a tenth of what lies above, FreeTurnAboveShare), then the
+        /// steering sensitivity option x0.6..1.6 (1 at its default). The option itself, not Sensitivity: that one is the
+        /// original's ramp setting, a fixed 2.7 under mouse steering.</summary>
+        float FreeTopTurnRate(float he)
+        {
+            float f = Mathf.Pow(Mathf.Max(1f, he) / 20f, FreeTurnExponent);
+            if (f > 1f) f = 1f + (f - 1f) * FreeTurnAboveShare;
+            return FreeTurnRate * f * Style.turnScale * TurnScale * Mathf.Clamp(0.5f + 0.5f * Data.Settings.Sensitivity, 0.6f, 1.6f);
+        }
+
+        /// <summary>Free flight: how many times faster than the original this ship turns at full input (its top turn rate over
+        /// the original's full-stick 750 H / 63 units); 1 in the original flight. The chase camera follows that much faster
+        /// (ChaseCamera): tuned for the original's rates it fell behind and the ship swung out of the picture.</summary>
+        public float FreeTurnSpeedup
+        {
+            get
+            {
+                if (!FreeFlight) return 1f;
+                float he = EffectiveHandling, original = 750f * Mathf.Max(1f, he) / 63f * RateToRadiansPerMs;
+                return Mathf.Max(1f, FreeTopTurnRate(he) / original);
+            }
+        }
 
         /// <summary>One velocity component toward 'want' while there is input that asks for more speed (or the other way):
         /// along EVERSPACE 2's cubic ease-out, v = top (1 - (1 - t/T)^3), written as a rate of the speed still missing

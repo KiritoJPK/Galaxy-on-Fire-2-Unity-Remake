@@ -846,9 +846,9 @@ The FMOD data comes from the FEV's LGCY chunk (`Reference/tools/audio/fev_lgcy.p
   fixed time, v = V (1 - (1 - t/T)^3) (the game's EaseAccelerationExponent 3), written as a rate of the speed still missing
   so it continues from any speed: forward T 1750 ms, the others 1270 ms, at handling 100 (sqrt-scaled by the handling,
   + `AccelMs`). Turning: every axis (roll too) at
-  EVERSPACE 2's 125 deg/s at handling 100 (scaled by (H / 20)^0.75, `FreeTurnExponent`, so the ships and Steering Nozzles
-  spread wider than a square root, though less than the original's linear rate: a bare Rhino 51, a Dace with the Pulsed
-  Plasma Thrust 335; the steering
+  EVERSPACE 2's 125 deg/s at handling 100 (scaled by (H / 20)^0.75, `FreeTurnExponent`: a bare Rhino 51; softly capped
+  there, only a tenth of the rest counting, `FreeTurnAboveShare`: an Inflict 127 instead of 148, a Dace with the Pulsed
+  Plasma Thrust 146 instead of 335, players' feedback 2026-10-16: the nimble ships whipped round; the steering
   sensitivity option x0.6..1.6, 1 at its default, read from `Settings.Sensitivity`: `FlightModel.Sensitivity` is the
   original's ramp setting, a fixed 2.7 under mouse steering, which turned free flight x1.6 too fast; x0.85 boosting, measured), reached by a linear 400 ms ramp (`FreeTurnRampMs`, measured in
   EVERSPACE 2's cockpit view, which follows the ship rigidly); speed doesn't change it. No auto-level (Level out still works). Inertial dampeners (`ShipController.Dampeners`, toggled by
@@ -877,7 +877,7 @@ The FMOD data comes from the FEV's LGCY chunk (`Reference/tools/audio/fev_lgcy.p
   reticle's offset; it stays where the mouse leaves it; beyond the mouse steering dead zone (a hard one, not rescaled, like
   the game's ~8 % of the screen height) the deflection is the whole offset over the radius (measured to 478 px: 0.229 deg/s
   per px, linear); still during free look, centred while the autopilot steers; the HUD
-  draws the circle, `.mouse-stick`, faded in (150 ms) only while the aim dot is outside the dead zone and out (400 ms) when it is centred: always shown it read as a second radar ellipse, `FlightHud.UpdateStickRing`). Free look while held
+  draws the circle, `.mouse-stick`, faded in as the aim dot nears it (from 60 % of the radius, full at 90 %, 150 ms in, 400 ms out; always shown it read as a second radar ellipse, shown for any steering it came up for every small correction; `FlightHud.UpdateStickRing`). The chase camera follows free flight faster by `FlightModel.FreeTurnSpeedup` (the free top turn rate over the original's full-stick rate, ~2.4 for an Inflict) and keeps the turn slide at the original's size (`ChaseCamera`): tuned for the original's rates it fell behind and the ship swung to the edge of the picture. Free look while held
   (`GameControls.FreeLookHold`, `FreeLookCamera`; both styles; in free flight the aim is ignored meanwhile). Its own key
   layout (`GameControls.FreeFlightDefaults`, overrides under `controls_bindings_free`, `ApplyStyle` on the option's
   change): W / S thrust, A / D strafe, Space / L-Ctrl up / down, Q / E roll, L-Shift boost, Z dampeners, L-Alt free

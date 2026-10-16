@@ -148,9 +148,16 @@ namespace GoF2Remake.Flight
                 rotK = (1f - 0.01f * h) * 0.015f + 0.003f;
             }
             if (mass > 0f) { posK *= Mathf.Lerp(1f, 0.35f, mass); rotK *= Mathf.Lerp(1f, 0.35f, mass); }   // a heavy, unhurried follow
+            // Remake, free flight: it turns several times faster than the original (an Inflict 127 deg/s against 54), so the
+            // camera follows that much faster and the ship trails a turn by the original's angle (players' report: at full
+            // deflection it swung to the edge of the picture and out).
+            float speedup = model.FreeTurnSpeedup;
+            posK *= speedup;
+            rotK *= speedup;
 
-            // Slide opposite to the turn, proportional to turn rate (approximation of the target offset).
-            float maxRate = Mathf.Max(1f, 750f * model.Handling / 63f);
+            // Slide opposite to the turn, proportional to turn rate (approximation of the target offset); free flight's
+            // faster rates no further than the original's full stick.
+            float maxRate = Mathf.Max(1f, 750f * model.Handling / 63f) * speedup;
             Vector3 targetSlide = new Vector3(-model.YawRate / maxRate * turnSlideMeters,
                                               model.PitchRate / maxRate * turnSlideMeters * 0.5f, 0f);
             // PlayerEgo::updateManeuver: during a dodge the target offset's x is -3 x the yaw rate (game units; the game's

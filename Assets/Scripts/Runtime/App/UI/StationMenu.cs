@@ -1410,7 +1410,7 @@ namespace GoF2Remake.UI
                 case 0:
                 {
                     var grid = Box(optionsScroll.contentContainer, "debug-grid");
-                    foreach (var def in CheatsCatalog.Toggles()) Row(def, grid, "debug-grid-cell");
+                    foreach (var def in CheatsCatalog.TogglesByColumn()) Row(def, grid, "debug-grid-cell");
                     break;
                 }
                 case 1:
