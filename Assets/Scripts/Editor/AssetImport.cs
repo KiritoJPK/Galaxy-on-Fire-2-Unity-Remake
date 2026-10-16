@@ -124,6 +124,16 @@ namespace GoF2Remake.EditorTools
             return !name.Contains("_add") && !name.Contains("_lights") && !name.Contains("_lod_");
         }
 
+        /// <summary>A flying ship's model whose own keys play from the start (Materials And Prefabs): under ships/, not a
+        /// wreck or an explosion (the freighters' and Supernova wrecks' keys break them apart: their levels play them).</summary>
+        public static bool IsAnimatedShipHull(string path)
+        {
+            string p = path.Replace('\\', '/');
+            if (!p.Contains("/ships/")) return false;
+            string name = System.IO.Path.GetFileNameWithoutExtension(p);
+            return !name.Contains("wreck") && !name.Contains("explosion");
+        }
+
         void OnPreprocessAudio()
         {
             if (!assetPath.StartsWith(ImportSettings.Root + "/Audio/")) return;
@@ -259,8 +269,10 @@ namespace GoF2Remake.EditorTools
                     var anim = inst.AddComponent<GoF2Remake.Visuals.PartAnimation>();
                     anim.meta = meta;
                     anim.metersPerUnit = ImportSettings.ModelScale;
-                    // Only "_anim" models (FX, turrets, rotating parts) animate by default; others keep their rest pose.
-                    anim.play = mesh.model.Contains("_anim");
+                    // Only "_anim" models (FX, turrets, rotating parts) animate by default; others keep their rest pose. Remake:
+                    // a living ship's hull too: the Cronus' (v_ship_037_deep_science) engine pods bob on their own keys and stood
+                    // still (players' report); the wrecks and explosions stay with the scripts that play them.
+                    anim.play = mesh.model.Contains("_anim") || ImportPostprocessor.IsAnimatedShipHull(mesh.model);
                 }
 
                 var info = inst.AddComponent<GoF2Remake.Visuals.ResourceInfo>();

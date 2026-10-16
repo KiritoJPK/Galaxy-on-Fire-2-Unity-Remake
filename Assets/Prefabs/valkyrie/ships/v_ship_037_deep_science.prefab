@@ -93,8 +93,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2PartAnimation
   meta: {fileID: 4900000, guid: 04b9e76bb541ff849874a1850630c68b, type: 3}
-  play: 0
+  play: 1
   loop: 1
+  loopStartMs: 0
+  pingPongRotation: 0
   speed: 1
   metersPerUnit: 0.05
   positionMap:
@@ -112,6 +114,7 @@ MonoBehaviour:
   - source: 1
     sign: -1
   rotationInRadians: 1
+  applyMaterialChannels: 0
 --- !u!114 &8145741653956249349
 MonoBehaviour:
   m_ObjectHideFlags: 0

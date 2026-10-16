@@ -528,6 +528,11 @@ transparency) are used as they are. glTF
 from Blender works: File > Export > glTF 2.0, format glTF Binary (.glb), +Y up. Projects made in Unity can use the
 Project window's right-click **GoF2 > Export Model As GLB (Mods)**.
 
+Moving parts animate: the model's first animation (a spinning radar dish, bobbing engine pods: objects moved, turned or
+scaled over time) plays on a loop wherever the ship is shown, in flight, in the hangar and on NPC ships. Animations
+that bend the mesh with bones (an armature) don't play: such a hull is shown in its rest pose. Keep moving parts as
+separate objects animated by themselves, and put the animation you want looped first in the file.
+
 ### Ship sounds
 
 `"sounds"` gives a ship (a new one, or an original through `override`) its own engine and boost sounds instead of the game's:

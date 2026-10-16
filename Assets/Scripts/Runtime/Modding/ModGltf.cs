@@ -45,5 +45,19 @@ namespace GoF2Remake.Modding
             import.Dispose();
             return null;
         }
+
+        /// <summary>A model's glTF animations loop for good, like the game's own (PartAnimation): glTFast puts them on a legacy
+        /// Animation with the first clip, at the default wrap mode, which plays it once and stops (a mod ship's turning
+        /// radar or bobbing pods stood still). Its first clip plays from the start whenever the model is shown.</summary>
+        public static void LoopAnimations(GameObject root)
+        {
+            foreach (var a in root.GetComponentsInChildren<Animation>(true))
+            {
+                a.wrapMode = WrapMode.Loop;
+                if (a.clip != null) a.clip.wrapMode = WrapMode.Loop;
+                a.playAutomatically = true;
+                a.cullingType = AnimationCullingType.AlwaysAnimate;
+            }
+        }
     }
 }

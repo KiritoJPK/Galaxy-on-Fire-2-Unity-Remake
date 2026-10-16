@@ -178,6 +178,10 @@ The game stores every object as several meshes (hull, `_lights_add`, `_emissive`
 - Rules: `Reference/tools/asset_conversion/assemblies/rules/assemblies_{ships,stations,level,scenes}.json` + `*_notes.md` (functions, addresses, uncertainties). `build_assemblies.py` merges them into `Resources/GoF2Data/assemblies.json`; then run the menu item. Groups with no assembling code get a name-based assembly (`origin` says so).
 - `patch_resources.py` added 19 meshes the resource-table emulation had recorded as garbage (burning/wrecked supernova stations etc.), and (remake) the engine glows 17939 / 17941 of ships 39 / 41.
 - Ships (`Globals::getShipGroup(idx, race, isPlayer)`): the player ship uses `*_engine_glow_add` (17900+idx), NPCs `*_engine_add` (18000+idx); both are in the prefab, switch with `SetPlayerVariant()`. Battleship (idx 14) is scaled 2x. Ship 15 is the freighter, picked by race. Look ships up with `Database.ShipAssembly(idx, race)`: the add-on ships (39-41, 44+) are `v_ship_NNN_*` / `sn_ship_NNN_*`.
+- A ship hull's own keys play from the start (`ImportPostprocessor.IsAnimatedShipHull` in Materials And Prefabs: under
+  ships/, not a wreck or explosion): the Cronus' (`v_ship_037_deep_science`) engine pods sit inside the hull at rest and
+  hang bobbing under its stern once played; the import played only "_anim" models, so they were hidden and still. Its
+  prefab was set by hand (`play: 1`) rather than by a rebuild.
 - LOD: each level shows only its LOD mesh, its LOD child meshes and the last-added child (usually the engine). Generic ships switch at 5000/13000 units and cull at 80000. **In this binary `AEGeometry::updateLod` always picks LOD 0** (the modded APK), the prefabs use the intended distances.
 - Stations are placed rotated (0, pi, 0); stored as `spawnRotationEngine`, not baked in. State-dependent parts (mission, race, jumpgate activation) are in `conditionalParts` and start inactive.
 - Suns and planets are the `plane` mesh textured per system at runtime, and skyboxes pick layers per system: not pre-assembled.
@@ -2020,7 +2024,9 @@ guide is `Modding/README.md` (keep it in step, and the AI version `Modding/ai/go
   wait for `Ready` / `WhenReady`, at most 30 s) into an AssembledObject template under a hidden DontDestroyOnLoad holder
   (the run-time port of PR #34's CustomShipBuilder: hull turned by modelYaw and scaled to modelLength (a skinned mesh baked into a plain one in its drawn pose first,
   `ModShipBuilder.FlattenSkinned`: the sizing, collision, shadows and the Mod Builder read the bind-pose mesh, which the
-  bones drew elsewhere and at another size), engine glow discs at the
+  bones drew elsewhere and at another size, so bone animations don't play; the GLB's node animations, parts moving on
+  their own, loop: `ModGltf.LoopAnimations`, glTFast's legacy Animation at the default wrap mode played its clip once),
+  engine glow discs at the
   slot-3 mounts on mat_34813 (a mount's `glowSize` [half width, half height, flame length] makes an ellipse; a `glowColor`
   or the ship's `engineGlowColor` switches the glow to `ModAssets.engineGlowTint`, the sprite in white
   (`Resources/GoF2Mods/ModEngineGlowWhite.png`, Build Mod Assets; the glow sprite there made round and soft, its ring of
