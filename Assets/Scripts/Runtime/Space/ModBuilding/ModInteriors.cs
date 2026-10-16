@@ -13,7 +13,9 @@
 // ships.json's), "fov" (vertical degrees; default the originals': hangar 46, bar 69), "near" / "far" (metres), hangar:
 // "startYaw" (degrees the player's ship is turned to), "parkedMax" (default the parked pads' count), "flights" (default true),
 // "cruise" (metres above the floor the flights cross at), "gateSpan" [low, high] (heights the forcefield can be passed at),
-// both: "ambient" [r, g, b], "lightIntensity", "fog" [r, g, b, end metres] } ]
+// both: "ambient" [r, g, b], "lightIntensity", "fog" [r, g, b, end metres], "markers": { "pad": [x, y, z], ... } (the
+// markers placed in the Mod Builder, room metres; they win over the model's nodes of the same name) } ]
+// "model" may be one of the game's rooms ("gof2:hangar_terran", "gof2:bar_vossk"): then the markers come from "markers".
 // A station picks them (stations.json "hangar" / "bar": "mod_id:interior_id", or a race name like "interior"). Built by
 // ModStations with the station models (all in the background at the main menu's start); the room's own glTF cameras and
 // lights are removed (the station camera and key light do that work). While a room isn't built, or when it failed, the
@@ -36,7 +38,7 @@ namespace GoF2Remake.Modding
         static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "id", "type", "model", "scale", "materials", "fov", "near", "far", "startYaw", "parkedMax", "flights", "cruise", "gateSpan",
-            "ambient", "lightIntensity", "fog",
+            "ambient", "lightIntensity", "fog", "markers",
         };
 
         /// <summary>One interiors.json entry.</summary>
@@ -52,6 +54,8 @@ namespace GoF2Remake.Modding
             public Color? ambient, fogColor;
             public float fogEnd;
             public List<CustomShipMaterial> materials = new List<CustomShipMaterial>();
+            /// <summary>"markers": placed in the Mod Builder (room metres), over the model's nodes.</summary>
+            public readonly Dictionary<string, Vector3> markers = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>A built room: its template and its markers (room-root space, Unity metres).</summary>
@@ -62,7 +66,20 @@ namespace GoF2Remake.Modding
             public Vector3 pad, camera, cameraTarget, cameraStart, cameraStartTarget, light, gate, gateOut;
             public bool hasLight, hasGate, hasStart;
             public readonly List<Vector3> parked = new List<Vector3>(), visitors = new List<Vector3>();
+            /// <summary>Every marker found (the model's nodes and "markers"), for the Mod Builder.</summary>
+            public readonly Dictionary<string, Vector3> markers = new Dictionary<string, Vector3>(StringComparer.OrdinalIgnoreCase);
         }
+
+        /// <summary>The markers' names: hangar pad, camera, camera_target, gate, gate_out, light, parked_N; bar camera,
+        /// camera_target, camera_start, camera_start_target, light, visitor_N.</summary>
+        public static readonly string[] HangarMarkers = { "pad", "camera", "camera_target", "gate", "gate_out", "light" };
+        public static readonly string[] BarMarkers = { "camera", "camera_target", "camera_start", "camera_start_target", "light" };
+
+        static bool MarkerName(string n) =>
+            HangarMarkers.Contains(n, StringComparer.OrdinalIgnoreCase) || BarMarkers.Contains(n, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The built room of an interior key (null: not built, or none).</summary>
+        public static Room Built(string key) => key != null && rooms.TryGetValue(key, out var r) && r.template != null ? r : null;
 
         static readonly Dictionary<string, Def> defs = new Dictionary<string, Def>(StringComparer.OrdinalIgnoreCase);
         static readonly Dictionary<string, Room> rooms = new Dictionary<string, Room>(StringComparer.OrdinalIgnoreCase);
@@ -116,6 +133,12 @@ namespace GoF2Remake.Modding
                 if (ModJson.Get(o, "gateSpan") is JArray gs && gs.Count == 2) d.gateSpan = new Vector2((float)gs[0], (float)gs[1]);
                 if (ModJson.Get(o, "ambient") is JArray am && am.Count == 3) d.ambient = new Color((float)am[0], (float)am[1], (float)am[2]);
                 if (ModJson.Get(o, "fog") is JArray fg && fg.Count == 4) { d.fogColor = new Color((float)fg[0], (float)fg[1], (float)fg[2]); d.fogEnd = (float)fg[3]; }
+                if (ModJson.Get(o, "markers") is JObject mk)
+                    foreach (var prop in mk.Properties())
+                    {
+                        if (!(prop.Value is JArray a) || a.Count != 3) throw new ModJsonException($"{ModJson.Where(prop, File)}: a marker is [x, y, z] (metres)");
+                        d.markers[prop.Name.Trim()] = new Vector3((float)a[0], (float)a[1], (float)a[2]);
+                    }
                 if (ModJson.Get(o, "materials") is JArray mats)
                     foreach (var m in mats) d.materials.Add(JsonUtility.FromJson<CustomShipMaterial>(m.ToString()));
                 if (defs.ContainsKey(d.key)) throw new ModJsonException($"{where}: the id \"{id}\" is used twice");
@@ -192,6 +215,19 @@ namespace GoF2Remake.Modding
                         numbered.Add((prefix, k, p));
                     }
             }
+            // The Mod Builder's markers ("markers") over the model's nodes of the same name / number.
+            foreach (var kv in d.markers)
+            {
+                marks[kv.Key] = kv.Value;
+                foreach (string prefix in new[] { "parked", "visitor" })
+                    if (kv.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        string rest = kv.Key.Substring(prefix.Length).TrimStart('_', ' ', '.', '-');
+                        int.TryParse(new string(rest.TakeWhile(char.IsDigit).ToArray()), out int k);
+                        numbered.RemoveAll(x => x.name == prefix && x.n == k);
+                        numbered.Add((prefix, k, kv.Value));
+                    }
+            }
             bool Has(string name, out Vector3 v) => marks.TryGetValue(name, out v);
             var room = new Room { def = d, template = root };
             if (d.hangar)
@@ -212,6 +248,9 @@ namespace GoF2Remake.Modding
                 if (room.visitors.Count == 0) return Fail(d, root, "a bar needs \"visitor_1\", \"visitor_2\"... markers (where visitors stand)");
             }
             room.hasLight = Has("light", out room.light);
+            foreach (var kv in marks)
+                if (MarkerName(kv.Key)) room.markers[kv.Key] = kv.Value;
+            foreach (var x in numbered) room.markers[x.name + "_" + x.n] = x.pos;
             rooms[d.key] = room;
             return root;
         }

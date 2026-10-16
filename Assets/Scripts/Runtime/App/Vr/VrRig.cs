@@ -218,7 +218,7 @@ namespace GoF2Remake.Vr
 
         void LateUpdate()
         {
-            if (logical == null) return;
+            if (logical == null || panels == null) return;   // Init didn't finish (#115: it threw, and this threw every frame)
             Follow();
             UpdateFade();
             panels.Update();

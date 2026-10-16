@@ -27,6 +27,24 @@ namespace GoF2Remake.Modding
             ["miningBeam"] = 100, ["miningBeamRange"] = 101, ["miningBeamLayerMs"] = 102, ["miningBeamLook"] = 103,
             // A cloak (sort 21) with phaseCloak 1 also phases the ship through objects while cloaked (PlayerCloak.Phasing).
             ["phaseCloak"] = 104,
+            // A gun or turret with missiles 1 fires homing missiles (Flight.Gun.missiles); salvoShots / salvoCount /
+            // salvoGapMs fire several shots at once and several salvos per reload (Gun.TryFire); turretRange is how far an
+            // auto turret looks for a target (PlayerTurret.PickTarget).
+            ["missiles"] = 105, ["salvoShots"] = 106, ["salvoCount"] = 107, ["salvoGapMs"] = 108, ["turretRange"] = 109,
+            // The flight (Modding.ModFlight, Database.BuildFlightStats): flightScope keeps a booster's / Steering Nozzle's
+            // attributes (25-28) to one flight style (0 both, 1 the original only, 2 free flight only); the bonuses are
+            // percentages (20 = +20 %) for both styles, the original only or free flight only; freeBoostFactor = free
+            // flight's boost top speed in hundredths of the top speed (350 = x3.5) instead of the booster's.
+            ["flightScope"] = 110, ["topSpeed"] = 111, ["turnRate"] = 112, ["strafeSpeed"] = 113,
+            ["originalTopSpeed"] = 114, ["originalTurnRate"] = 115, ["originalStrafeSpeed"] = 116,
+            ["freeTopSpeed"] = 117, ["freeTurnRate"] = 118, ["freeStrafeSpeed"] = 119, ["freeAcceleration"] = 120,
+            ["freeBoostFactor"] = 121,
+            // A tractor beam (sort 13) with tractorTargets 2+ pulls that many crates at once, by itself, within tractorRange
+            // game units, without the salvage lock (Flight.CombatRadar's extra beams; like the transfusion beams' attr 55).
+            ["tractorTargets"] = 122, ["tractorRange"] = 123,
+            // A weapon's damage to a shield in percent (Flight.Gun.ShieldFactor; default 100, the Disruptor Laser and items
+            // based on it 200): the part the shield doesn't absorb hits the armor and hull at its plain value.
+            ["shieldDamage"] = 124,
             // items.json's statList names
             ["steerable"] = 15, ["handling"] = 17,
             ["loadingTimeMs"] = 11, ["range"] = 12, ["projectileSpeed"] = 13, ["magnitude"] = 14, ["shieldRegenTime"] = 19,

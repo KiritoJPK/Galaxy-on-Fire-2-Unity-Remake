@@ -47,16 +47,24 @@ namespace GoF2Remake.Multiplayer
             GameHooks.StockShipChanged = NetStock.ShipChanged;
             GameHooks.FactionBuyPrice = NetFactionsClient.BuyPrice;
             GameHooks.FactionSellPrice = NetFactionsClient.SellPrice;
+            GameHooks.FactionShipBuyPrice = NetFactionsClient.ShipBuyPrice;
             GameHooks.ProfileUpload = () => NetProfileClient.Upload();
             GameHooks.SharedPirateBoard = () => NetState.Instance != null ? NetState.Instance.PirateBoardJson : null;
             GameHooks.SessionRule = NetRules.TryGet;
             GameHooks.RuleChangedByHost = NetRules.HostChanged;
+            GameHooks.SessionKaamoLevel = NetRules.TryGetKaamoLevel;
+            GameHooks.KaamoLevelChangedByHost = NetRules.HostKaamoLevelChanged;
+            GameHooks.SessionFlightStyle = NetRules.TryGetFlight;
+            GameHooks.EventFlightStyle = () => Events.EventFlight.Forced;   // PR #87: the Set Flight Model node, /flightstyle
 
             InstallSpace();
         }
 
         static void InstallSpace()
         {
+            SpaceHooks.GuestAssembly = NetHangar.GuestAssembly;   // PR #87: guests' customizable ships
+            SpaceHooks.GuestShipY = NetHangar.GuestShipY;
+            SpaceHooks.GuestBuild = NetHangar.GuestBuild;
             SpaceHooks.PeersProvider = () => NetPlayer.All;
             SpaceHooks.LocalPeerProvider = () => NetPlayer.Local;
             SpaceHooks.ProxiesProvider = () => Object.FindObjectsByType<NetProxy>();
@@ -73,6 +81,11 @@ namespace GoF2Remake.Multiplayer
                 if (s != null && s.IsSpawned) s.SiegeWonRpc(station);
             };
             SpaceHooks.PirateSightingDone = (id, killer) => NetState.Instance?.PirateSightingDoneRpc(id, killer);
+            SpaceHooks.WreckHacked = (station, name) =>
+            {
+                if (EventHost.Local) EventRunner.OnWreckHacked(LocalPilot.Instance, station, name);
+                else NetState.Instance?.WreckHackedRpc(station, name ?? "");
+            };
             SpaceHooks.Notice = NetChat.Notice;
             SpaceHooks.KeysProvider = () => NetChat.Keys;
 

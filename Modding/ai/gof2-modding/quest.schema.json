@@ -1,0 +1,3506 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/JoppieToppie/Galaxy-on-Fire-2-Unity-Remake/Modding/ai/gof2-modding/quest.schema.json",
+  "title": "Galaxy on Fire 2 Remake quest (.gof2quest)",
+  "description": "events/<name>.gof2quest in a mod: a quest, bar mission or event as a tree of steps (Modding/README.md \"Quests made in the Mod Builder\"). The file name is its name.",
+  "type": "object",
+  "required": [
+    "format",
+    "steps"
+  ],
+  "properties": {
+    "format": {
+      "const": "gof2quest"
+    },
+    "title": {
+      "$ref": "#/$defs/text",
+      "description": "the title (quests and bar missions need one)"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "quest",
+        "mission",
+        "event"
+      ],
+      "default": "quest",
+      "description": "quest: starts by itself when startsWhen holds; mission: a bar mission offered in the Space Lounges; event: started by /event or another's startevent step"
+    },
+    "startsWhen": {
+      "type": "string",
+      "description": "a quest's start: \"\" at once, \"never\" only by a startquest step, else a condition (visited(78), quest(other) == 2, campaign >= 20...)"
+    },
+    "reward": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "credits paid at complete"
+    },
+    "offer": {
+      "$ref": "#/$defs/text",
+      "description": "a bar mission: what the visitor says"
+    },
+    "client": {
+      "type": "string",
+      "description": "a bar mission's client: a story character, \"mod_id:character\", \"vossk K'ekki\"; empty: someone of the station's race"
+    },
+    "stations": {
+      "type": "array",
+      "items": {
+        "type": [
+          "integer",
+          "string"
+        ],
+        "description": "a station"
+      },
+      "description": "a bar mission is offered at (empty: everywhere)"
+    },
+    "players": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "integer"
+      },
+      "description": "a bar mission's pilots [min, max] (multiplayer)"
+    },
+    "variables": {
+      "type": "array",
+      "description": "numbers the quest keeps; {name} in a text shows one",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "letters, digits, _"
+          },
+          "value": {
+            "type": [
+              "number",
+              "string"
+            ],
+            "description": "its start (an expression)"
+          },
+          "setting": {
+            "type": "boolean",
+            "description": "/event name x=3 can set it"
+          }
+        }
+      }
+    },
+    "autoComplete": {
+      "type": "boolean",
+      "default": true,
+      "description": "completes after its last step when no complete / fail ended it"
+    },
+    "steps": {
+      "$ref": "#/$defs/steps",
+      "description": "the steps in order"
+    },
+    "loose": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/steps"
+      },
+      "description": "the builder's graph: chains wired to nothing (they don't run)"
+    },
+    "values": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/value"
+      },
+      "description": "value nodes, wired into fields as { \"$value\": id }"
+    },
+    "startPos": {
+      "type": "array",
+      "description": "the graph's Start node [x, y]"
+    }
+  },
+  "$defs": {
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "step": {
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Conversation",
+          "description": "Pages with portraits, like the story's",
+          "properties": {
+            "type": {
+              "const": "dialog"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pages": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "speaker": {
+                    "type": "string",
+                    "description": "Keith, a story character, \"mod_id:character\", \"vossk K'ekki\", player"
+                  },
+                  "text": {
+                    "$ref": "#/$defs/text",
+                    "description": "the page; %player% is the player's name, {variable} a variable"
+                  },
+                  "voice": {
+                    "type": "string",
+                    "description": "a voice clip (voices.md or the mod's voices/)"
+                  }
+                }
+              },
+              "description": "the pages in order: [{ speaker, text, voice }]"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Radio call",
+          "description": "A call in the flight HUD",
+          "properties": {
+            "type": {
+              "const": "radio"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "speaker": {
+              "type": "string",
+              "description": "who calls; Keith, a story character, \"mod_id:character\", \"vossk K'ekki\", player"
+            },
+            "text": {
+              "$ref": "#/$defs/text",
+              "description": "the line"
+            },
+            "voice": {
+              "type": "string",
+              "description": "a voice clip (voices.md or the mod's voices/)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Objective",
+          "description": "The Missions window's line and the target on the map",
+          "properties": {
+            "type": {
+              "const": "objective"
+            },
+            "text": {
+              "$ref": "#/$defs/text",
+              "description": "the Missions window's line"
+            },
+            "station": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "the gold target on the map (optional)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Title",
+          "description": "Big text on the screen",
+          "properties": {
+            "type": {
+              "const": "title"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "title": {
+              "$ref": "#/$defs/text",
+              "description": "Title"
+            },
+            "subtitle": {
+              "$ref": "#/$defs/text",
+              "description": "Line under it"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Shown for (seconds; empty: 4); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Shown for (seconds; empty: 4); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Note",
+          "description": "A comment for yourself: does nothing",
+          "properties": {
+            "type": {
+              "const": "note"
+            },
+            "text": {
+              "$ref": "#/$defs/text",
+              "description": "Note"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Wait",
+          "description": "Seconds",
+          "properties": {
+            "type": {
+              "const": "wait"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Seconds; a number, or an expression as a string",
+                  "default": 3
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Seconds; a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Wait until",
+          "description": "A condition",
+          "properties": {
+            "type": {
+              "const": "waituntil"
+            },
+            "condition": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+            },
+            "timeout": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Give up after (seconds); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Give up after (seconds); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "If",
+          "description": "Steps only when a condition holds, others when it doesn't",
+          "properties": {
+            "type": {
+              "const": "if"
+            },
+            "condition": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+            },
+            "then": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Then\""
+            },
+            "else": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Else\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "While",
+          "description": "Steps again and again as long as a condition holds",
+          "properties": {
+            "type": {
+              "const": "while"
+            },
+            "condition": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Condition; an expression (guide.md \"Conditions\"), e.g. kills >= 5"
+            },
+            "steps": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Do\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Repeat",
+          "description": "Steps a number of times",
+          "properties": {
+            "type": {
+              "const": "repeat"
+            },
+            "count": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "How many times; an expression",
+                  "default": 3
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "How many times; an expression"
+            },
+            "as": {
+              "type": "string",
+              "description": "Count in a variable (optional); a variable's name (letters, digits, _)"
+            },
+            "steps": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Do\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "At the same time",
+          "description": "Steps that run beside the rest of the quest",
+          "properties": {
+            "type": {
+              "const": "parallel"
+            },
+            "steps": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Do\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Every few seconds",
+          "description": "Steps again and again beside the rest, until the quest ends",
+          "properties": {
+            "type": {
+              "const": "every"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Every (seconds); a number, or an expression as a string",
+                  "default": 10
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Every (seconds); a number, or an expression as a string"
+            },
+            "steps": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Do\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "When something happens",
+          "description": "Steps each time the player is destroyed, docks, kills a ship, gets near a point...",
+          "properties": {
+            "type": {
+              "const": "on"
+            },
+            "trigger": {
+              "type": "string",
+              "enum": [
+                "died",
+                "docked",
+                "launched",
+                "kill",
+                "cleared",
+                "entered",
+                "near",
+                "respawned",
+                "hacked",
+                "joined",
+                "left",
+                "pvpkill"
+              ],
+              "description": "When: died = The player is destroyed, docked = The player docks, launched = The player launches, kill = A spawned ship is destroyed, cleared = Every spawned enemy is gone, entered = The player enters an orbit, near = The player gets near a point, respawned = The player respawns, hacked = The player hacks a wreck, joined = A player joins, left = A player leaves, pvpkill = A player destroys another",
+              "default": "died"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Only at (optional); the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Only at (optional); the game's number, its name, or a key \"mod_id:id\""
+            },
+            "at": {
+              "type": "string",
+              "description": "The point (x y z); \"x y z\" in game units (20 = 1 m)",
+              "default": "0 0 20000"
+            },
+            "radius": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Within (metres); a number, or an expression as a string",
+                  "default": 500
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Within (metres); a number, or an expression as a string"
+            },
+            "steps": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Do\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ask",
+          "description": "A question; each answer runs its own steps",
+          "properties": {
+            "type": {
+              "const": "ask"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "speaker": {
+              "type": "string",
+              "description": "Asked by; Keith, a story character, \"mod_id:character\", \"vossk K'ekki\", player"
+            },
+            "question": {
+              "$ref": "#/$defs/text",
+              "description": "Question"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Time to answer (seconds); a number, or an expression as a string",
+                  "default": 30
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Time to answer (seconds); a number, or an expression as a string"
+            },
+            "answers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 4,
+              "description": "each answer runs its own steps",
+              "items": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "$ref": "#/$defs/text",
+                    "description": "the answer"
+                  },
+                  "steps": {
+                    "$ref": "#/$defs/steps"
+                  }
+                }
+              }
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Vote",
+          "description": "Everyone picks an answer; the most picked one runs its steps",
+          "properties": {
+            "type": {
+              "const": "vote"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "speaker": {
+              "type": "string",
+              "description": "Asked by; Keith, a story character, \"mod_id:character\", \"vossk K'ekki\", player"
+            },
+            "question": {
+              "$ref": "#/$defs/text",
+              "description": "Question"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Time to vote (seconds); a number, or an expression as a string",
+                  "default": 30
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Time to vote (seconds); a number, or an expression as a string"
+            },
+            "none": {
+              "$ref": "#/$defs/steps",
+              "description": "the steps of \"Nobody voted\""
+            },
+            "answers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 4,
+              "description": "each answer runs its own steps",
+              "items": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "properties": {
+                  "text": {
+                    "$ref": "#/$defs/text",
+                    "description": "the answer"
+                  },
+                  "steps": {
+                    "$ref": "#/$defs/steps"
+                  }
+                }
+              }
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Random",
+          "description": "One of several branches, by chance",
+          "properties": {
+            "type": {
+              "const": "random"
+            },
+            "branches": {
+              "type": "array",
+              "minItems": 1,
+              "description": "one runs, the bigger its weight the likelier",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "weight": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "steps": {
+                    "$ref": "#/$defs/steps"
+                  }
+                }
+              }
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Set a variable",
+          "description": "A number the quest remembers (its variables)",
+          "properties": {
+            "type": {
+              "const": "set"
+            },
+            "variable": {
+              "type": "string",
+              "description": "Variable; a variable's name (letters, digits, _)"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Value (an expression); an expression",
+                  "default": "0"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Value (an expression); an expression"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Checkpoint",
+          "description": "A save goes on from here (only on the quest's own line of steps, not inside a block)",
+          "properties": {
+            "type": {
+              "const": "checkpoint"
+            },
+            "name": {
+              "type": "string",
+              "description": "its name (optional; one word)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Start a quest",
+          "description": "Another quest beside this one",
+          "properties": {
+            "type": {
+              "const": "startquest"
+            },
+            "quest": {
+              "type": "string",
+              "description": "the quest's name (its file name)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Next event",
+          "description": "Ends this one and starts another event graph or quest",
+          "properties": {
+            "type": {
+              "const": "startevent"
+            },
+            "event": {
+              "type": "string",
+              "description": "Event; an event graph's or quest's name"
+            },
+            "settings": {
+              "$ref": "#/$defs/text",
+              "description": "Its settings (name=value ...)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Complete",
+          "description": "The quest is done, the reward paid",
+          "properties": {
+            "type": {
+              "const": "complete"
+            },
+            "reward": {
+              "type": "integer",
+              "description": "credits (default: the quest's reward)"
+            },
+            "title": {
+              "$ref": "#/$defs/text",
+              "description": "the reward box's title"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Fail",
+          "description": "Mission failed",
+          "properties": {
+            "type": {
+              "const": "fail"
+            },
+            "title": {
+              "$ref": "#/$defs/text",
+              "description": "what the player is told"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Stop",
+          "description": "Ends the quest without a result (an event: its end)",
+          "properties": {
+            "type": {
+              "const": "stop"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Go to a station",
+          "description": "Waits until the player docks there (or reaches its orbit)",
+          "properties": {
+            "type": {
+              "const": "goto"
+            },
+            "station": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "the station"
+            },
+            "dock": {
+              "type": "boolean",
+              "description": "true (default): docked there; false: in its orbit"
+            },
+            "objective": {
+              "$ref": "#/$defs/text",
+              "description": "the objective meanwhile (optional)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Waypoint",
+          "description": "A point in an orbit the autopilot flies to",
+          "properties": {
+            "type": {
+              "const": "waypoint"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+            },
+            "at": {
+              "type": "string",
+              "description": "At (x y z, game units from the station; empty: cleared); \"x y z\" in game units (20 = 1 m)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Map target",
+          "description": "The gold story icon on the map and the HUD",
+          "properties": {
+            "type": {
+              "const": "target"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Station (empty: none); the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station (empty: none); the game's number, its name, or a key \"mod_id:id\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Quiet orbit",
+          "description": "No normal traffic in an orbit (for the quest's own ships)",
+          "properties": {
+            "type": {
+              "const": "questorbit"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+            },
+            "on": {
+              "type": "boolean",
+              "description": "Quiet (off: the traffic comes back)",
+              "default": true
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Restrict travel",
+          "description": "No jumps, no docking, or both",
+          "properties": {
+            "type": {
+              "const": "restrict"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "what": {
+              "type": "string",
+              "enum": [
+                "jumps",
+                "docking",
+                "all",
+                "off"
+              ],
+              "description": "Refuse: jumps = Jumps, docking = Docking, all = Both, off = Nothing (lift it)",
+              "default": "jumps"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Respawn point",
+          "description": "Where a destroyed ship comes back, in space",
+          "properties": {
+            "type": {
+              "const": "respawn"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "In the orbit of (empty: none); the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "In the orbit of (empty: none); the game's number, its name, or a key \"mod_id:id\""
+            },
+            "at": {
+              "type": "string",
+              "description": "At (x y z; empty: in front of the station); \"x y z\" in game units (20 = 1 m)"
+            },
+            "spread": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Spread (units); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Spread (units); a number, or an expression as a string"
+            },
+            "delay": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "After (seconds); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "After (seconds); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Teleport",
+          "description": "Moves the player to an orbit or into a hangar",
+          "properties": {
+            "type": {
+              "const": "teleport"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station; the game's number, its name, or a key \"mod_id:id\""
+            },
+            "dock": {
+              "type": "boolean",
+              "description": "Into its hangar",
+              "default": false
+            },
+            "at": {
+              "type": "string",
+              "description": "At (x y z; empty: the launch spot); \"x y z\" in game units (20 = 1 m)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Fight",
+          "description": "Ships in an orbit; waits until they are destroyed",
+          "properties": {
+            "type": {
+              "const": "fight"
+            },
+            "station": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "the orbit (empty: wherever the player is)"
+            },
+            "ships": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "ship"
+                ],
+                "properties": {
+                  "ship": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "description": "the ship"
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "race": {
+                    "type": "string",
+                    "enum": [
+                      "",
+                      "pirate",
+                      "terran",
+                      "vossk",
+                      "nivelian",
+                      "midorian",
+                      "void"
+                    ]
+                  },
+                  "behaviour": {
+                    "type": "string",
+                    "enum": [
+                      "enemy",
+                      "neutral",
+                      "friendly"
+                    ]
+                  }
+                }
+              },
+              "description": "[{ ship, count (1-10), race, behaviour (enemy / neutral / friendly) }]"
+            },
+            "name": {
+              "type": "string",
+              "description": "their name on the lock plate (ship orders use it)"
+            },
+            "quiet": {
+              "type": "boolean",
+              "description": "no other traffic there (default true)"
+            },
+            "objective": {
+              "$ref": "#/$defs/text",
+              "description": "the objective meanwhile (optional)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Spawn ships",
+          "description": "Ships (or an object) beside the player, named for the ship orders",
+          "properties": {
+            "type": {
+              "const": "spawn"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Ship; the game's number, its name, or a key \"mod_id:id\""
+            },
+            "count": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "How many (empty: 1); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "How many (empty: 1); a number, or an expression as a string"
+            },
+            "race": {
+              "type": "string",
+              "enum": [
+                "",
+                "pirate",
+                "terran",
+                "vossk",
+                "nivelian",
+                "midorian",
+                "void"
+              ],
+              "description": "Flown by: \"\" = Its maker, pirate = Pirates, terran = Terran, vossk = Vossk, nivelian = Nivelian, midorian = Midorian, void = Void",
+              "default": ""
+            },
+            "behaviour": {
+              "type": "string",
+              "enum": [
+                "enemy",
+                "neutral",
+                "friendly",
+                "standing"
+              ],
+              "description": "Toward the player: enemy = Enemy, neutral = Neutral, friendly = Friendly, standing = By the standing",
+              "default": "enemy"
+            },
+            "name": {
+              "$ref": "#/$defs/text",
+              "description": "Their name (on the lock plate; the orders use it)"
+            },
+            "at": {
+              "type": "string",
+              "description": "At (x y z in the orbit; empty: ahead of the player); \"x y z\" in game units (20 = 1 m)"
+            },
+            "turrets": {
+              "$ref": "#/$defs/text",
+              "description": "Turret items (numbers, a comma between)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Hackable wreck",
+          "description": "A damaged freighter the player can dock at and hack (\"When something happens\": the player hacks a wreck)",
+          "properties": {
+            "type": {
+              "const": "wreck"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "race": {
+              "type": "string",
+              "enum": [
+                "",
+                "terran",
+                "vossk",
+                "nivelian",
+                "midorian"
+              ],
+              "description": "Freighter: \"\" = Any, terran = Terran, vossk = Vossk, nivelian = Nivelian, midorian = Midorian",
+              "default": ""
+            },
+            "name": {
+              "$ref": "#/$defs/text",
+              "description": "Its name (on the HUD; %victim% when hacked)"
+            },
+            "at": {
+              "type": "string",
+              "description": "At (x y z in the orbit; empty: 1.5 km ahead of the player); \"x y z\" in game units (20 = 1 m)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship: fly to",
+          "description": "A named ship flies somewhere",
+          "properties": {
+            "type": {
+              "const": "shipgoto"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": "string",
+              "description": "Ship; the name a spawn / fight step gave the ships"
+            },
+            "to": {
+              "type": "string",
+              "description": "To; a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)",
+              "default": "station 0 0 20000"
+            },
+            "speed": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Speed (units per ms; a fighter 2); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Speed (units per ms; a fighter 2); a number, or an expression as a string"
+            },
+            "radius": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Arrived within (units); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Arrived within (units); a number, or an expression as a string"
+            },
+            "fight": {
+              "type": "boolean",
+              "description": "Fights on the way",
+              "default": false
+            },
+            "then": {
+              "type": "string",
+              "enum": [
+                "hold",
+                "resume",
+                "vanish",
+                "jump"
+              ],
+              "description": "Then: hold = Hold there, resume = Back to its route, vanish = Vanish, jump = Jump out",
+              "default": "hold"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship: fly a route",
+          "description": "A named ship flies from place to place",
+          "properties": {
+            "type": {
+              "const": "shiproute"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": "string",
+              "description": "Ship; the name a spawn / fight step gave the ships"
+            },
+            "route": {
+              "$ref": "#/$defs/text",
+              "description": "Places (a / between them)",
+              "default": "station 0 0 20000 / station 20000 0 20000"
+            },
+            "loop": {
+              "type": "boolean",
+              "description": "Round and round",
+              "default": false
+            },
+            "speed": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Speed (units per ms); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Speed (units per ms); a number, or an expression as a string"
+            },
+            "radius": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Arrived within (units); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Arrived within (units); a number, or an expression as a string"
+            },
+            "fight": {
+              "type": "boolean",
+              "description": "Fights on the way",
+              "default": false
+            },
+            "then": {
+              "type": "string",
+              "enum": [
+                "hold",
+                "resume",
+                "vanish",
+                "jump"
+              ],
+              "description": "Then: hold = Hold there, resume = Back to its route, vanish = Vanish, jump = Jump out",
+              "default": "hold"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship: follow",
+          "description": "A named ship flies beside the player or another ship",
+          "properties": {
+            "type": {
+              "const": "shipfollow"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": "string",
+              "description": "Ship; the name a spawn / fight step gave the ships"
+            },
+            "leader": {
+              "type": "string",
+              "description": "Follows; a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)",
+              "default": "player"
+            },
+            "offset": {
+              "type": "string",
+              "description": "Where beside it (right up forward); \"x y z\" in game units (20 = 1 m)"
+            },
+            "escort": {
+              "type": "boolean",
+              "description": "Fights what attacks it (escort)",
+              "default": true
+            },
+            "speed": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Speed (units per ms); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Speed (units per ms); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship: attack",
+          "description": "A named ship attacks the player or another ship, whatever the standing",
+          "properties": {
+            "type": {
+              "const": "shipattack"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": "string",
+              "description": "Ship; the name a spawn / fight step gave the ships"
+            },
+            "target": {
+              "type": "string",
+              "description": "Attacks; a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)",
+              "default": "player"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship: other order",
+          "description": "Hold, back to its route, jump out, dock, flee",
+          "properties": {
+            "type": {
+              "const": "shipaction"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "ship": {
+              "type": "string",
+              "description": "Ship; the name a spawn / fight step gave the ships"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "hold",
+                "resume",
+                "jump",
+                "dock",
+                "flee"
+              ],
+              "description": "Order: hold = Hold where it is, resume = Back to its route, jump = Jump out, dock = Dock at the station, flee = Flee, then jump out",
+              "default": "hold"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Flees for (seconds); a number, or an expression as a string",
+                  "default": 20
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Flees for (seconds); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Make hostile",
+          "description": "The ships around the player turn on them",
+          "properties": {
+            "type": {
+              "const": "provoke"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "race": {
+              "type": "string",
+              "enum": [
+                "",
+                "pirate",
+                "terran",
+                "vossk",
+                "nivelian",
+                "midorian",
+                "void"
+              ],
+              "description": "Only: \"\" = Every race, pirate = Pirates, terran = Terran, vossk = Vossk, nivelian = Nivelian, midorian = Midorian, void = Void",
+              "default": ""
+            },
+            "within": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Within (metres; empty: the whole orbit); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Within (metres; empty: the whole orbit); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Reward",
+          "description": "Credits and items, in the reward box",
+          "properties": {
+            "type": {
+              "const": "reward"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "credits": {
+              "type": [
+                "number",
+                "string"
+              ],
+              "description": "credits (or an expression)"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "item"
+                ],
+                "properties": {
+                  "item": {
+                    "type": [
+                      "integer",
+                      "string"
+                    ],
+                    "description": "the item"
+                  },
+                  "amount": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              "description": "[{ item, amount }]"
+            },
+            "title": {
+              "$ref": "#/$defs/text",
+              "description": "the reward box's title"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Give an item",
+          "description": "Into the hold, without a box",
+          "properties": {
+            "type": {
+              "const": "give"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "item": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Item; the game's number, its name, or a key \"mod_id:id\"",
+              "default": 22
+            },
+            "amount": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Amount; a number, or an expression as a string",
+                  "default": 1
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Amount; a number, or an expression as a string"
+            },
+            "mount": {
+              "type": "boolean",
+              "description": "Mount it (when docked)",
+              "default": false
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Bring cargo",
+          "description": "Waits until the hold has it",
+          "properties": {
+            "type": {
+              "const": "cargo"
+            },
+            "item": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "the item"
+            },
+            "amount": {
+              "type": "integer",
+              "description": "how many tonnes"
+            },
+            "station": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "docked there (optional)"
+            },
+            "objective": {
+              "$ref": "#/$defs/text",
+              "description": "the objective meanwhile (optional)"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Credits",
+          "description": "Adds (or takes, below 0) credits without a box",
+          "properties": {
+            "type": {
+              "const": "credits"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "amount": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Credits; a number, or an expression as a string",
+                  "default": 1000
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Credits; a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Change ship",
+          "description": "The player flies another hull (or their own again)",
+          "properties": {
+            "type": {
+              "const": "ship"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "own": {
+              "type": "boolean",
+              "description": "Their own ship again",
+              "default": false
+            },
+            "hull": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Ship; the game's number, its name, or a key \"mod_id:id\""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Repair",
+          "description": "Hull, shield and armor full",
+          "properties": {
+            "type": {
+              "const": "heal"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Refill ammo",
+          "description": "Every secondary to 50",
+          "properties": {
+            "type": {
+              "const": "ammo"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Destroy the ship",
+          "description": "The player's ship is destroyed",
+          "properties": {
+            "type": {
+              "const": "kill"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Reveal the map",
+          "description": "Every system on the star map",
+          "properties": {
+            "type": {
+              "const": "reveal"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Make peace",
+          "description": "Every race neutral again",
+          "properties": {
+            "type": {
+              "const": "peace"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Start a cutscene",
+          "description": "HUD and controls off, bars",
+          "properties": {
+            "type": {
+              "const": "cutscene"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "letterbox": {
+              "type": "boolean",
+              "description": "Black bars",
+              "default": true
+            },
+            "freeze": {
+              "type": "boolean",
+              "description": "The ship stops",
+              "default": false
+            },
+            "invulnerable": {
+              "type": "boolean",
+              "description": "Invulnerable",
+              "default": true
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Camera shot",
+          "description": "The camera at a place, moving, looking at something",
+          "properties": {
+            "type": {
+              "const": "camera"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "from": {
+              "type": "string",
+              "description": "From; a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)",
+              "default": "player 0 600 -2500"
+            },
+            "to": {
+              "type": "string",
+              "description": "Moves to (optional); a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Over (seconds); a number, or an expression as a string",
+                  "default": 3
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Over (seconds); a number, or an expression as a string"
+            },
+            "look": {
+              "type": "string",
+              "description": "Looks at (optional); a place: player [right up forward] | station [x y z] | x y z | ship <name> [x y z] (game units)",
+              "default": "player"
+            },
+            "follow": {
+              "type": "boolean",
+              "description": "Keeps up with what it looks at",
+              "default": false
+            },
+            "fov": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Field of view (degrees); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Field of view (degrees); a number, or an expression as a string"
+            },
+            "shake": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Shake (0..1); a number, or an expression as a string"
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Shake (0..1); a number, or an expression as a string"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Chase camera",
+          "description": "The normal camera behind the ship again",
+          "properties": {
+            "type": {
+              "const": "chasecamera"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "End the cutscene",
+          "description": "HUD, controls and the chase camera back",
+          "properties": {
+            "type": {
+              "const": "cutsceneend"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Fade",
+          "description": "To or from a colour",
+          "properties": {
+            "type": {
+              "const": "fade"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "out",
+                "in",
+                "clear"
+              ],
+              "description": "Fade: out = Out (to the colour), in = In (from it), clear = Clear at once",
+              "default": "out"
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Seconds; a number, or an expression as a string",
+                  "default": 1
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Seconds; a number, or an expression as a string"
+            },
+            "colour": {
+              "$ref": "#/$defs/text",
+              "description": "Colour (rrggbb)",
+              "default": "000000"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Black bars",
+          "description": "On or off, without a cutscene",
+          "properties": {
+            "type": {
+              "const": "letterbox"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "on": {
+              "type": "boolean",
+              "description": "On",
+              "default": true
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Music",
+          "description": "A track, or stop",
+          "properties": {
+            "type": {
+              "const": "music"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "track": {
+              "type": "string",
+              "description": "Track; a game track word (battle, boss, void, terran...), a mod track's name, or stop",
+              "default": "battle"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Sound",
+          "description": "A sound effect",
+          "properties": {
+            "type": {
+              "const": "sound"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "sound": {
+              "type": "string",
+              "description": "Sound; alarm, warning, success, message, info, click, explosion, smallexplosion, jumpgate, khador, charge, lock, boost, shield, timeshift, medal",
+              "default": "alarm"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Timer",
+          "description": "A countdown at the top of the screen",
+          "properties": {
+            "type": {
+              "const": "timer"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "stop": {
+              "type": "boolean",
+              "description": "Take it away",
+              "default": false
+            },
+            "seconds": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ],
+                  "description": "Seconds; a number, or an expression as a string",
+                  "default": 60
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Seconds; a number, or an expression as a string"
+            },
+            "label": {
+              "$ref": "#/$defs/text",
+              "description": "Label"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Points",
+          "description": "Points for the score",
+          "properties": {
+            "type": {
+              "const": "points"
+            },
+            "who": {
+              "$ref": "#/$defs/who",
+              "description": "For",
+              "default": "@a"
+            },
+            "amount": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "description": "Points; an expression",
+                  "default": 1
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Points; an expression"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Scoreboard",
+          "description": "The top ten on every player's screen",
+          "properties": {
+            "type": {
+              "const": "scoreboard"
+            },
+            "show": {
+              "type": "boolean",
+              "description": "Shown",
+              "default": true
+            },
+            "title": {
+              "$ref": "#/$defs/text",
+              "description": "Title"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Score by",
+          "description": "Kills, time alive or points",
+          "properties": {
+            "type": {
+              "const": "score"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "kills",
+                "time",
+                "points"
+              ],
+              "description": "Score: kills = Kills, time = Time alive, points = Points",
+              "default": "kills"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Winner",
+          "description": "Shows who won",
+          "properties": {
+            "type": {
+              "const": "winner"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "",
+                "kills",
+                "time",
+                "points"
+              ],
+              "description": "By: \"\" = The score, kills = Kills, time = Time alive, points = Points",
+              "default": ""
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Free for all",
+          "description": "Every player an enemy of every other (multiplayer)",
+          "properties": {
+            "type": {
+              "const": "pvp"
+            },
+            "on": {
+              "type": "boolean",
+              "description": "On",
+              "default": true
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Command",
+          "description": "Any event command (as typed in multiplayer)",
+          "properties": {
+            "type": {
+              "const": "command"
+            },
+            "line": {
+              "$ref": "#/$defs/text",
+              "description": "Command"
+            },
+            "pos": {
+              "type": "array",
+              "description": "the node's place in the builder's graph view [x, y] (optional)"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Number",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "number"
+            },
+            "value": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Value"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Game state",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "state"
+            },
+            "what": {
+              "type": "string",
+              "enum": [
+                "players",
+                "inspace",
+                "docked",
+                "dead",
+                "enemies",
+                "ships",
+                "time",
+                "kills",
+                "credits",
+                "rank",
+                "station",
+                "system",
+                "ship",
+                "campaign",
+                "systemsvisited",
+                "missionstation",
+                "toppoints"
+              ],
+              "description": "What"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Variable",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "variable"
+            },
+            "name": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Name"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Math",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "math"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "A (number)"
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "B (number)"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "+",
+                "-",
+                "*",
+                "/",
+                "%"
+              ],
+              "description": "Operation"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Compare",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "compare"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "A (number)"
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "B (number)"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "==",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">="
+              ],
+              "description": "Is"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "And / Or",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "logic"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "A (number)"
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "B (number)"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "and",
+                "or"
+              ],
+              "description": "Both / either"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Not",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "not"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Value (number)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Random",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "random"
+            },
+            "min": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "From (number)"
+            },
+            "max": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "To (number)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Min / Max",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "minmax"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "A (number)"
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "B (number)"
+            },
+            "op": {
+              "type": "string",
+              "enum": [
+                "min",
+                "max"
+              ],
+              "description": "Which"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Round down",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "floor"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Value (number)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Count players",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "count"
+            },
+            "players": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Players (players)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ships alive",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "alive"
+            },
+            "ship": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Named"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Ship's distance",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "distance"
+            },
+            "ship": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Named"
+            },
+            "at": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "To x y z"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Cargo of an item",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "cargo"
+            },
+            "item": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Item"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Docked at",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "docked"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station (orbit)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "In the orbit of",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "inorbit"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station (orbit)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Has visited",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "visited"
+            },
+            "station": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "Station (orbit)"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "A quest's state",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "quest"
+            },
+            "name": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Quest"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Expression",
+          "description": "gives number",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "expression"
+            },
+            "text": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Expression"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Get players",
+          "description": "gives players",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "players"
+            },
+            "orbit": {
+              "anyOf": [
+                {
+                  "type": [
+                    "number",
+                    "string"
+                  ]
+                },
+                {
+                  "$ref": "#/$defs/wire"
+                }
+              ],
+              "description": "In the orbit of (optional) (orbit)"
+            },
+            "who": {
+              "type": "string",
+              "enum": [
+                "a",
+                "alive",
+                "space",
+                "docked",
+                "dead",
+                "survivors",
+                "r",
+                "p"
+              ],
+              "description": "Who"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "title": "Get orbit",
+          "description": "gives orbit",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "its id, which a wire names"
+            },
+            "type": {
+              "const": "orbit"
+            },
+            "station": {
+              "type": [
+                "string",
+                "number"
+              ],
+              "description": "Station"
+            },
+            "pos": {
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "type"
+          ]
+        }
+      ]
+    },
+    "text": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "description": "one per language: { \"en\": ..., \"de\": ... }",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "who": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/wire"
+        }
+      ],
+      "description": "whom the step is for: @a everyone the quest is for (default), @trigger the player an \"on\" block is about, @alive, @docked, @survivors, @r, or @alive[orbit=<station>]"
+    },
+    "wire": {
+      "type": "object",
+      "required": [
+        "$value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "$value": {
+          "type": "string",
+          "description": "a value node's id (in \"values\")"
+        }
+      },
+      "description": "a value node wired into the field"
+    }
+  }
+}

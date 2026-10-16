@@ -300,6 +300,7 @@ namespace GoF2Remake.World
             // drive itself (its blueprint unlocks at index 34, after the wormhole ride at 24), so the prompt needs no gate; a
             // drive from the Debug panel reaches the Void early. Free play and multiplayer sessions too (Void Crystals), but
             // only with a real drive: free play's gateless-system stand-in (GalaxyMap.HasJumpDrive) doesn't reach the Void.
+            // Remake: the map opens at once and its Jump to the Void button asks 422 (StarMap.AskVoid).
             bool askVoid = GalaxyMap.HasIntegratedDrive(Session.ShipIndex) || Session.Equipment.Exists(e => e.item == GalaxyMap.KhadorDriveItem);
             bool opened = SpaceHooks.OpenStarMap != null && SpaceHooks.OpenStarMap(db, StarMapMode.Khador, true, r =>
             {
@@ -359,8 +360,11 @@ namespace GoF2Remake.World
             state = State.KhadorScene;
             if (advanceOnJump) { advanceOnJump = false; if (Story.Index == 78) Story.Advance(db); }
             var fxPos = ship.transform.position + ship.transform.forward * 3000f * M;
-            fx = SpawnKhadorFx(assets, fxPos, ship.transform.rotation, out animLength);
-            JumpFxStarted?.Invoke(false, fxPos, ship.transform.rotation);
+            // MGame::startJumpScene: the fx's setDirection(ship direction, (0, 1, 0)): upright in the world whatever the ship's
+            // roll (the ship's own rotation played it upside down from a ship flying inverted).
+            var fxRot = Quaternion.LookRotation(ship.transform.forward, Vector3.up);
+            fx = SpawnKhadorFx(assets, fxPos, fxRot, out animLength);
+            JumpFxStarted?.Invoke(false, fxPos, fxRot);
             activated = true;
             animMs = 0f;
             var cam = Camera.main;

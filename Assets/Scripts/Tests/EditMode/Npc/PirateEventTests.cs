@@ -147,29 +147,35 @@ namespace GoF2Remake.Tests
 
         // ---- how often (Build) -------------------------------------------------------------------------------------
 
-        static (int outposts, int bosses) CountEvents(int station, int n, int seed)
+        /// <summary>Events among the visits without a raider group ('visits' counts those; an unreported event never comes
+        /// with raiders).</summary>
+        static (int outposts, int bosses, int visits) CountEvents(int station, int n, int seed)
         {
-            int o = 0, b = 0;
+            int o = 0, b = 0, v = 0;
             Repeat(station, n, seed, list =>
             {
-                if (list.Any(x => x.pirateEvent == SpawnSpec.EventOutpost)) o++;
-                if (list.Any(x => x.pirateEvent == SpawnSpec.EventBoss)) b++;
+                bool raiders = list.Any(x => x.group == NpcGroup.Raider);
+                bool outpost = list.Any(x => x.pirateEvent == SpawnSpec.EventOutpost), boss = list.Any(x => x.pirateEvent == SpawnSpec.EventBoss);
+                if (raiders) { Assert.IsFalse(outpost || boss, "an unreported event on top of a raider group"); return; }
+                v++;
+                if (outpost) o++;
+                if (boss) b++;
             });
-            return (o, b);
+            return (o, b, v);
         }
 
         [Test]
         public void UnannouncedEventsWithTheBoard()
         {
-            // the board is part of the option: Dangerous 5 %, Risky 2 %, half outposts, half bosses.
+            // the board is part of the option: Dangerous 5 %, Risky 2 % of the visits without raiders, half outposts, half
+            // bosses.
             Settings.PirateEvents = true;
             InFreePlay(5);
-            const int n = 6000;
-            var d = CountEvents(20, n, 1);
-            Assert.AreEqual(0.05, (d.outposts + d.bosses) / (double)n, 0.012);
-            Assert.AreEqual(0.5, d.outposts / (double)(d.outposts + d.bosses), 0.12);
-            var r = CountEvents(5, n, 2);
-            Assert.AreEqual(0.02, (r.outposts + r.bosses) / (double)n, 0.008);
+            var d = CountEvents(20, 18000, 1);
+            Assert.AreEqual(0.05, (d.outposts + d.bosses) / (double)d.visits, 0.015);
+            Assert.AreEqual(0.5, d.outposts / (double)(d.outposts + d.bosses), 0.15);
+            var r = CountEvents(5, 12000, 2);
+            Assert.AreEqual(0.02, (r.outposts + r.bosses) / (double)r.visits, 0.008);
             var none = CountEvents(15, 2000, 3);
             Assert.AreEqual(0, none.outposts + none.bosses, "Average");
         }
@@ -204,6 +210,38 @@ namespace GoF2Remake.Tests
                 Assert.AreEqual("Test Boss", boss.name);
                 Assert.IsFalse(list.Any(x => x.pirateEvent == SpawnSpec.EventOutpost));
             }
+        }
+
+        [Test]
+        public void NoEventInAnInformerOrbit()
+        {
+            // A pirate killed in the Informer's orbit spoiled the mission; the orbit is the spy and the police alone.
+            Settings.PirateEvents = true;
+            InFreePlay(0);
+            Session.PirateSightings.Add(Sighting(20, true, 4));
+            Session.FreelanceMission = new FreelanceMission { type = MissionType.Informer, target = 20 };
+            Random.InitState(5);
+            for (int i = 0; i < 20; i++) Assert.IsFalse(Build(20).Any(x => x.pirateEvent != 0));
+            Session.FreelanceMission = new FreelanceMission();
+            Assert.IsTrue(Build(20).Any(x => x.pirateEvent == SpawnSpec.EventBoss), "the report waits for a later visit");
+        }
+
+        [Test]
+        public void AReportedEventComesEvenWithRaiders()
+        {
+            // Only the unannounced roll gives way to a raider group (players' report 2026-10-16); a report is a contract.
+            Settings.PirateEvents = true;
+            InFreePlay(5);
+            Session.PirateSightings.Add(Sighting(20, true, 3));
+            Random.InitState(8);
+            int withRaiders = 0;
+            for (int i = 0; i < 200; i++)
+            {
+                var list = Build(20);
+                Assert.IsTrue(list.Any(x => x.pirateEvent == SpawnSpec.EventBoss));
+                if (list.Any(x => x.group == NpcGroup.Raider)) withRaiders++;
+            }
+            Assert.Greater(withRaiders, 0);
         }
 
         [Test]
@@ -306,46 +344,61 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(tier5, Event(true, 5).Count(x => x.group == NpcGroup.Guard));
         }
 
+        /// <summary>The pirates' stash after the tier's own 'tierStacks': freighter cargo, each kind once, not the tier's.</summary>
+        static int Stash(SpawnSpec outpost, int tierStacks)
+        {
+            var kinds = outpost.extraLoot.Select(x => x.item).Append(outpost.lootItem).ToList();
+            CollectionAssert.AllItemsAreUnique(kinds);
+            int tons = 0;
+            for (int i = tierStacks; i < outpost.extraLoot.Count; i++) { Assert.Greater(outpost.extraLoot[i].amount, 0); tons += outpost.extraLoot[i].amount; }
+            return tons;
+        }
+
         [Test]
         public void OutpostCratesByTier()
         {
             InFreePlay(5);
             Random.InitState(20);
             var baseLoot = PirateBases.Loot.Select(l => l.item).ToArray();
+            var stash = new int[5];
             for (int k = 0; k < 40; k++)
             {
                 var t1 = Event(true, 1)[0];
                 int i1 = System.Array.IndexOf(baseLoot, t1.lootItem);
                 Assert.GreaterOrEqual(i1, 0);
-                Assert.AreEqual(Mathf.Max(1, PirateBases.Loot[i1].amount / 2), t1.lootAmount, "half the base's goods");
-                Assert.AreEqual(0, t1.extraLoot.Count);
+                Assert.GreaterOrEqual(t1.lootAmount, Mathf.Max(1, PirateBases.Loot[i1].amount / 2), "half the base's goods (and a stash roll of it)");
+                stash[0] += Stash(t1, 0);
 
                 var t2 = Event(true, 2)[0];
-                CollectionAssert.Contains(PirateBases.Loot, (t2.lootItem, t2.lootAmount));
-                Assert.AreEqual(0, t2.extraLoot.Count);
+                Assert.Contains(t2.lootItem, baseLoot);
+                stash[1] += Stash(t2, 0);
 
                 var t3 = Event(true, 3)[0];
-                CollectionAssert.Contains(PirateBases.Loot, (t3.lootItem, t3.lootAmount));
-                Assert.AreEqual(1, t3.extraLoot.Count);
+                Assert.Contains(t3.lootItem, baseLoot);
+                stash[2] += Stash(t3, 1);
                 CollectionAssert.Contains(new[] { 113, 108, 107, 102, 101 }, t3.extraLoot[0].item);
                 Assert.That(t3.extraLoot[0].amount >= 2 && t3.extraLoot[0].amount <= 4);
 
                 var t4 = Event(true, 4)[0];   // rank 5: the lower table
                 CollectionAssert.Contains(new[] { 8, 21, 30, 27, 53 }, t4.lootItem);
-                Assert.AreEqual(1, t4.lootAmount);
-                Assert.AreEqual(1, t4.extraLoot.Count);
+                Assert.GreaterOrEqual(t4.lootAmount, 1);
+                stash[3] += Stash(t4, 1);
                 CollectionAssert.Contains(new[] { 113, 108 }, t4.extraLoot[0].item);
                 Assert.That(t4.extraLoot[0].amount >= 3 && t4.extraLoot[0].amount <= 6);
 
                 var t5 = Event(true, 5)[0];   // the best equipment whatever the rank, two different pieces
                 var high = new[] { 11, 58, 59, 49, 54, 67 };
                 CollectionAssert.Contains(high, t5.lootItem);
-                Assert.AreEqual(2, t5.extraLoot.Count);
+                stash[4] += Stash(t5, 2);
                 CollectionAssert.Contains(high, t5.extraLoot[0].item);
                 Assert.AreNotEqual(t5.lootItem, t5.extraLoot[0].item);
                 CollectionAssert.Contains(new[] { 113, 108 }, t5.extraLoot[1].item);
                 Assert.That(t5.extraLoot[1].amount >= 8 && t5.extraLoot[1].amount <= 12);
             }
+            // a player's report 2026-10-16 (an outpost gave 1 t of something): a freighter's cargo rolls by tier, 1 / 2 / 2 / 3 / 4
+            CollectionAssert.AreEqual(new[] { 1, 2, 2, 3, 4 }, TrafficPlan.OutpostStashRolls);
+            for (int t = 0; t < 5; t++) Assert.Greater(stash[t] / 40f, 8f * TrafficPlan.OutpostStashRolls[t] * 0.8f, "tier " + (t + 1));
+            Assert.Greater(stash[4], stash[0]);
             InFreePlay(10);
             for (int k = 0; k < 20; k++) CollectionAssert.Contains(new[] { 11, 58, 59, 49, 54, 67 }, Event(true, 4)[0].lootItem, "rank 10: the upper table");
         }

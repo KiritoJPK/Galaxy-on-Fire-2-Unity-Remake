@@ -129,6 +129,9 @@ namespace GoF2Remake.World
         public static Action<int> SiegeWon;
         /// <summary>A pirate sighting's event is destroyed (id, killer's client id; NetState.PirateSightingDoneRpc).</summary>
         public static Action<int, ulong> PirateSightingDone;
+        /// <summary>The player hacked a wreck in this orbit (station, the wreck's name): an event's or quest's "on hacked"
+        /// (EventRunner.OnWreckHacked; in a session through NetState.WreckHackedRpc).</summary>
+        public static Action<int, string> WreckHacked;
         /// <summary>A line in the multiplayer chat as a notice (NetChat.Notice).</summary>
         public static Action<string> Notice;
 
@@ -171,6 +174,11 @@ namespace GoF2Remake.World
         public static PoseQuery TeleportPose;
 
         /// <summary>The arena match this game plays (NetArenaClient.Current), null = none.</summary>
+        // ---- remake mods (PR #87): another player's customizable ship parked in this hangar (NetHangar) ----
+        public static Func<ulong, int, AssemblyData> GuestAssembly;
+        public static Func<ulong, int, float> GuestShipY;
+        public static Func<ulong, int, Modding.ModShipKits.Build> GuestBuild;
+
         public static Func<ArenaMatchInfo> ArenaProvider;
         /// <summary>In a match of the running session (NetArenaClient.InMatch).</summary>
         public static Func<bool> InArenaMatch;

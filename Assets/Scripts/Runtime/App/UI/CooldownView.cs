@@ -2,9 +2,12 @@
 // Remake-only: the booster's and the cloak's recharge for keyboard and controller play, under the status bars next to the
 // secondary weapon's plate. The original shows the boost charge only on its touch button (Hud::draw 18: the button's alpha)
 // and the cloak's in the quick menu's entry (getCloakRechargeRate); with keys or a pad neither is on screen. Each is the
-// equipment's own shop icon (GoF2Icons/item_NNN), darkened from the top while it recharges (booster: FlightModel
+// equipment's own shop icon (GoF2Icons/item_NNN), lit from the left as it recharges (booster: FlightModel
 // BoostRechargePercent, dim while boosting; cloak: Cloak.ChargeRate / RechargeRate, dim while cloaked) and lit with a short
 // flash once it is ready. Hidden in touch mode (the touch buttons show it) and without the equipment.
+// Remake (players' suggestion): the icon sweeps left to right: the part not yet recharged is see-through (a dark shade
+// over the right), the whole icon opaque when ready; while the device runs (boosting, cloaked, the time extender slowing
+// the world) the lit part drains with what is left, with a cyan edge. The time extender (category 26) has its slot too.
 
 using GoF2Remake.Data;
 using GoF2Remake.Flight;
@@ -16,7 +19,7 @@ namespace GoF2Remake.UI
 {
     public sealed class CooldownView
     {
-        const int BoosterCategory = 14;
+        const int BoosterCategory = 14, TimeExtenderCategory = 26;
         const float FlashSeconds = 0.6f;
 
         sealed class Slot
@@ -28,7 +31,7 @@ namespace GoF2Remake.UI
         }
 
         readonly VisualElement row;
-        readonly Slot boost, cloak;
+        readonly Slot boost, cloak, extender;
 
         public CooldownView(VisualElement parent)
         {
@@ -37,6 +40,7 @@ namespace GoF2Remake.UI
             parent.Add(row);
             boost = Make();
             cloak = Make();
+            extender = Make();
         }
 
         Slot Make()
@@ -51,20 +55,26 @@ namespace GoF2Remake.UI
         }
 
         /// <summary>Each frame. 'shown' = keyboard / controller flight with the HUD up.</summary>
-        public void Update(Database db, ShipController ship, PlayerCloak playerCloak, bool shown)
+        public void Update(Database db, ShipController ship, PlayerCloak playerCloak, TimeExtender timeExtender, bool shown)
         {
             var model = ship != null ? ship.Model : null;
             var booster = shown && model != null && model.HasBooster && db != null ? Shop.FirstMounted(db, BoosterCategory) : null;
             var rules = shown && playerCloak != null ? playerCloak.Rules : null;
             Set(boost, booster != null ? booster.index : -1,
-                model == null ? 1f : model.IsBoosting ? 0f : model.BoostRechargePercent, model != null && model.BoostReady);
+                model == null ? 1f : model.IsBoosting ? 0f : model.BoostRechargePercent, model != null && model.BoostReady,
+                model != null && model.IsBoosting ? model.BoostLeftPercent : -1f);
             Set(cloak, rules != null ? rules.item : -1,
                 rules == null ? 1f : rules.State == Cloak.Phase.Charging ? rules.ChargeRate : rules.Cloaked ? 0f : rules.RechargeRate,
-                rules != null && rules.Available);
-            row.style.display = booster != null || rules != null ? DisplayStyle.Flex : DisplayStyle.None;
+                rules != null && rules.Available, rules != null && rules.Cloaked ? rules.CloakLeft : -1f);
+            var slowItem = shown && timeExtender != null && db != null ? Shop.FirstMounted(db, TimeExtenderCategory) : null;
+            Set(extender, slowItem != null ? slowItem.index : -1,
+                timeExtender == null ? 1f : timeExtender.Running ? 0f : timeExtender.RechargeRate, timeExtender != null && timeExtender.Ready,
+                timeExtender != null && timeExtender.Running ? timeExtender.RunLeft : -1f);
+            row.style.display = booster != null || rules != null || slowItem != null ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
-        static void Set(Slot s, int item, float charge, bool ready)
+        /// <summary>'charge' 0..1 recharging (1 = ready); 'left' 0..1 what is left while the device runs, -1 = not running.</summary>
+        static void Set(Slot s, int item, float charge, bool ready, float left)
         {
             if (item < 0) { s.root.style.display = DisplayStyle.None; s.item = -1; return; }
             s.root.style.display = DisplayStyle.Flex;
@@ -75,7 +85,10 @@ namespace GoF2Remake.UI
                 s.root.style.backgroundImage = tex != null ? new StyleBackground(tex) : new StyleBackground();
                 s.wasReady = ready;
             }
-            s.shade.style.height = Length.Percent((1f - Mathf.Clamp01(charge)) * 100f);
+            bool running = left >= 0f;
+            float lit = running ? left : ready ? 1f : Mathf.Clamp01(charge);
+            s.shade.style.width = Length.Percent((1f - lit) * 100f);   // the shade covers the right, the sweep reveals from the left
+            s.root.EnableInClassList("cooldown--running", running);
             s.root.EnableInClassList("cooldown--waiting", !ready);
             if (ready && !s.wasReady) s.flashUntil = Time.unscaledTime + FlashSeconds;
             s.wasReady = ready;

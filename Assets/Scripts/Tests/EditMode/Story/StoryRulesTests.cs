@@ -353,10 +353,10 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
-        public void LoungeFromStep12NeverAtKotharOrValkyrie()
+        public void LoungeFromStep13NeverAtKotharOrValkyrie()
         {
-            AtStep(11); Assert.IsFalse(Story.LoungeUnlocked(79));
-            AtStep(12); Assert.IsTrue(Story.LoungeUnlocked(79));
+            AtStep(12); Assert.IsFalse(Story.LoungeUnlocked(79), "ModStation::OnKeyPress refuses it before 13");
+            AtStep(13); Assert.IsTrue(Story.LoungeUnlocked(79));
             AtStep(15); Assert.IsFalse(Story.LoungeUnlocked(98));
             AtStep(49); Assert.IsFalse(Story.LoungeUnlocked(74));
             AtStep(60);
@@ -580,6 +580,21 @@ namespace GoF2Remake.Tests
             Story.RepairCheckpoint();
             Assert.AreEqual(index, Story.Index);
             Assert.AreSame(m, Story.Mission);
+        }
+
+        [Test]
+        public void AStepWonWithoutItsConversationCompletesAgain()
+        {
+            // #88: step 72's call (0xa4, 10 s in space) completed, the scene changed before its conversation, the save kept
+            // the step won: never reported again. A new scene reopens it (Story.ReopenUnshownSuccess).
+            AtStep(72);
+            var ctx = new StoryContext { docked = false, station = 66, levelMs = 11000f };
+            Assert.IsTrue(Story.IsComplete(Db, ctx));
+            Story.Mission.won = true;
+            Assert.IsFalse(Story.IsComplete(Db, ctx), "a won step isn't reported again within the scene");
+            Story.ReopenUnshownSuccess();
+            Assert.IsTrue(Story.IsComplete(Db, ctx), "the next scene reports it again");
+            Assert.AreEqual(72, Story.Index);
         }
 
         [Test]

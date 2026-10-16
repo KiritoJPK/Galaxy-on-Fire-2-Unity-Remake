@@ -686,8 +686,15 @@ namespace GoF2Remake.World
 
         void Update()
         {
+            // #48: the mission ended another way (discarded in the Missions window, another one taken, ended by the squad): its
+            // waypoint goes too; it stayed on the HUD until the orbit was left.
+            if (Freelance.Mission != mission && !routeCleared && level != null && !DialogueOpen)
+            {
+                routeCleared = true;
+                done = true;
+                level.Navigation?.SetRoute(null);
+            }
             if (done || level == null || DialogueOpen || MessageRequested == null) return;
-            if (GoF2Remake.Data.NetSession.Active && Freelance.Mission != mission) { done = true; return; }   // left the squad / ended by it
             float dt = Time.deltaTime * 1000f;
             levelMs += dt;
             if (!Running) { UpdateFollower(dt); return; }
@@ -709,10 +716,14 @@ namespace GoF2Remake.World
             if (levelMs >= 5000f && Won()) { if (dead) Resolve(true); else Succeed(); }
         }
 
+        /// <summary>The mission ended another way and its route was taken off the HUD.</summary>
+        bool routeCleared;
+
         /// <summary>Multiplayer, the runner dead: the result without its dialog (a chat line instead).</summary>
         void Resolve(bool success)
         {
             done = true;
+            level.Navigation?.SetRoute(null);
             if (!success) { Freelance.Fail(); GoF2Remake.World.SpaceHooks.Notice?.Invoke(Localization.Get(392)); return; }
             if (mission.type == MissionType.Recovery || mission.type == MissionType.Salvage) { Freelance.ToReturnTrip(); return; }
             int paid = Freelance.Succeed(false);

@@ -328,19 +328,43 @@ namespace GoF2Remake.Tests
 
         // ---- the loot -------------------------------------------------------------------------------------------
 
-        [Test]
-        public void CapitalLootOnceAnHour()
+        static void AssertHold(System.Collections.Generic.List<ItemStack> loot, int from)
         {
+            // the hold: freighter cargo rolls, each kind once, none of the crate's fixed kinds again
+            var kinds = loot.Select(x => x.item).ToList();
+            CollectionAssert.AllItemsAreUnique(kinds);
+            for (int k = from; k < loot.Count; k++) Assert.Greater(loot[k].amount, 0);
+        }
+
+        [Test]
+        public void CapitalGearOnceAnHourCargoAlways()
+        {
+            // a player's report 2026-10-16 ("does not drop cargo"): within the hour the crate keeps its hold, rare goods and
+            // cells; only the gear waits.
             Random.InitState(5);
             Session.CapitalLootReadyAt = Session.PlaySeconds + 3600f;
             Assert.IsFalse(CapitalShips.LootReady);
-            Assert.AreEqual(0, CapitalShips.RollLoot(Db).Count);
+            int holdStacks = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                var loot = CapitalShips.RollLoot(Db, out bool gear);
+                Assert.IsFalse(gear);
+                CollectionAssert.Contains(new[] { 113, 108, 107, 102, 101 }, loot[0].item);
+                Assert.That(loot[0].amount >= 4 && loot[0].amount <= 8);
+                Assert.AreEqual(GalaxyMap.EnergyCellItem, loot[1].item);
+                Assert.That(loot[1].amount >= 5 && loot[1].amount <= 10);
+                AssertHold(loot, 2);
+                holdStacks += loot.Count - 2;
+            }
+            Assert.Greater(holdStacks / 100f, 2f, "two to three freighter rolls");
             Session.CapitalLootReadyAt = 0f;
             Assert.IsTrue(CapitalShips.LootReady);
             for (int i = 0; i < 100; i++)
             {
-                var loot = CapitalShips.RollLoot(Db);
-                Assert.AreEqual(4, loot.Count);
+                var loot = CapitalShips.RollLoot(Db, out bool gear);
+                Assert.IsTrue(gear);
+                Assert.GreaterOrEqual(loot.Count, 4);
+                AssertHold(loot, 4);
                 for (int k = 0; k < 2; k++)
                 {
                     var it = Db.Item(loot[k].item);

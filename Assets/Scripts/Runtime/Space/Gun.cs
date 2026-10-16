@@ -32,6 +32,9 @@ namespace GoF2Remake.Flight
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class Gun
     {
+        /// <summary>The beam lasers (BeamGun: 9-11, 228; a mod's item by its look): one beam mesh scaled along the shot.</summary>
+        public static bool IsBeamLook(int look) => look == 9 || look == 10 || look == 11 || look == 228;
+
         public enum Kind
         {
             Laser = 0, Blaster = 1, AutoCannon = 2, Thermo = 3, Rocket = 4, Missile = 5, EmpBomb = 6, Nuke = 7, Turret = 8,
@@ -52,6 +55,7 @@ namespace GoF2Remake.Flight
 
         public const float MetersPerUnit = 0.05f;
         const float CoastMs = 2000f;          // rockets/missiles keep flying (and hitting) past their lifetime
+        const float TerminalHomingMs = 250f;  // remake: a homing missile this close (in flight time) to its goal turns straight at it
         const float SpawnForwardUnits = 100f; // offset = mount + (0, 0, 100)
         public const float BeamRangeUnits = 30000f;  // no target: the beam's bullet is parked this far ahead
         const float MineSpeedUnits = 2f, MineStopMs = 500f, MinePullUnitsPerFrame = 200f;
@@ -80,6 +84,17 @@ namespace GoF2Remake.Flight
         public float spreadError;             // Gun+0xe0: 2 auto-cannon/scatter, 20 thermo, 0 otherwise
         /// <summary>RocketGun::update: homing only once the bullet is this old (NPC rockets 1000 ms, the player's at once).</summary>
         public float homingDelayMs;
+
+        // Remake, for mods (ItemStats 105-108): a gun or turret whose shots are homing missiles, and salvos.
+        /// <summary>Attr 105 = 1: the shots are homing missiles (they home on the lock / the turret's target, keep their size,
+        /// trail smoke and burst like a rocket on a hit), whatever the item's category.</summary>
+        public readonly bool missiles;
+        /// <summary>Attr 106: shots side by side per trigger; attr 107: salvos per magazine, attr 108 ms apart (the reload,
+        /// attr 11, comes after the last).</summary>
+        public readonly int salvoShots = 1, salvoCount = 1;
+        public readonly float salvoGapMs;
+        int salvoIndex;
+        const float SalvoSpreadUnits = 120f;   // sideways between the shots of one salvo
 
         /// <summary>Multiplayer: targets this gun's bullets pass straight through (a squadmate of the shooter), null = none.</summary>
         public Func<Target, bool> Ignores;
@@ -111,16 +126,51 @@ namespace GoF2Remake.Flight
         /// ship's salvo is mirrored at its own target, not the ship's).</summary>
         public Target LastLock { get; private set; }
 
-        public bool Homing => kind == Kind.Missile || kind == Kind.ClusterMissile || kind == Kind.Thermo;
+        public bool Homing => kind == Kind.Missile || kind == Kind.ClusterMissile || kind == Kind.Thermo || missiles;
+        /// <summary>Rockets and missiles: no impact mesh, a rocket burst on a hit (GunRig.ShowImpact), a smoke trail.</summary>
+        public bool IsMissile => kind == Kind.Rocket || kind == Kind.Missile || kind == Kind.ClusterMissile || missiles;
         bool Coasts => kind == Kind.Rocket || kind == Kind.Missile || kind == Kind.ClusterMissile;
         /// <summary>Sorts 6 / 7 / 34: slow bombs that go off at the end of life, on contact or on the next press.</summary>
         public bool IsBomb => kind == Kind.EmpBomb || kind == Kind.Nuke || kind == Kind.Ionizing;
         /// <summary>Rockets, missiles and bombs kill asteroids outright (9999) and keep flying.</summary>
         bool KillsAsteroids => Coasts || IsBomb || kind == Kind.ShockBlast;
         float FreeLimit => Coasts ? -CoastMs : 0f;
-        public bool Ready => reloadAcc > reloadMs && (!isBeam || bullets[0].timer <= 0f);
+        /// <summary>The wait before the next shot: the reload, or inside a magazine the gap between its salvos.</summary>
+        public float WaitMs => salvoCount > 1 && salvoIndex > 0 ? salvoGapMs : reloadMs;
+        public bool Ready => reloadAcc > WaitMs && (!isBeam || bullets[0].timer <= 0f);
+        /// <summary>The shortest reload the bullet pool sustains: a bullet frees up just as the next shot needs it (the
+        /// "No primary weapon cooldown" cheat; faster, the pool empties in a burst and the gun waits out a lifetime).</summary>
+        public float SustainedReloadMs => (lifetimeMs - FreeLimit) / bullets.Length;
 
         IReadOnlyList<Target> lastTargets;
+
+        /// <summary>Remake (mods): a weapon whose shots may be missiles and salvos (ItemStats 105-108): plain shots, not beams,
+        /// bombs, mines, cluster salvos, the Shock Blast, sentries or collectors. The Mod Builder offers those stats by it.</summary>
+        public static bool FiresPlainShots(ItemData item)
+        {
+            if (item == null) return false;
+            int look = item.Look;
+            if (look == 9 || look == 10 || look == 11 || look == 228) return false;   // beams
+            return (Kind)item.categoryId is not (Kind.EmpBomb or Kind.Nuke or Kind.Ionizing or Kind.Mine or Kind.ClusterMissile
+                                                 or Kind.ShockBlast or Kind.Sentry or Kind.PlasmaCollector);
+        }
+
+        /// <summary>Remake: what a hit does to a shield, x the damage (items.json stat shieldDamage, attribute 124, a percentage;
+        /// the Disruptor Laser (183) and items based on it 200 %: its description's "destabilizes" shield systems, which the
+        /// original never made true; a players' request, 2026-10-16). The players' weapons only: the NPCs' guns (the generic
+        /// NPC gun, Level::assignGuns, the Disruptor at step 0x46 too) stay at 1. Only ships with a shield feel it: the players
+        /// (in multiplayer each other), not the original's NPCs.</summary>
+        [System.NonSerialized] public float shieldFactor = 1f;
+
+        public const int ShieldDamageAttr = 124, DisruptorShieldPercent = 200;
+
+        public static float ShieldFactor(ItemData item)
+        {
+            if (item == null) return 1f;
+            int pct = item.Attr(ShieldDamageAttr);
+            if (pct <= 0) pct = item.Look == 183 ? DisruptorShieldPercent : 100;
+            return Mathf.Clamp(pct, 1, 1000) / 100f;
+        }
 
         public Gun(ItemData item, Vector3 mountLocal, bool secondary)
         {
@@ -130,13 +180,21 @@ namespace GoF2Remake.Flight
             kind = (Kind)item.categoryId;
             isSecondary = secondary;
             int look = item.Look;   // a mod's item works like its base (Modding.ModContent)
-            isBeam = look == 9 || look == 10 || look == 11 || look == 228;
+            isBeam = IsBeamLook(look);
             damage = item.Attr(9);
+            shieldFactor = ShieldFactor(item);
             emp = item.Attr(10);
             reloadMs = Mathf.Max(1, item.Attr(11, 500));
             lifetimeMs = kind == Kind.ShockBlast ? 1f : item.Attr(12, 2000);
             speedUnitsPerMs = kind == Kind.Mine ? MineSpeedUnits : kind == Kind.ShockBlast ? 0f : item.Attr(13, 20);
             magnitude = kind == Kind.ShockBlast ? ShockBlastRadiusUnits : item.Attr(14);
+            if (FiresPlainShots(item))
+            {
+                missiles = item.Attr(105) == 1;
+                salvoShots = Mathf.Max(1, item.Attr(106, 1));
+                salvoCount = Mathf.Max(1, item.Attr(107, 1));
+                salvoGapMs = Mathf.Max(0, item.Attr(108));
+            }
             this.mountLocal = mountLocal;
             // Level::createGun: pool sizes and spread per sort.
             int pool = kind switch
@@ -252,6 +310,28 @@ namespace GoF2Remake.Flight
                 return free;
             }
 
+            if (salvoShots > 1)
+            {
+                // Remake (mods): salvoShots shots side by side, each sent on its own (multiplayer mirrors them all).
+                int made = 0;
+                for (int i = 0; i < bullets.Length && made < salvoShots; i++)
+                {
+                    if (bullets[i].timer > FreeLimit) continue;
+                    ref var c = ref bullets[i];
+                    float side = (made - (salvoShots - 1) * 0.5f) * SalvoSpreadUnits * MetersPerUnit;
+                    c.position = Spawn() + rotation * Vector3.right * side;
+                    c.velocity = fwd * speedUnitsPerMs * MetersPerUnit;
+                    c.up = up;
+                    c.timer = lifetimeMs;
+                    c.age = 0f;
+                    c.lockLost = false; c.aimed = false; c.target = null;
+                    made++;
+                    Fired?.Invoke(this, i);
+                }
+                NextSalvo();
+                return free;
+            }
+
             var dir = Vector3.forward;
             if (spreadError > 0f)
             {
@@ -268,9 +348,16 @@ namespace GoF2Remake.Flight
             b.timer = lifetimeMs;
             b.age = 0f;
             b.lockLost = false; b.aimed = false; b.target = null;
-            reloadAcc = 0f;
+            NextSalvo();
             Fired?.Invoke(this, free);
             return free;
+        }
+
+        /// <summary>The reload starts over; with salvos the next one waits salvoGapMs inside the magazine (WaitMs).</summary>
+        void NextSalvo()
+        {
+            reloadAcc = 0f;
+            if (salvoCount > 1) salvoIndex = (salvoIndex + 1) % salvoCount;
         }
 
         /// <summary>Multiplayer: another player's shot drawn by this (visual-only) gun (NetShotMirror): a free bullet at
@@ -336,13 +423,20 @@ namespace GoF2Remake.Flight
                 if (dropShaken && !b.lockLost && (object)b.target == null) { b.lockLost = true; shaken = true; }
                 if (steer > 0f && !b.lockLost && homeOn.ShakesMissiles) { b.lockLost = true; shaken = true; }
                 if (steer > 0f && !b.lockLost && homeOn.isPlayer) IncomingMissiles.Report(this, i, b.position, b.velocity);
-                if (steer > 0f && !b.lockLost && b.age >= homingDelayMs)
+                bool homing = steer > 0f && !b.lockLost && b.age >= homingDelayMs;
+                var goal = homing ? (b.aimed ? homeOn.transform.TransformPoint(b.aim) : homeOn.transform.position) : Vector3.zero;
+                if (homing)
                 {
                     float speed = b.velocity.magnitude;
-                    var goal = b.aimed ? homeOn.transform.TransformPoint(b.aim) : homeOn.transform.position;
-                    var desired = (goal - b.position).normalized;
+                    var toGoal = goal - b.position;
+                    var desired = toGoal.normalized;
                     var cur = b.velocity / Mathf.Max(speed, 1e-6f);
-                    b.velocity = Vector3.Normalize(cur + (desired - cur) * steer) * speed;
+                    // Remake: within a quarter second of flight of its goal the missile turns straight at it. The original's
+                    // steering (RocketGun::seekEnemy: dir += (goal dir - dir) / k at a constant speed) can't turn tighter than
+                    // ~150 m at 18 u/ms, so a missile passing its target settles into an orbit around it; the original's
+                    // +-1000-unit hit cube caught those near misses, the remake's hull meshes don't (missiles circled ships).
+                    float s = toGoal.sqrMagnitude < (speed * TerminalHomingMs) * (speed * TerminalHomingMs) ? 1f : steer;
+                    b.velocity = Vector3.Normalize(cur + (desired - cur) * s) * speed;
                 }
                 b.timer -= dtMs;
                 b.age += dtMs;
@@ -353,6 +447,15 @@ namespace GoF2Remake.Flight
                 else b.position += b.velocity * dtMs;
                 if (kind == Kind.ClusterMissile) Corkscrew(i, ref b, dtMs);
                 if (IsBomb && b.timer < 1f) { Ignite(targets); continue; }   // end of life
+                // Remake: a homing missile that reaches its goal hits its target there. A salvo's spot on a big hull
+                // (CapitalShips.SpreadAim) is a random point in its hit boxes, which can be empty space beside the mesh: the
+                // missiles reached it, missed the hull and looped round it.
+                if (homing && targets != null && DistanceToSegment(goal, from, b.position) <= HullShotRadius && MayHit(homeOn, targets))
+                {
+                    b.timer = -1e9f;   // gone
+                    Hit?.Invoke(i, homeOn, goal);
+                    continue;
+                }
                 if (targets != null)
                 {
                     if (kind == Kind.Mine) TestMine(i, ref b, targets, dtMs);
@@ -423,6 +526,15 @@ namespace GoF2Remake.Flight
                 if (kind == Kind.ScatterGun) { AreaDamage(point, targets, false); Ignited?.Invoke(point); }   // + the burst around
                 return;
             }
+        }
+
+        /// <summary>How far 'p' is from the segment a..b (metres).</summary>
+        static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)
+        {
+            var ab = b - a;
+            float len2 = ab.sqrMagnitude;
+            float t = len2 > 1e-12f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / len2) : 0f;
+            return Vector3.Distance(p, a + ab * t);
         }
 
         /// <summary>Metres: a shot's thickness for the hull test (HullCollision.Cast), so a shot grazing an edge hits it (the
@@ -569,6 +681,6 @@ namespace GoF2Remake.Flight
 
         /// <summary>Render scale: projectiles shrink linearly over their last 1000 ms (ObjectGun); rockets, missiles, bombs
         /// and mines keep their size (the original's scale goes negative while coasting).</summary>
-        public float VisualScale(int i) => Coasts || IsBomb || kind == Kind.Mine || isBeam ? 1f : Mathf.Clamp01(bullets[i].timer / 1000f);
+        public float VisualScale(int i) => Coasts || missiles || IsBomb || kind == Kind.Mine || isBeam ? 1f : Mathf.Clamp01(bullets[i].timer / 1000f);
     }
 }

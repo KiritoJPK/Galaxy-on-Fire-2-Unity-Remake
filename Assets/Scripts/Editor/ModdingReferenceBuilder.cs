@@ -4,7 +4,8 @@
 // numbers, blueprint recipes, ships with their models, systems with their skies, stations with their planets and models,
 // story steps, story speakers, every assembled model with the texture names a skin replaces, the backdrop textures, music
 // tracks, sound effects, the event commands' sound / music words, the built-in event graphs; the Android economy), and
-// voices.md beside it (every voice clip with its speaker and English line, for "[voice <clip>]"). The AI modding guide
+// voices.md beside it (every voice clip with its speaker and English line, for "[voice <clip>]"), quests.md + quest.schema.json
+// (the .gof2quest step format, Events.QuestSchema). The AI modding guide
 // (Modding/ai/gof2-modding/SKILL.md) points assistants to both. Run it again after changing the game data. Mods' content is
 // left out (only the original numbers).
 
@@ -18,12 +19,15 @@ using UnityEngine;
 
 namespace GoF2Remake.EditorTools
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // read-only tables
     public static class ModdingReferenceBuilder
     {
         const string OutputPath = "Modding/ai/gof2-modding/reference.md";
         const string VoicesPath = "Modding/ai/gof2-modding/voices.md";
         const string EventsPath = "Modding/ai/gof2-modding/events.md";
         const string GuidePath = "Modding/ai/gof2-modding/guide.md";
+        const string QuestsPath = "Modding/ai/gof2-modding/quests.md";
+        const string QuestSchemaPath = "Modding/ai/gof2-modding/quest.schema.json";
         const string GuideSource = "Modding/README.md";
 
         static readonly string[] RaceNames = { "Terran", "Vossk", "Nivelian", "Midorian", "?", "?", "?", "?", "Pirate", "Void", "Specter" };
@@ -128,6 +132,9 @@ namespace GoF2Remake.EditorTools
                 WriteReference(db, dbDefault);
                 WriteVoices(db);
                 Write(EventsPath, new StringBuilder(ModdingEventsReference.Build()));
+                // The .gof2quest format from the game's own step table (Events.QuestSchema).
+                Write(QuestsPath, new StringBuilder(Events.QuestSchema.Markdown()));
+                Write(QuestSchemaPath, new StringBuilder(Events.QuestSchema.Build().ToString(Newtonsoft.Json.Formatting.Indented) + "\n"));
                 WriteGuide();
             }
             finally
@@ -171,7 +178,8 @@ namespace GoF2Remake.EditorTools
             sb.AppendLine("`system`, `looksLike`, `planet`, `sky`, `startStation`, `startShip`, `replaces`, speakers, `textures/<name>.png`,");
             sb.AppendLine("`music/<name>.ogg`, `sounds/<name>.ogg`, `/spawn` objects... Mod content is referred to by key instead (`mod_id:id`).");
             sb.AppendLine("Beside this file: `voices.md` (every voice clip with its line), `events.md` (every event graph node with its options and");
-            sb.AppendLine("ports, every command), `guide.md` (the full modders' guide: every field of every mod file).");
+            sb.AppendLine("ports, every command), `quests.md` + `quest.schema.json` (the .gof2quest step format), `guide.md` (the full modders' guide:");
+            sb.AppendLine("every field of every mod file).");
             sb.AppendLine();
             sb.AppendLine("Contents: Races, Items, Item categories, Item stats (attribute numbers), Blueprints, Ships, Ship hardpoints, Default");
             sb.AppendLine("economy, Systems, Skies, Stations, Planets, Story steps, Story speakers, Models and their textures, Backdrop textures,");
@@ -453,6 +461,8 @@ namespace GoF2Remake.EditorTools
             sb.AppendLine("one-model skins), with the textures it draws: a mod's `textures/<texture>.png` replaces that texture on every model using");
             sb.AppendLine("it, `textures/<model>/<texture>.png` on that model only. Keep the original's UV layout. `_normal_specular` = normal map,");
             sb.AppendLine("`_metallic_smoothness` = the remake's metallic map; `glow_<race>` / `ship_engine_glow` and the like are shared lights.");
+            sb.AppendLine("Any of them is also a model a mod can use without a file: `\"model\": \"gof2:<name>\"` in ships.json, stations.json and");
+            sb.AppendLine("items.json fx (see the guide's \"The game's own models\").");
             sb.AppendLine();
             var cats = db.Assemblies.Where(a => a.pack != Modding.ModContent.Pack).GroupBy(a => a.category).ToList();
             int done = 0, total = cats.Sum(g => g.Count());

@@ -14,6 +14,7 @@
 //     "ships": "mod" | "all"   ("mod": dealers sell only mods' ships),
 //     "trafficShips": { "terran": [ship, ...], "vossk": [...], "nivelian": [...], "midorian": [...], "pirate": [...] }
 //                              (the ships NPC fighters of that race fly; default the game's)
+//     "flightStyle": "free" | "original"  (the campaign's games always fly so, ModFlight; default the player's option)
 //   }
 // The game runs as a free-play game (Session.FreePlay: the GoF2 story is off) with Session.ModCampaign = the mod's id (saved);
 // a save of it needs the mod (ModSaves warns). Starting: Status::resetGame's state, then the campaign's start, docked at its
@@ -36,7 +37,7 @@ namespace GoF2Remake.Modding
         static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "name", "description", "image", "imageHover", "showTitle", "startStation", "startShip", "credits", "equipment", "cargo", "standing", "quest",
-            "galaxy", "items", "ships", "trafficShips",
+            "galaxy", "items", "ships", "trafficShips", "flightStyle",
         };
 
         public class Def
@@ -49,6 +50,7 @@ namespace GoF2Remake.Modding
             public List<(string item, int amount)> equipment = new List<(string, int)>(), cargo = new List<(string, int)>();
             public int[] standing;
             public bool modGalaxy, modItems, modShips;
+            public int flightStyle = -1;   // "flightStyle": the campaign's games fly so (ModFlight), -1 = the player's option
             public readonly Dictionary<int, List<string>> trafficShips = new Dictionary<int, List<string>>();
             public string Id => mod.Id;
             public string Name => ModManifest.Pick(name) ?? mod.Name;
@@ -96,6 +98,7 @@ namespace GoF2Remake.Modding
                 modItems = string.Equals(ModJson.Str(o, "items", "all"), "mod", StringComparison.OrdinalIgnoreCase),
                 modShips = string.Equals(ModJson.Str(o, "ships", "all"), "mod", StringComparison.OrdinalIgnoreCase),
             };
+            d.flightStyle = ModFlight.ReadStyle(o, File);
             if (string.IsNullOrEmpty(d.startStation)) throw new ModJsonException($"{File}: \"startStation\" is missing (where the game begins)");
             if (string.IsNullOrEmpty(d.startShip)) throw new ModJsonException($"{File}: \"startShip\" is missing (the ship the player begins with)");
             if (ModJson.Get(o, "equipment") is JArray eq)
@@ -193,6 +196,13 @@ namespace GoF2Remake.Modding
         {
             var c = Current;
             return c == null || !c.modShips || ModContent.IsModShip(ship);
+        }
+
+        /// <summary>The campaign names its own ships for NPC fighters of the race ("trafficShips"): ModTraffic leaves them.</summary>
+        public static bool HasTrafficShips(int race)
+        {
+            var c = Current;
+            return c != null && c.trafficShips.TryGetValue(race == 8 || race > 3 ? 8 : race, out var refs) && refs.Count > 0;
         }
 
         /// <summary>The ship an NPC fighter of the race flies ("trafficShips"; else the game's pick).</summary>

@@ -182,6 +182,13 @@ namespace GoF2Remake.World
             return new Vector3Int(Mathf.RoundToInt(-l.x), Mathf.RoundToInt(l.y), Mathf.RoundToInt(l.z));
         }
 
+        /// <summary>A world direction as a unit vector in the ship's game frame (a turret mount's turretUp).</summary>
+        public Vector3 GameDirOf(Vector3 worldDir)
+        {
+            var l = Ship.InverseTransformDirection(worldDir).normalized;
+            return new Vector3(-l.x, l.y, l.z);
+        }
+
         /// <summary>The ship's axes in world space, in game terms: +x (Unity's -x: the models are mirrored), up, forward.</summary>
         Vector3 Axis(int i) => i == 0 ? Ship.TransformDirection(Vector3.left) : i == 1 ? Ship.TransformDirection(Vector3.up) : Ship.TransformDirection(Vector3.forward);
 
@@ -296,6 +303,27 @@ namespace GoF2Remake.World
             return true;
         }
 
+        /// <summary>The hull's surface normal (world) at hardpoint 'index': short rays from just outside it (out from the hull's
+        /// centre, then along the ship's axes), the hit nearest the point. False: no hull within 3 m of it.</summary>
+        public bool HullNormalAt(int index, out Vector3 normal)
+        {
+            normal = default;
+            if (Ship == null || Mounts == null || index < 0 || index >= Mounts.Count) return false;
+            var point = WorldOf(Mounts[index]);
+            var centre = Ship.TransformPoint(LocalBounds.center);
+            var dirs = new List<Vector3> { (point - centre).normalized };
+            foreach (var a in new[] { Vector3.up, Vector3.down, Vector3.left, Vector3.right, Vector3.forward, Vector3.back }) dirs.Add(Ship.TransformDirection(a));
+            float best = 3f;
+            foreach (var d in dirs)
+            {
+                if (d.sqrMagnitude < 1e-6f) continue;
+                if (!Physics.Raycast(point + d * 3f, -d, out var hit, 6f, 1 << PickLayer, QueryTriggerInteraction.Ignore)) continue;
+                float off = Vector3.Distance(hit.point, point);
+                if (off < best) { best = off; normal = hit.normal; }
+            }
+            return best < 3f;
+        }
+
         /// <summary>The hover highlight on the handles (the view calls it while nothing is dragged).</summary>
         public void Hover(Vector2? screen) => hoverAxis = screen.HasValue ? PickAxis(screen.Value) : -1;
 
@@ -329,7 +357,9 @@ namespace GoF2Remake.World
             Vector3 world;
             if (grab == Grab.Surface)
             {
-                if (!RaycastHull(screen, out world, out _)) return;   // off the hull: it stays
+                if (!RaycastHull(screen, out world, out var normal)) return;   // off the hull: it stays
+                // A turret slid over the hull faces out of it (the nearest ship axis within 15 deg).
+                if (Mounts[Selected].slotType == 2) Mounts[Selected].SetTurretUp(GameDirOf(normal), true);
             }
             else
             {

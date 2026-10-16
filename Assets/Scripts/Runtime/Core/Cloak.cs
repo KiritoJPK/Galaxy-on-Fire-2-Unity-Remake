@@ -44,6 +44,8 @@ namespace GoF2Remake.Flight
         public float ChargeRate => State == Phase.Charging ? Mathf.Clamp01(Timer / chargeMs) : 0f;
         /// <summary>getCloakRechargeRate: 1 - cooldownLeft / cooldownLength (the entry's fill while recharging).</summary>
         public float RechargeRate => State == Phase.Cooldown ? 1f - CooldownLeft / cooldownMs : 1f;
+        /// <summary>What is left of the cloak while cloaked, 1 at its start, 0 when it ends.</summary>
+        public float CloakLeft => State == Phase.Cloaked && durationMs > 0 ? Mathf.Clamp01(1f - Timer / durationMs) : 0f;
 
         /// <summary>getCloakingPercentage.</summary>
         public float Percentage

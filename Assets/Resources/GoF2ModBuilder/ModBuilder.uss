@@ -210,6 +210,12 @@
     -unity-text-align: middle-left;
 }
 
+/* A list's Remove button under its + buttons: their full width. */
+.mbv-remove {
+    margin-right: 0;
+    margin-top: 8px;
+}
+
 .mbv-heading {
     margin: 14px 0 6px 0;
     font-size: 15px;
@@ -900,6 +906,18 @@
     min-width: 0;
 }
 
+/* Undo / Redo (Ctrl+Z / Ctrl+Y): small, before the Hangar button. */
+.mbv-undo-button,
+.mbv-redo-button {
+    min-width: 0;
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+.mbv-redo-button {
+    margin-left: 4px;
+}
+
 /* A skin texture other ships share (the lights, the engine glow). */
 .mbv-note--warn {
     color: var(--gof-amber);
@@ -920,3 +938,207 @@
 .mbv-modal--options > .options-panel {
     max-height: 90%;
 }
+
+/* The Play button and the pages' Play actions (play tests: ModBuilderPlay). */
+.mbv-play-button, .mbv-play {
+    border-color: var(--gof-amber);
+    color: var(--gof-amber);
+}
+.mbv-play-button { min-width: 0; margin-left: 4px; }
+
+/* A picker's search line. */
+.mbv-search {
+    margin: 0 0 8px 0;
+}
+
+/* Text that needs the modder's eye (a required marker missing, a problem in a quest). */
+.mbv-warn {
+    color: #ff8a70;
+}
+
+/* The campaign's and options' cards: a thumbnail in the list, the card as the menu shows it. */
+.mbv-card-thumb {
+    width: 32px;
+    height: 50px;
+    flex-shrink: 0;
+    margin-right: 10px;
+    -unity-background-scale-mode: scale-and-crop;
+    background-color: rgba(0, 0, 0, 0.35);
+}
+.mbv-card-preview {
+    width: 174px;
+    height: 269px;
+    align-self: center;
+    margin: 6px 0 10px 0;
+    justify-content: flex-end;
+    -unity-background-scale-mode: scale-and-crop;
+    background-color: rgba(0, 0, 0, 0.35);
+    border-width: 1px;
+    border-color: var(--gof-line);
+}
+.mbv-card-title {
+    padding: 6px 8px;
+    font-size: 13px;
+    letter-spacing: 2px;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* A quest's steps: one card each, the picked one open. */
+.mbv-step-card {
+    margin: 0 0 6px 0;
+    padding: 0 0 4px 0;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.10);
+    border-radius: 2px;
+}
+.mbv-step-card--on {
+    border-color: var(--gof-amber-soft);
+    padding: 0 8px 8px 8px;
+}
+.mbv-step-head {
+    margin: 0;
+    padding: 6px 8px;
+    flex-direction: column;
+    align-items: flex-start;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+}
+.mbv-step-card--on > .mbv-step-head { padding: 6px 0; }
+.can-hover .mbv-step-head:hover { background-color: rgba(216, 236, 247, 0.06); }
+.mbv-step-name {
+    font-size: 15px;
+    color: var(--gof-cyan);
+}
+.mbv-step-summary {
+    font-size: 13px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+}
+.mbv-page-box {
+    margin: 4px 0;
+    padding: 6px 8px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-left-width: 2px;
+    border-left-color: rgba(216, 236, 247, 0.15);
+}
+
+/* The script a quest makes (read only). */
+.mbv-script .unity-base-text-field__input {
+    font-size: 13px;
+    white-space: pre;
+    -unity-text-align: upper-left;
+}
+
+/* Over the star map (the Systems kind): the panels opaque, so the map's names don't show through. */
+.mbv-root--map .mbv-panel {
+    background-color: rgba(5, 13, 20, 0.96);
+}
+
+/* Quest steps: a block's own lists under it (If's Then / Else, an answer's steps...). */
+.mbv-step-card--block { border-left-width: 3px; border-left-color: rgba(120, 200, 255, 0.35); }
+.mbv-step-children {
+    margin: 2px 6px 4px 14px;
+    padding: 2px 0 2px 8px;
+    border-left-width: 1px;
+    border-left-color: rgba(216, 236, 247, 0.15);
+}
+.mbv-add--small { font-size: 12px; padding: 2px 8px; min-height: 0; margin: 2px 0; }
+
+/* ---- the quest graph (QuestGraphView) ---- */
+.mbg-canvas {
+    position: absolute;
+    left: 392px;
+    right: 532px;
+    top: 92px;
+    bottom: 24px;
+    overflow: hidden;
+    background-color: rgba(8, 12, 18, 0.96);
+    border-width: 1px;
+    border-color: var(--gof-line);
+    border-radius: 2px;
+}
+.mbv-root--graph-wide .mbv-left { display: none; }
+.mbv-root--graph-wide .mbg-canvas { left: 20px; }
+.mbg-content { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.mbg-wires { position: absolute; }
+.mbg-nodes { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.mbg-tools {
+    position: absolute;
+    left: 8px;
+    top: 8px;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+.mbg-tools > Button { margin: 0 4px 4px 0; }
+.mbg-zoom {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    font-size: 12px;
+    color: var(--gof-text-dim);
+}
+.mbg-help {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 6px;
+    font-size: 11px;
+    color: rgba(216, 236, 247, 0.4);
+    white-space: normal;
+}
+.mbg-node {
+    position: absolute;
+    background-color: rgba(26, 32, 42, 0.97);
+    border-width: 1px;
+    border-color: rgba(216, 236, 247, 0.22);
+    border-radius: 4px;
+    padding-bottom: 4px;
+}
+.mbg-node--selected { border-color: var(--gof-amber); border-width: 2px; }
+.mbg-node--loose { opacity: 0.7; border-color: rgba(255, 120, 120, 0.4); }
+.mbg-node--loose.mbg-node--selected { border-color: var(--gof-amber); }
+.mbg-node--start .mbg-head { border-top-left-radius: 4px; }
+.mbg-head {
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 10px;
+    min-height: 24px;
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+.mbg-title { font-size: 13px; color: rgb(240, 244, 248); flex-grow: 1; }
+.mbg-summary {
+    font-size: 12px;
+    color: var(--gof-text-dim);
+    white-space: normal;
+    padding: 4px 10px 2px 10px;
+}
+.mbg-row { flex-direction: row; align-items: center; min-height: 20px; padding: 0 10px; }
+.mbg-row--out { justify-content: flex-end; }
+.mbg-row-label { font-size: 12px; color: rgb(205, 215, 225); }
+.mbg-row--out .mbg-row-label { -unity-text-align: middle-right; }
+.mbg-port {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    border-width: 2px;
+    border-color: rgb(220, 228, 236);
+    background-color: rgb(30, 36, 46);
+}
+.mbg-port--wired { background-color: rgb(220, 228, 236); }
+.mbg-port--data { border-color: rgb(110, 210, 255); border-radius: 3px; width: 12px; height: 12px; }
+.mbg-port--data.mbg-port--wired { background-color: rgb(110, 210, 255); }
+.mbg-port--right { right: -8px; }
+.mbg-port--left { left: -7px; }
+.mbg-port--in { left: -8px; top: 5px; }
+.mbg-head > .mbg-port--right { top: 5px; }
+.can-hover .mbg-port:hover { border-color: var(--gof-amber); }
+
+/* The AI tools button (top bar, between Redo and the hangar): lit while its tab shows, a green edge while the MCP server runs. */
+.mbv-top-button--on { color: #04121c; background-color: var(--gof-cyan); border-color: var(--gof-cyan); }
+.mbv-ai-button--live { border-color: rgb(80, 220, 130); }
+.mbv-ai-button--live.mbv-top-button--on { border-color: rgb(80, 220, 130); }

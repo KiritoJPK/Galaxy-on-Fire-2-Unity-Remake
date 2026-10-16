@@ -37,6 +37,29 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void AShieldFactorScalesOnlyTheShieldsPart()
+        {
+            // remake (Flight.Gun.ShieldFactor, the Disruptor's x2): 10 at x2 takes 20 off the shield
+            var h = new Hitpoints(200, 50, 40);
+            h.Damage(10, 2f);
+            Assert.AreEqual(30f, h.shield);
+            Assert.AreEqual(40, h.armor);
+            // 30 at x2 = 60 on a shield of 30: the shield stops 15 of it, the other 15 go on at their plain value
+            h.Damage(30, 2f);
+            Assert.AreEqual(0f, h.shield);
+            Assert.AreEqual(25, h.armor);
+            Assert.AreEqual(200, h.hull);
+            // no shield left: plain damage
+            h.Damage(30, 2f);
+            Assert.AreEqual(0, h.armor);
+            Assert.AreEqual(195, h.hull);
+            // below 1: a weak weapon against shields
+            var w = new Hitpoints(200, 50, 0);
+            w.Damage(20, 0.5f);
+            Assert.AreEqual(40f, w.shield);
+        }
+
+        [Test]
         public void ShieldFractionIsTruncatedOnEveryHit()
         {
             var h = new Hitpoints(200, 50);

@@ -8,6 +8,9 @@
 // (ScrollTo against the layout of a list that is moving snapped it back).
 // The capture only starts past the threshold, so a release outside the list before that never reaches OnUp: a move with
 // no button held (or the list losing the capture or its panel) ends the press, else the next hover dragged the list.
+// A press on the list's own scroll bar (its Scroller: the thumb, the track, the arrows) is the bar's: dragging the thumb
+// down was taken as a drag of the content and moved the list the other way (players' report: "scrolls in the wrong
+// direction").
 
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -74,6 +77,7 @@ namespace GoF2Remake.UI
         {
             lastPointerFrame = Time.frameCount;
             if (e.pointerType == UnityEngine.UIElements.PointerType.touch || e.button != 0) return;
+            if (OnScroller(e.target as VisualElement)) return;   // the scroll bar drags itself, the right way round
             if (pointerId >= 0 && pointerId != e.pointerId) return;   // another pointer's press is running
             inertia?.Pause();
             pointerId = e.pointerId;
@@ -81,6 +85,14 @@ namespace GoF2Remake.UI
             startOffset = Along(scroll.scrollOffset);
             velocity = 0f;
             dragging = false;
+        }
+
+        /// <summary>'v' is (inside) one of the list's scroll bars.</summary>
+        bool OnScroller(VisualElement v)
+        {
+            for (; v != null && v != scroll; v = v.parent)
+                if (v is Scroller) return true;
+            return false;
         }
 
         void OnMove(PointerMoveEvent e)

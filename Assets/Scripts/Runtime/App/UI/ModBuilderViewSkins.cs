@@ -15,6 +15,7 @@ using System.Linq;
 using GoF2Remake.Data;
 using GoF2Remake.Modding;
 using GoF2Remake.Visuals;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -47,12 +48,65 @@ namespace GoF2Remake.UI
             new DragScroll(scroll);
             skinList = scroll;
             Act(left, T("mbNewSkin", "+ Skin a game ship"), PickSkinShip, "mbv-add");
-            Act(left, T("mbRemoveSkin", "Remove skin"), AskRemoveSkin, "mbv-danger");
+            Act(left, T("mbRemoveSkin", "Remove skin"), AskRemoveSkin, "mbv-danger", "mbv-remove");
+            Act(left, T("mbOtherTextures", "Other textures…"), ShowOtherTextures, "mbv-add");
 
             var page = Add(right, new ScrollView(ScrollViewMode.Vertical), "mbv-right-scroll");
             page.verticalScrollerVisibility = ScrollerVisibility.Hidden;
             page.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
             skinPage = Add(page, new VisualElement(), "mbv-page");
+        }
+
+        /// <summary>The project's replacements of the game's other textures (stations, planets, suns, rings, objects) and
+        /// backdrop.json: the planets it retextures drawn as stars.</summary>
+        void ShowOtherTextures()
+        {
+            modal.Clear();
+            var box = Add(modal, new VisualElement(), "mbv-modal-box", "mbv-modal-box--list", "mbv-panel");
+            Heading(box, T("mbOtherTextures", "Other textures…"));
+            var scroll = Add(box, new ScrollView(ScrollViewMode.Vertical), "mbv-picker-scroll");
+            Note(scroll, T("mbOtherTexturesNote", "A picture named like one of the game's textures replaces it everywhere: a station's (station_078_midorian_diffuse), a planet's (planet_003_big), a sun's, a ring's, an object's. Modding/ai/gof2-modding/reference.md lists every model's texture names."));
+            foreach (var name in Project.OtherTextures())
+            {
+                string n = name;
+                var row = Row(scroll);
+                Add(row, new Label(n), "mbv-inline-label");
+                if (ModImport.Available) Act(row, T("mbReplace", "Replace…"), () => PickImage(n, png => { Project.SetSkinTexture(n, png); SkinChanged(); ShowOtherTextures(); }), "mbv-step");
+                Act(row, "✕", () => { Project.RemoveSkinTexture(n); SkinChanged(); ShowOtherTextures(); }, "mbv-step");
+            }
+            var add = Row(scroll);
+            if (ModImport.Available)
+            {
+                Act(add, T("mbBackdropTexture", "+ A planet, sun or ring…"), () =>
+                {
+                    var names = Resources.LoadAll<Material>("GoF2Backdrop").Select(m => m.mainTexture != null ? m.mainTexture.name : null)
+                                         .Where(x => x != null).Distinct().OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+                    ShowPicker(T("mbBackdropTexture", "+ A planet, sun or ring…"), names.Select(x => (x, (Texture2D)null, (Action)(() =>
+                        PickImage(x, png => { Project.SetSkinTexture(x, png); SkinChanged(); ShowOtherTextures(); })))).ToList(), true);
+                }, "mbv-add");
+                Act(add, T("mbTextureByName", "+ By its name…"), () => AskText(T("mbTextureByName", "+ By its name…"), T("mbTextureName", "The game texture's name"), "", x =>
+                    PickImage(x, png => { Project.SetSkinTexture(x.Trim(), png); SkinChanged(); ShowOtherTextures(); }), 80), "mbv-add");
+            }
+
+            Heading(scroll, T("mbPlanetsAsStars", "Planets as stars (backdrop.json)"));
+            var bd = Project.Backdrop;
+            bool stars = (string)bd?["planets"] == "star";
+            FlagButton(Row(scroll), T("mbPlanetsStars", "Draw the planets this mod retextures as stars"), stars, v =>
+            {
+                var o = Project.Backdrop ?? new JObject();
+                if (v) o["planets"] = "star"; else o.Remove("planets");
+                Project.Backdrop = o;
+                SkinChanged();
+            }, ShowOtherTextures);
+            if (stars)
+            {
+                Float(scroll, T("mbPlanetGlow", "Their glow (1 = none, default 2)"), bd["planetGlow"] is JValue g && g.Type != JTokenType.String ? (float)g : 2f, 1f, 8f,
+                      v => { var o = Project.Backdrop ?? new JObject(); o["planetGlow"] = Math.Round(v, 2); Project.Backdrop = o; SkinChanged(); });
+                Float(scroll, T("mbPlanetFlare", "Their flare when looked at (0..1, default 0.35)"), bd["planetFlare"] is JValue f && f.Type != JTokenType.String ? (float)f : 0.35f, 0f, 1f,
+                      v => { var o = Project.Backdrop ?? new JObject(); o["planetFlare"] = Math.Round(v, 2); Project.Backdrop = o; SkinChanged(); });
+            }
+            Act(box, T("mbClose", "Close"), CloseModal);
+            modal.AddToClassList("mbv-modal--shown");
         }
 
         /// <summary>The ship's own textures off its model's materials (the game's model, as the turntable shows it).</summary>
@@ -308,7 +362,7 @@ namespace GoF2Remake.UI
 
         /// <summary>An imported normal map as read back: X / Y in R / G (BC5) or A / G (DXT5nm-style), Z dropped. Written back
         /// as RGB = XYZ like a painted normal map, opaque.</summary>
-        static void DecodeNormals(Texture2D tex, TextureFormat format)
+        internal static void DecodeNormals(Texture2D tex, TextureFormat format)
         {
             var px = tex.GetPixels32();
             bool xInAlpha = format == TextureFormat.DXT5 || format == TextureFormat.DXT5Crunched || format == TextureFormat.ETC2_RGBA8 || format == TextureFormat.ASTC_4x4;

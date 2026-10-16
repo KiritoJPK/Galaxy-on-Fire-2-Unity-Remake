@@ -361,7 +361,8 @@ namespace GoF2Remake.EditorTools
         protected override void OnDefineOptions(IOptionDefinitionContext context) =>
             context.AddOption<EventTrigger>(Trigger).WithTooltip("What starts Do (a flow of its own, each time, while the event runs): a player destroyed, " +
                 "docked, launched, joined or left the session, entered an orbit, destroyed one of the event's ships, destroyed another player (Player = the " +
-                "killer, Victim = the other's name), came back after being destroyed, or every enemy the event spawned is gone.").Build();
+                "killer, Victim = the other's name), came back after being destroyed, every enemy the event spawned is gone, or hacked a wreck " +
+                "(Spawn's \"wreck\", a mod's derelict; Victim = the wreck's name).").Build();
 
         protected override void DefineInputs(IPortDefinitionContext context)
         {
@@ -370,7 +371,7 @@ namespace GoF2Remake.EditorTools
             NumberIn(context, "Radius", 1000f, "Player Arrives: how close (metres) a player alive in space must come; again after leaving it.");
             context.AddOutputPort<Players>(PlayerOut).WithTooltip("The player it happened to (the killer for Event Ship Destroyed): wire into a command's Players.").Build();
             context.AddOutputPort<string>(NameOut).WithTooltip("That player's name: wire into a text (\"X was destroyed\"); or type %trigger% in a text.").Build();
-            context.AddOutputPort<string>(VictimOut).WithTooltip("Player Killed Player: the destroyed player's name; or type %victim% in a text.").Build();
+            context.AddOutputPort<string>(VictimOut).WithTooltip("Player Killed Player: the destroyed player's name; Wreck Hacked: the wreck's name; or type %victim% in a text.").Build();
         }
     }
 
@@ -516,6 +517,20 @@ namespace GoF2Remake.EditorTools
     }
 
     [Serializable]
+    [Node("Event", null, "Set Flight Model")]
+    public class EventFlightModelNode : EventCommandNode
+    {
+        public const string Model = "Model";
+
+        protected override void OnDefineOptions(IOptionDefinitionContext context) =>
+            context.AddOption<EventFlightModel>(Model).WithTooltip("Free flight (EVERSPACE 2 style) or the original's flight for " +
+                "these players, before their own option, their ship's or the mod campaign's; Players Choice gives it back. Undone " +
+                "when the event ends.").Build();
+
+        protected override void DefineInputs(IPortDefinitionContext context) => PlayersIn(context);
+    }
+
+    [Serializable]
     [Node("Event", null, "Clear Respawn Point")]
     public class EventClearRespawnNode : EventCommandNode
     {
@@ -575,7 +590,8 @@ namespace GoF2Remake.EditorTools
         protected override void DefineInputs(IPortDefinitionContext context)
         {
             PlayersIn(context);
-            TextIn(context, Ship, "Hiro", "A ship's number or name (or an object's name from assemblies.json, as scenery).");
+            TextIn(context, Ship, "Hiro", "A ship's number or name (or an object's name from assemblies.json, as scenery; \"wreck\": a hackable " +
+                "freighter wreck of the Race (Terran, Vossk, Nivelian, Midorian; else rolled), which fires On Wreck Hacked).");
             NumberIn(context, Count, 1f, "Ships side by side, per player (1..10).");
             TextIn(context, Name, "", "Optional: the name on the HUD (a ship's lock plate, numbered \"Name 1\", \"Name 2\"... for several; " +
                 "an object gets a marker with it), at most 32 characters. Empty = the usual name.");

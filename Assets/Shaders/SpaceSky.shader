@@ -30,6 +30,7 @@ Shader "GoF2/SpaceSky"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #pragma multi_compile_local _ _NEBULA_PANORAMA _NEBULA_STRIP
             #pragma multi_compile_local _ _STARS_PANORAMA _STARS_STRIP
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -41,12 +42,14 @@ Shader "GoF2/SpaceSky"
             float4x4 _SkyRotation;   // world direction -> baked cube direction, set by GoF2SpaceLevel
             half _Exposure, _StarsGain, _NebulaGain;
 
-            struct Attributes { float4 positionOS : POSITION; };
-            struct Varyings { float4 positionCS : SV_POSITION; float3 dir : TEXCOORD0; };
+            struct Attributes { float4 positionOS : POSITION; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct Varyings { float4 positionCS : SV_POSITION; float3 dir : TEXCOORD0; UNITY_VERTEX_OUTPUT_STEREO };
 
             Varyings vert(Attributes i)
             {
                 Varyings o;
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(i.positionOS.xyz);
                 o.dir = mul((float3x3)_SkyRotation, i.positionOS.xyz);
                 return o;
@@ -93,6 +96,7 @@ Shader "GoF2/SpaceSky"
 
             half4 frag(Varyings i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 #if defined(_STARS_PANORAMA)
                     const int starsMode = 1;
                 #elif defined(_STARS_STRIP)

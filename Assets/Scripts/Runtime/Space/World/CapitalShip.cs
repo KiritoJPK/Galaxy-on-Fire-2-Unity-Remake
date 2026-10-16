@@ -11,7 +11,9 @@
 //               multiplayer aggressors)
 //   death       the carrier / Vossk battleship: explosions along its hull through its 8 s of dying (NpcShip, deathMs) before
 //               the big blast; its turrets go with it; the player's kill is a delict of 20 with the race, the Vossk one counts
-//               as a battleship destroyed (medal 39), and its crate starts the hour before the next one has loot
+//               as a battleship destroyed (medal 39)
+//   crate       every enhanced capital ship (the Terran battleship too) carries one (CapitalShips.RollLoot): its hold, rare goods
+//               and cells, and the gear only an hour of play after the last capital ship's gear was taken
 //   fleet battle (SpawnSpec.fleetBattle) both sail a shared course (BattleCourse: a point at 0.35 u/ms whose heading curves
 //               gently left and right, back toward where the battle began past 60 000 units and away from the station), each
 //               in its lane 25 000 units to its side (21 000, +-6000 weaving, +-3000 up and down), steering toward a point 20 000
@@ -62,7 +64,7 @@ namespace GoF2Remake.World
         Traffic traffic;
         CombatAssets assets;
         int playerHits, playerDamage, playerDamageTotal;
-        bool warned, provoked, looted;
+        bool warned, provoked, gearLoot;
         float sinceAttackMs = float.MaxValue, waveMs;
         int launched;
         Database db;
@@ -72,7 +74,7 @@ namespace GoF2Remake.World
         bool partsRide, battleCalled;
         float battleMs;
         /// <summary>What it has to hand out this visit, all of its race (CapitalShips.Store; the resupply window).</summary>
-        [System.NonSerialized] public CapitalShips.Store store;
+        [System.NonSerialized] public CapitalShips.Store store;   // runtime only (not a field to save in the scene)
 
         /// <summary>The ships it launched (the carrier's Inflicts).</summary>
         public int Launched => launched;
@@ -95,12 +97,8 @@ namespace GoF2Remake.World
             c.salvoMs = Random.Range(3000f, 15000f);   // the first salvo, each ship its own (two spawned together fired in step)
             host.Target.Damaged += c.OnDamaged;
             host.Target.Died += c.OnDied;
-            if (CapitalShips.Killable(host.Spec))
-            {
-                var loot = CapitalShips.RollLoot(db);
-                c.looted = loot.Count > 0;
-                host.SetLoot(loot);
-            }
+            // Every enhanced host carries a crate (the Terran battleship had only a freighter's roll).
+            host.SetLoot(CapitalShips.RollLoot(db, out c.gearLoot));
             if (CapitalShips.HasDeck(host.Spec))
                 foreach (var p in SpacePoints.Set(CapitalShips.PadSet(host.Spec)))
                     if (p.type == SpacePoints.Approach) c.pads.Add(SpacePoints.ToLocal(p.engine));
@@ -473,23 +471,30 @@ namespace GoF2Remake.World
             {
                 Standing.ApplyDelict(ship.Race, 20);
                 if (ship.Spec.capital == SpawnSpec.CapitalVossk) Session.BattleshipsDestroyed++;   // a battleship (1667) too
-                if (looted) Session.CapitalLootReadyAt = Session.PlaySeconds + CapitalShips.LootCooldownSeconds;
             }
+            if (gearLoot) Session.CapitalLootReadyAt = Session.PlaySeconds + CapitalShips.LootCooldownSeconds;
         }
 
-        /// <summary>A fleet battle's capital ship died: the winners call it and pay a player who helped.</summary>
+        /// <summary>A fleet battle's capital ship died: the winners call it and pay a player who helped. Not when the enemy
+        /// went first (both destroyed: a player's report 2026-10-16, the dead side called its victory too).</summary>
         void BattleOver(Target t)
         {
             var winner = ship.Spec.battleFoe;
             if (winner == null) return;
+            var standing = foe ?? traffic.Ships.Find(s => s.Spec == winner);
+            if (!WinnerStands(standing)) return;
             traffic.RaceRadio(winner.race == 1
                 ? Localization.Extra("battleWonVossk", "The Terran warship is breaking up. Victory to the Vossk!")
                 : Localization.Extra("battleWonTerran", "The Vossk battleship is going down! Well fought, pilots."), winner.race);
-            var winnerShip = foe ?? traffic.Ships.Find(s => s.Spec == winner);
+            var winnerShip = standing;
             bool helped = !t.killedByNpc || playerDamageTotal >= ship.Hp.maxHull / 20;
             bool winnersHostile = Standing.IsEnemy(winner.race) || (winnerShip != null && (winnerShip.turnedEnemy || winnerShip.alwaysEnemy));
             if (helped && !winnersHostile) traffic.PayBounty(CapitalShips.BattleBounty);
         }
+
+        /// <summary>The fleet battle's other capital ship is still in it (alive, not dying or gone).</summary>
+        public static bool WinnerStands(NpcShip winner) => winner != null && !winner.Gone && winner.Target != null && winner.Target.Alive
+                                                            && winner.Current == NpcShip.State.Fly;
 
         /// <summary>The carrier / Vossk battleship breaking up: an explosion somewhere on its hull every 0.4-0.9 s.</summary>
         void UpdateDeath(float dtMs)

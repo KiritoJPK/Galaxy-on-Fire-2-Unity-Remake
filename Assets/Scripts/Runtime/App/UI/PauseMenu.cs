@@ -150,6 +150,8 @@ namespace GoF2Remake.UI
                     // Remake: a Mod Builder test flight goes back to the builder's hangar instead (Modding.ModBuilder).
                     if (Modding.ModBuilder.TestFlying)
                         Item(Localization.Extra("mbBackToBuilder", "Back to Mod Builder").ToUpperInvariant(), () => { Close(); Modding.ModBuilder.EndTestFlight(false); });
+                    else if (Modding.ModBuilder.PlayTesting)   // a play test: back to the builder's hangar
+                        Item(Localization.Extra("mbBackToBuilder", "Back to Mod Builder").ToUpperInvariant(), () => { Close(); ModBuilderPlay.End(); });
                     else Item(T(522), () => Show(Page.Quit));
                     break;
                 case Page.Photo:
@@ -424,9 +426,17 @@ namespace GoF2Remake.UI
                 status.EnableInClassList("debug-status--empty", debugStatus.Length == 0);
             }
 
+            // The rows scroll when the screen is short (FlightHud.uss .debug-scroll: the panel's 86 % of the screen is the limit,
+            // the list as tall as its rows up to there); the selection keeps itself in view (Highlight).
+            var debugScroll = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
+            debugScroll.AddToClassList("debug-scroll");
+            debugScroll.AddManipulator(new DragScroll(debugScroll));
+            debugScroll.contentContainer.RegisterCallback<GeometryChangedEvent>(e => debugScroll.style.height = e.newRect.height);
+            body.Add(debugScroll);
+            scroll = debugScroll;
             var content = new VisualElement();
             content.AddToClassList("debug-content");
-            body.Add(content);
+            debugScroll.Add(content);
             void Row(OptionDef def, VisualElement parent, string cls = null)
             {
                 var c = new OptionControl(def);
@@ -532,6 +542,8 @@ namespace GoF2Remake.UI
         {
             bool keys = InputMode.Current != InputKind.Touch;
             for (int i = 0; i < items.Count; i++) items[i].EnableInClassList("autopilot-menu-item--selected", keys && i == index);
+            // A long page (the Debug page on a short screen): the selected row scrolls into view.
+            if (keys && scroll != null && index >= 0 && index < items.Count && scroll.contentContainer.Contains(items[index])) scroll.ScrollTo(items[index]);
         }
 
         // ---- input (unscaled: the game is paused) -------------------------------------------------------------

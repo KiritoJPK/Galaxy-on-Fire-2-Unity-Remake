@@ -173,7 +173,8 @@ namespace GoF2Remake.UI
             icon.style.backgroundImage = new StyleBackground(ItemInfo.ShipIcon(ship));
             nameLabel.text = ItemInfo.ShipName(ship);
             subLabel.text = ItemInfo.ShipRaceText(ship);
-            var cur = db.Ship(Session.ShipIndex);
+            var cur = Modding.ModShipKits.Effective(db.Ship(Session.ShipIndex));   // a customizable ship: as its build makes it
+            s = Modding.ModShipKits.Effective(s);
             int Cmp(float v, float c) => cur == null ? 2 : v < c ? -1 : v > c ? 1 : 0;
             bool mine = ship == Session.ShipIndex;
             int Lv(int mod) => mine ? Session.ModLevel(mod) : 0;

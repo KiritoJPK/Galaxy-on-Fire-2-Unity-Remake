@@ -80,7 +80,7 @@ namespace GoF2Remake.UI
             toggle = ActionButton(actions, "", Toggle, "mods-toggle");
             // The controller's X toggles the selected mod from anywhere in the panel (MainMenu: ToggleSelected); its
             // glyph on the button shows while a controller is in use (.input-gamepad).
-            Add(toggle, new Label("X") { pickingMode = PickingMode.Ignore }, "mods-pad-x", "gof-semibold");
+            Add(toggle, InputGlyph.Pad(PadButton.X), "mods-pad-x");   // X / square, in the style of the controller in use
             earlier = ActionButton(actions, T("modsEarlier", "Earlier"), () => Move(-1));
             later = ActionButton(actions, T("modsLater", "Later"), () => Move(1));
             delete = ActionButton(actions, T("modsDelete", "Delete"), AskDelete, "mods-delete");

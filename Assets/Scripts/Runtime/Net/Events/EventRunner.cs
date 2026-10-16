@@ -30,7 +30,8 @@
 //                                 after a launch or jump), respawned (back in space after being destroyed), kill (an event
 //                                 ship destroyed; the player = its killer), pvpkill (a player destroyed another: the player =
 //                                 the killer, "%victim%" the other's name), cleared (every enemy the event spawned is gone;
-//                                 no player). The station limits a player trigger to
+//                                 no player), hacked (the player hacked a wreck: "spawn ... wreck", a mod's derelict, a
+//                                 Supernova wreck; "%victim%" the wreck's name). The station limits a player trigger to
 //                                 that orbit or station. Handlers start working when the flow passes them (the graph puts them
 //                                 first) and last until the event ends. A free for all (/pvp), the respawn points (/respawn)
 //                                 and the travel restrictions (/restrict) the event set end with it.
@@ -173,10 +174,14 @@ namespace GoF2Remake.Events
             public bool enemy;
             public float start;
             public readonly HashSet<long> seen = new HashSet<long>();
+            /// <summary>Seen dying or dead (destroyed, or an order's jump-out): the only way a seen ship stops counting.</summary>
+            public readonly HashSet<long> down = new HashSet<long>();
+            /// <summary>The orbits its ships were seen in, kept after they vanish (CheckEmpty).</summary>
+            public readonly HashSet<int> stations = new HashSet<int>();
         }
 
 
-        static readonly string[] Triggers = { "died", "docked", "launched", "joined", "left", "entered", "kill", "cleared", "pvpkill", "respawned", "near" };
+        static readonly string[] Triggers = { "died", "docked", "launched", "joined", "left", "entered", "kill", "cleared", "pvpkill", "respawned", "near", "hacked" };
         static readonly string[] MissionKeys = { "title", "offer", "client", "reward", "players", "stations", "kind", "starts" };
 
         /// <summary>A bar mission's details: the Start node's Mission settings (the "mission &lt;key&gt; &lt;value&gt;" lines).</summary>
@@ -257,6 +262,7 @@ namespace GoF2Remake.Events
         internal static void NoteFreeForAll(bool on) { if (executing != null) executing.eventPvp = on; }
         internal static void NoteRespawnSet() { if (executing != null) executing.eventRespawn = true; }
         internal static void NoteRulesSet() { if (executing != null) executing.eventRules = true; }
+        internal static void NoteFlightSet() { if (executing != null) executing.eventFlight = true; }
         internal static void NoteWaypointSet() { if (executing != null) executing.eventWaypoint = true; }
         internal static void NoteCutsceneSet() { if (executing != null) executing.eventCutscene = true; }
         internal static void NoteFadeSet() { if (executing != null) executing.eventFade = true; }
@@ -306,6 +312,13 @@ namespace GoF2Remake.Events
         internal static void OnPlayerKilled(IPilot killer, IPilot victim)
         {
             foreach (var r in runs.ToArray()) r.OnPlayerKilled(killer, victim);
+        }
+
+        /// <summary>A player hacked a wreck (SpaceHooks.WreckHacked; in a session NetState.WreckHackedRpc, checked): "on hacked"
+        /// in every run the player is in, the wreck's name as %victim%.</summary>
+        public static void OnWreckHacked(IPilot pilot, int station, string wreck)
+        {
+            foreach (var r in runs.ToArray()) r.OnWreckHacked(pilot, station, wreck);
         }
 
         // ---- bar missions (EventMissions) ----
@@ -561,7 +574,8 @@ namespace GoF2Remake.Events
         /// <summary>An event graph file's extension; LegacyExtension = the files from when the graphs were multiplayer only
         /// (read everywhere, the Editor renames them, EventGraphImporter).</summary>
         public const string GraphExtension = "gof2event", LegacyExtension = "gof2netevent";
-        static readonly string[] Extensions = { GraphExtension, LegacyExtension };
+        /// <summary>The graphs' file extensions, the Mod Builder's quests (QuestFile, .gof2quest) last.</summary>
+        static readonly string[] Extensions = { GraphExtension, LegacyExtension, QuestFile.Extension };
         /// <summary>The built-in events' Resources folder.</summary>
         const string BuiltIn = "GoF2Events";
 
@@ -569,6 +583,14 @@ namespace GoF2Remake.Events
         static string Script(string text, out string error)
         {
             error = null;
+            if (QuestFile.Is(text))
+            {
+                // A quest made in the Mod Builder: its steps as the script (QuestFile).
+                var issues = new List<string>();
+                string quest = QuestFile.Compile(text, issues);
+                if (issues.Count > 0) error = issues[0];
+                return quest;
+            }
             if (!EventGraphScript.IsGraph(text)) { error = X("mpEventNotGraph", "not an event graph."); return ""; }
             var problems = new List<EventGraphScript.Problem>();
             string script = EventGraphScript.FromFile(text, problems);
@@ -577,7 +599,15 @@ namespace GoF2Remake.Events
             return script;
         }
 
-        static List<string> List()
+        /// <summary>Checks a script (the line form) with the runner's own parser: why it can't run, or null.</summary>
+        public static string CheckScript(string text)
+        {
+            var steps = Compile(text ?? "", out string error);
+            return steps == null ? error ?? "the script can't be read." : null;
+        }
+
+        /// <summary>Every event / quest name the game finds (the Events folders, the mods that are on, the built-ins).</summary>
+        public static List<string> List()
         {
             var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var dir in Folders())
@@ -591,7 +621,7 @@ namespace GoF2Remake.Events
                 catch (Exception) { }
             }
             foreach (var mod in Modding.ModManager.Active)
-                foreach (string f in mod.Source.FilesIn("events", "." + GraphExtension, "." + LegacyExtension)) names.Add(Path.GetFileNameWithoutExtension(f));
+                foreach (string f in mod.Source.FilesIn("events", "." + GraphExtension, "." + LegacyExtension, "." + QuestFile.Extension)) names.Add(Path.GetFileNameWithoutExtension(f));
             foreach (var a in Resources.LoadAll<TextAsset>(BuiltIn)) names.Add(a.name);
             return new List<string>(names);
         }
@@ -1009,7 +1039,7 @@ namespace GoF2Remake.Events
             public readonly HashSet<ulong> team;
             public readonly int station;   // a mission: where it was taken (-1: none)
             public bool ended;
-            public bool eventPvp, eventRespawn, eventRules, eventWaypoint, eventCutscene, eventFade;   // it turned the free for all on / set respawn points / restricted travel / a waypoint
+            public bool eventPvp, eventRespawn, eventRules, eventWaypoint, eventCutscene, eventFade, eventFlight;   // it turned the free for all on / set respawn points / restricted travel / a waypoint
             public GraphQuestState record;   // single player's lasting run (a quest, a bar mission): what a save keeps (null: none)
             public string objective = "";
             public int target = -1;
@@ -1057,6 +1087,20 @@ namespace GoF2Remake.Events
             /// <summary>The run is about this player: a mission's team, else everyone.</summary>
             public bool InScope(IPilot p) => p != null && (team == null || team.Contains(p.OwnerClientId));
 
+            /// <summary>docked(station) / inorbit(station): the event's players docked there / alive in its orbit.</summary>
+            public double PilotsAt(string station, bool docked)
+            {
+                if (!NetTeleport.ParseStation(station, out int st, out string left) || left.Length > 0)
+                    throw new Exception(string.Format(X("mpSelNoStation", "No station \"{0}\" (a number, a name or void)."), station));
+                int n = 0;
+                foreach (var p in EventHost.Pilots)
+                {
+                    if (p == null || !p.IsSpawned || !InScope(p) || p.Station != st) continue;
+                    if (docked ? p.InHangar : p.InSpace && p.Hull > 0f) n++;
+                }
+                return n;
+            }
+
             /// <summary>The players in the session this run is about.</summary>
             List<IPilot> Players()
             {
@@ -1090,6 +1134,7 @@ namespace GoF2Remake.Events
                         EventHost.Send(p.OwnerClientId, NetAdmin.Order.Music, -1, 0, 0, "", "Server");
                         if (eventRespawn) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Respawn, -1, 0, 0, "off", "Server");
                         if (eventRules) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Rules, 0, 0, 0, "", "Server");
+                        if (eventFlight) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Flight, -1, 0, 0, "", "Server");
                         if (eventWaypoint) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Waypoint, 0, 0, 0, "off", "Server");
                         if (eventCutscene) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Cutscene, 0, 0, 0, "end", "Server");
                         if (eventFade) EventHost.Send(p.OwnerClientId, NetAdmin.Order.Fade, 0, 0, 0, "clear", "Server");
@@ -1153,7 +1198,7 @@ namespace GoF2Remake.Events
                             case Op.Command:
                             {
                                 string word = s.a.Split(' ')[0].ToLowerInvariant();
-                                if (word == "music" || word == "waypoint" || word == "respawn" || word == "restrict")
+                                if (word == "music" || word == "waypoint" || word == "respawn" || word == "restrict" || word == "flightstyle")
                                     try { RunCommand(Fill(s.a)); } catch (Exception e) { Debug.LogWarning($"Event {running}: {e.Message}"); }
                                 break;
                             }
@@ -1238,7 +1283,10 @@ namespace GoF2Remake.Events
                     }
                 }
                 finally { executing = was; }
-                Debug.Log($"Server: {(team != null ? "mission" : "event")} {running} completed, {share} credits each for {players.Count} player(s)");
+                int killed = 0;
+                foreach (int k in kills.Values) killed += k;
+                Debug.Log($"Server: {(team != null ? "mission" : "event")} {running} completed after {EventHost.Now - startTime:0} s " +
+                          $"({killed} event ship(s) destroyed by players), {share} credits each for {players.Count} player(s)");
                 succeeded = true;
                 if (record != null)
                 {
@@ -1522,6 +1570,10 @@ namespace GoF2Remake.Events
                 var stations = new HashSet<int>();
                 foreach (var ship in EventHost.EventShips())
                     if (batches.ContainsKey(ship.tag)) stations.Add(ship.station);
+                // Ships that vanished without being destroyed (their game left the orbit) still hold their orbit, so the
+                // players leaving it ends the event instead of leaving it waiting for good.
+                foreach (var b in batches.Values)
+                    if (b.seen.Count > b.down.Count) stations.UnionWith(b.stations);
                 if (stations.Count == 0) { emptySince = -1f; return false; }   // nothing of the event's in space (yet)
                 foreach (var p in EventHost.Pilots)
                     if (p != null && p.IsSpawned && InScope(p) && p.InSpace && p.Hull > 0f && stations.Contains(p.Station)) { emptySince = -1f; return false; }
@@ -1711,6 +1763,12 @@ namespace GoF2Remake.Events
                 Fire("pvpkill", killer.OwnerClientId, killer.DisplayName, victim.Station, victim.DisplayName);
             }
 
+            internal void OnWreckHacked(IPilot pilot, int station, string wreck)
+            {
+                if (ended || pilot == null || !InScope(pilot)) return;
+                Fire("hacked", pilot.OwnerClientId, pilot.DisplayName, station, wreck ?? "");
+            }
+
             /// <summary>A trigger happened: each handler listening for it (in that station, if limited) starts its block.</summary>
             void Fire(string trigger, ulong player, string name, int station, string other = "")
             {
@@ -1808,7 +1866,8 @@ namespace GoF2Remake.Events
                 if (batches.Count == 0) return;   // the fight hasn't begun
                 foreach (var ship in EventHost.EventShips())
                 {
-                    if (!batches.ContainsKey(ship.tag)) continue;
+                    if (!batches.TryGetValue(ship.tag, out var batch)) continue;
+                    Observe(batch, ship);
                     if (ship.killer == ulong.MaxValue || !countedKills.Add(ship.key)) continue;
                     kills.TryGetValue(ship.killer, out int k);
                     kills[ship.killer] = k + 1;
@@ -1879,21 +1938,35 @@ namespace GoF2Remake.Events
                 return tag;
             }
 
+            /// <summary>Notes a batch's ship: seen, its orbit, and whether it is down (dying or dead).</summary>
+            static void Observe(Batch b, EventHost.Ship ship)
+            {
+                b.seen.Add(ship.key);
+                b.stations.Add(ship.station);
+                if (!ship.flying) b.down.Add(ship.key);
+            }
+
             /// <summary>This event's living spawned ships (only the enemies), the ones on their way included.</summary>
             int CountShips(bool enemiesOnly)
             {
                 if (batches.Count == 0) return 0;
-                int living = 0;
                 foreach (var ship in EventHost.EventShips())
                 {
-                    if (!batches.TryGetValue(ship.tag, out var b)) continue;
-                    b.seen.Add(ship.key);
-                    if (enemiesOnly && !b.enemy) continue;
-                    if (ship.flying) living++;
+                    if (batches.TryGetValue(ship.tag, out var b)) Observe(b, ship);
                 }
+                // A batch counts its ships until each was seen dying or dead. A ship that just vanishes (its game jumped or
+                // docked away, which unloads its traffic) is still alive: counting only the ships present let a player
+                // clear a mission by leaving the orbit right after the spawn. A taken-over ship gets a new key, its old
+                // copy despawned, so 'expected - down' (not 'seen - down') is the count. A batch nothing of was ever seen
+                // counts only while its ships may still be on their way (the spawn reached nobody).
+                int living = 0;
                 float now = EventHost.Now;
                 foreach (var b in batches.Values)
-                    if ((!enemiesOnly || b.enemy) && now - b.start < PendingSeconds) living += Math.Max(0, b.expected - b.seen.Count);
+                {
+                    if (enemiesOnly && !b.enemy) continue;
+                    if (b.seen.Count == 0 && now - b.start >= PendingSeconds) continue;
+                    living += Math.Max(0, b.expected - b.down.Count);
+                }
                 return living;
             }
 
@@ -1976,6 +2049,7 @@ namespace GoF2Remake.Events
                     case "ship": return Session.ShipIndex;
                     case "kills": return Session.Kills;
                     case "systemsvisited": return VisitedSystems();   // remake: 2+ = the player has left the starting system
+                    case "freeflight": return FlightStyles.Current == FlightStyles.Free ? 1 : 0;   // the flight style in use (ModFlight)
                 }
                 throw new Exception(string.Format(X("mpEventNoVar", "no variable \"{0}\" (set it first)."), name));
             }
@@ -2100,6 +2174,18 @@ namespace GoF2Remake.Events
                             string arg = run.Fill(s.Substring(from, i - from).Trim());
                             i++;
                             return GameState(name, arg);
+                        }
+                        if ((name == "docked" || name == "inorbit") && Peek('('))
+                        {
+                            // docked(<station>) / inorbit(<station>): how many of the event's players are docked at that station
+                            // / alive in its orbit (the Mod Builder's quests: "go to", "fight there").
+                            Sym("(");
+                            int from = i, depth = 0;
+                            while (i < s.Length && (depth > 0 || s[i] != ')')) { if (s[i] == '{') depth++; else if (s[i] == '}') depth--; i++; }
+                            if (i >= s.Length) throw new Exception("\")\" missing.");
+                            string arg = run.Fill(s.Substring(from, i - from).Trim());
+                            i++;
+                            return run.PilotsAt(arg, name == "docked");
                         }
                         if ((name == "alive" || name == "distance") && Peek('('))
                         {

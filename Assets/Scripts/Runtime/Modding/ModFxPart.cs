@@ -21,6 +21,9 @@ namespace GoF2Remake.Modding
         public bool faceCamera;
         [Tooltip("A sprite stretched along its flight: turns about the flight direction to face the camera (laser bolts).")]
         public bool alongFlight;
+        [Tooltip("A beam laser's sprite: its length (the quad's y) along the beam (the parent's +Z, scaled to the beam's " +
+                 "length by GunRig), its face turned to the camera about it; growing widens it only.")]
+        public bool beam;
         [Tooltip("Spins about its facing axis, degrees per second.")]
         public float spin;
         [Tooltip("Fades by _Color's rgb (additive) instead of its alpha.")]
@@ -74,7 +77,8 @@ namespace GoF2Remake.Modding
         {
             if (lifetimeMs <= 0f) return;
             float t = Mathf.Clamp01(ageMs / lifetimeMs);
-            transform.localScale = baseScale * Mathf.Lerp(1f, grow, t);
+            float g = Mathf.Lerp(1f, grow, t);
+            transform.localScale = beam ? new Vector3(baseScale.x * g, baseScale.y, baseScale.z) : baseScale * g;
             if (!fade) return;
             float f = 1f - t;
             for (int i = 0; i < renderers.Length; i++)
@@ -93,6 +97,18 @@ namespace GoF2Remake.Modding
         void Orient()
         {
             var turn = Quaternion.AngleAxis(spin * ageMs * 0.001f, Vector3.forward);
+            if (beam && transform.parent != null)
+            {
+                // Along the beam whatever the ship does (the beam's root rides on the mount: its movement isn't the beam's).
+                var c = Camera.main;
+                if (c == null) return;
+                var dir = transform.parent.forward;
+                var toCam = c.transform.position - transform.position;
+                var n = toCam - dir * Vector3.Dot(toCam, dir);
+                if (n.sqrMagnitude < 1e-8f) n = Vector3.Cross(dir, Mathf.Abs(dir.y) < 0.99f ? Vector3.up : Vector3.right);
+                transform.rotation = Quaternion.LookRotation(-n, dir);
+                return;
+            }
             if (alongFlight)
             {
                 var c = Camera.main;

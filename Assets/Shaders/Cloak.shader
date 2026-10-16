@@ -27,6 +27,7 @@ Shader "GoF2/Cloak"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
             TEXTURE2D_X(_GoF2CloakScene); SAMPLER(sampler_GoF2CloakScene);
@@ -39,18 +40,21 @@ Shader "GoF2/Cloak"
                 float _AnimValue, _CloakRate;
             CBUFFER_END
 
-            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 tangentOS : TANGENT; float2 uv : TEXCOORD0; };
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float4 tangentOS : TANGENT; float2 uv : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float3 normalWS : TEXCOORD1;
                 float4 tangentWS : TEXCOORD2;
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             Varyings vert(Attributes i)
             {
                 Varyings o;
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(i.positionOS.xyz);
                 o.uv = i.uv;
                 VertexNormalInputs n = GetVertexNormalInputs(i.normalOS, i.tangentOS);
@@ -61,6 +65,7 @@ Shader "GoF2/Cloak"
 
             half4 frag(Varyings i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 half3 nTS = UnpackNormal(SAMPLE_TEXTURE2D(_BumpMap, sampler_BumpMap, i.uv));
                 float3 bit = i.tangentWS.w * cross(i.normalWS, i.tangentWS.xyz);
                 float3 nWS = normalize(mul(nTS, float3x3(i.tangentWS.xyz, bit, i.normalWS)));

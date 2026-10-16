@@ -5,7 +5,8 @@
 //            (ModManager.BeginSession with none), whatever they have on for single player.
 //   Allowed  the session runs the host's active mods, in the host's order (a dedicated server: every usable mod in
 //            its Mods folders). A joining game must have each of them
-//            installed with the same files (ModInfo.Hash; on or off for single player doesn't matter): its connection
+//            installed with the same files (ModInfo.NetHash: every file but those its mod.json's "multiplayerIgnore" lists,
+//            the models and textures a phone build makes lighter; on or off for single player doesn't matter): its connection
 //            data lists the mods it has (Payload), the server's approval refuses it otherwise and names the missing
 //            ones. NetState carries the session's list; the joining game turns exactly those on for the session
 //            (ApplyFromServer), so every game numbers the mod content the same (ModContent, a fresh numbering per session).
@@ -40,7 +41,7 @@ namespace GoF2Remake.Multiplayer
         {
             get
             {
-                var s = string.Join(";", ModManager.Installed.Where(m => !m.Broken).Select(m => m.Id + "#" + m.Hash));
+                var s = string.Join(";", ModManager.Installed.Where(m => !m.Broken).Select(m => m.Id + "#" + m.NetHash));
                 return s.Length > MaxListLength ? s.Substring(0, MaxListLength) : s;
             }
         }
@@ -61,7 +62,7 @@ namespace GoF2Remake.Multiplayer
                 : DedicatedServer.Enabled ? ModManager.Installed.Where(m => !m.Broken).OrderBy(m => m.Id, StringComparer.Ordinal).ToList()
                 : ModManager.SinglePlayerActive;
             ModManager.BeginSession(mods.Select(m => m.Id));
-            SessionList = string.Join(";", ModManager.Active.Select(m => m.Signature));
+            SessionList = string.Join(";", ModManager.Active.Select(m => m.NetSignature));
             if (SessionList.Length > MaxListLength)
             {
                 Debug.LogWarning("NetMods: too many mods for a session; it runs without them");
@@ -81,7 +82,7 @@ namespace GoF2Remake.Multiplayer
             NetGame.ResetDb();
             if (ids.Count > 0) Debug.Log($"NetMods: the session runs {SessionList}");
             foreach (var e in Parse(SessionList))
-                if (ModManager.Find(e.id)?.Hash != e.hash) Debug.LogWarning($"NetMods: the session's mod {e.id} differs from this game's copy");
+                if (ModManager.Find(e.id)?.NetHash != e.hash) Debug.LogWarning($"NetMods: the session's mod {e.id} differs from this game's copy");
         }
 
         /// <summary>The session ended: back to the single-player mods.</summary>

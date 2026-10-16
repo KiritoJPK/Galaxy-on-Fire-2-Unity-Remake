@@ -9,6 +9,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 
 namespace GoF2Remake.Data
@@ -25,6 +26,8 @@ namespace GoF2Remake.Data
         public float difficulty;
         public int campaignMission;
         public int station, previousStation, ship, credits;
+        /// <summary>Remake: the station the player last docked at (Session.LastDockedStation), -1 = unknown (older saves).</summary>
+        public int lastDockedStation = -1;
         public List<ItemStack> equipment, cargo;
         public List<StationStock> recentStations;
         public List<int> seenItems, visitedStations, attackedStations;
@@ -100,6 +103,8 @@ namespace GoF2Remake.Data
         public string runId;
         // version 16: the mods' new-game options on in this game (Session.ModGameOptions, Modding.ModGameOptions)
         public List<string> modGameOptions;
+        // version 17 (with the pirate board): the player's builds of the mods' customizable ships (Session.ShipBuilds, Modding.ModShipKits): "key|build"
+        public List<string> shipBuilds;
         /// <summary>v17: the Pirate activity board (PirateReports).</summary>
         public List<PirateSighting> pirateSightings;
         public int nextPirateSightingId;
@@ -278,7 +283,11 @@ namespace GoF2Remake.Data
             Session.FreelanceMission = new FreelanceMission();
             Session.Passengers = 0;
             Session.Cargo.RemoveAll(c => c.item == Freelance.SecureContainer);   // a Courier's containers (unsaleable)
-            if (Session.StationIndex < 0 || Session.StationIndex >= NetSession.Db.Stations.Count)
+            // The game starts docked where the pilot last docked: a profile uploaded in flight names the orbit they were in,
+            // and signing out there and in again would dock them on the spot (out of a fight, without the trip back).
+            int stations = NetSession.Db.Stations.Count;
+            if (Session.LastDockedStation >= 0 && Session.LastDockedStation < stations) Session.StationIndex = Session.LastDockedStation;
+            if (Session.StationIndex < 0 || Session.StationIndex >= stations)
                 Session.StationIndex = NetSession.StartStation;
             Session.ProgrammedStation = -1;
             Session.LaunchedFromStation = false;
@@ -307,10 +316,12 @@ namespace GoF2Remake.Data
                 hardcore = Session.Hardcore,
                 runId = Session.RunId ?? "",
                 modGameOptions = new List<string>(Session.ModGameOptions),
+                shipBuilds = Session.ShipBuilds.Select(kv => kv.Key + "|" + kv.Value).ToList(),
                 pirateSightings = new List<PirateSighting>(Session.PirateSightings), nextPirateSightingId = Session.NextPirateSightingId,
                 campaignMission = Session.CampaignMission,
                 station = Session.StationIndex,
                 previousStation = Session.PreviousStationIndex,
+                lastDockedStation = Session.LastDockedStation,
                 ship = Session.ShipIndex,
                 credits = Session.Credits,
                 equipment = Session.Equipment.ConvertAll(e => e.Clone()),
@@ -412,6 +423,7 @@ namespace GoF2Remake.Data
             if (s.campaignMission < 0 || s.campaignMission > Story.LastIndex) return "an unknown story mission";
             if (!Station(s.station) && s.station != Session.VoidOrbit) return "an unknown station";
             if (!StationOrNone(s.previousStation)) return "an unknown previous station";   // -1: none (also Session.VoidOrbit)
+            if (s.lastDockedStation != -1 && !Station(s.lastDockedStation)) return "an unknown last docked station";
             if (!Ship(s.ship)) return "an unknown ship";
             if (s.credits < 0) return "negative credits";
             if (Stacks(s.equipment, "equipment") is string e1) return e1;
@@ -444,8 +456,9 @@ namespace GoF2Remake.Data
             if (s.freelanceMission != null && !StationOrNone(s.freelanceMission.clientStation)) return "an unknown station in the bar mission";
             if (s.wanted != null && s.wanted.Exists(w => w == null || !StationOrNone(w.current) || !StationOrNone(w.travelsTo) || !StationOrNone(w.lastSeen)))
                 return "an unknown station on the Most Wanted board";
-            if (!StationOrNone(s.voidInvasionStation)) return "an unknown invaded station";
-            if (s.voidInvasionSystem < -1 || s.voidInvasionSystem >= systems) return "an unknown invaded system";
+            // -1 none yet, -10 the game won (Story.OnDepart: nothing is attacked any more; #117 refused every finished game).
+            if (s.voidInvasionStation != -10 && !StationOrNone(s.voidInvasionStation)) return "an unknown invaded station";
+            if (s.voidInvasionSystem != -10 && (s.voidInvasionSystem < -1 || s.voidInvasionSystem >= systems)) return "an unknown invaded system";
             if (s.blueprints != null && s.blueprints.Exists(b => b == null || !Item(b.item))) return "an unknown blueprint";
             if (s.pendingProducts != null && s.pendingProducts.Exists(p => p == null || !Item(p.item) || !StationOrNone(p.station) || p.quantity < 0))
                 return "an unknown item or station in the production queue";
@@ -474,6 +487,7 @@ namespace GoF2Remake.Data
             Session.CampaignMission = s.campaignMission;
             Session.StationIndex = s.station;
             Session.PreviousStationIndex = s.previousStation;
+            Session.LastDockedStation = s.lastDockedStation;
             Session.ShipIndex = s.ship;
             Session.Credits = s.credits;
             Session.Equipment = s.equipment ?? new List<ItemStack>();
@@ -509,6 +523,12 @@ namespace GoF2Remake.Data
             Session.FreePlay = s.freePlay;
             Session.ModCampaign = s.modCampaign ?? "";
             Session.ModGameOptions = new HashSet<string>(s.modGameOptions ?? new List<string>());
+            Session.ShipBuilds = new Dictionary<string, string>();
+            foreach (var e in s.shipBuilds ?? new List<string>())
+            {
+                int bar = e?.IndexOf('|') ?? -1;
+                if (bar > 0) Session.ShipBuilds[e.Substring(0, bar)] = e.Substring(bar + 1);
+            }
             // A session (a server profile) reads the session's board instead (NetState, PirateReports.ApplyShared).
             if (NetSession.Active) PirateReports.ApplyShared(GameHooks.SharedPirateBoard?.Invoke());
             else Session.PirateSightings = s.pirateSightings != null ? s.pirateSightings.FindAll(p => p != null) : new List<PirateSighting>();

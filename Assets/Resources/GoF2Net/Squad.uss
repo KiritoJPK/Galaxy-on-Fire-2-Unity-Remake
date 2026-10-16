@@ -5,6 +5,11 @@
     width: 320px;
 }
 
+/* In flight: below the Multiplayer / Distress call buttons on the right (MultiplayerWindow's column at 17 %). */
+.squad--flight {
+    top: 32%;
+}
+
 .squad-panel {
     margin-bottom: 10px;
     background-color: rgba(0, 0, 0, 0.45);
@@ -97,6 +102,17 @@
     border-radius: 2px;
 }
 
+/* The flight HUD's Multiplayer and Distress call buttons: the size of the station's Menu button and the Chat button. */
+.mp-hud-button {
+    min-height: 50px;
+    padding: 12px 22px;
+    font-size: 20px;
+    letter-spacing: 3px;
+    border-width: 2px;
+    border-radius: 4px;
+    -unity-text-align: middle-center;
+}
+
 .squad-button--accept {
     color: rgb(120, 230, 140);
     border-color: rgba(120, 230, 140, 0.6);
@@ -160,4 +176,64 @@
 .squad-code-value {
     margin: 0 14px 0 0;
     letter-spacing: 5px;
+}
+
+/* Large (UiScale.Large: a small high-density screen such as a 5.5" handheld): the squad window, the invitation and the
+   multiplayer window (.mpw--large) about 1.5x, the buttons finger-sized (about 6 mm on the Retroid Pocket G2). */
+.squad--large.squad {
+    width: 30%;
+    min-width: 420px;
+}
+
+.squad--large .squad-header {
+    padding: 10px 14px;
+    font-size: 21px;
+}
+
+.squad--large .squad-name {
+    font-size: 23px;
+}
+
+.squad--large .squad-where,
+.squad--large .squad-tag {
+    font-size: 19px;
+}
+
+.squad--large .squad-bar {
+    height: 7px;
+}
+
+.squad--large.squad-invite {
+    width: 52%;
+    padding: 20px 26px;
+}
+
+.squad--large .squad-invite-text {
+    font-size: 25px;
+}
+
+.squad--large .squad-button,
+.mpw--large .squad-button,
+.squad-button--big {
+    min-height: 64px;
+    min-width: 64px;
+    padding: 10px 22px;
+    font-size: 20px;
+    -unity-text-align: middle-center;
+}
+
+.squad--large .squad-invite-buttons .squad-button {
+    min-width: 180px;
+}
+
+.mpw--large .unity-base-text-field__input {
+    min-height: 60px;
+    padding: 8px 12px;
+    font-size: 24px;
+}
+
+/* The focused control with a controller: an amber frame (the menus' look), so the D-pad's place is clear. */
+.input-gamepad .squad-button:focus {
+    border-color: rgb(240, 179, 90);
+    background-color: rgba(240, 179, 90, 0.25);
 }

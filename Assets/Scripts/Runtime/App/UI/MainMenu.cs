@@ -325,6 +325,9 @@ namespace GoF2Remake.UI
             // loaded here). After the click: the system's file dialog is modal.
             Bind("exportSavesButton", () => root.schedule.Execute(ExportSaves).ExecuteLater(1));
             Bind("importSavesButton", () => root.schedule.Execute(PickImport).ExecuteLater(1));
+            // Remake: a save of the original game in, every slot out as the original's files (OriginalSaveTransfer).
+            Bind("importOriginalButton", () => root.schedule.Execute(PickOriginalImport).ExecuteLater(1));
+            Bind("exportOriginalButton", () => root.schedule.Execute(AskOriginalExport).ExecuteLater(1));
             optionsButton = Bind("optionsButton", () =>
             {
                 // The rows follow what is known now (DLSS / FSR only once URP has made its pipeline, after these rows were built).
@@ -571,6 +574,7 @@ namespace GoF2Remake.UI
             root.EnableInClassList("layout-narrow", aspect < 1.55f);
             root.EnableInClassList("layout-ultrawide", aspect > 2.3f);
             root.EnableInClassList("layout-phone", phone);
+            root.EnableInClassList("ui-large", UiScale.Large(h, phone ? 900f : 1080f));   // a small high-density screen: bigger lists
 
             ApplySafeArea(w, h, offscreen);
         }
@@ -1714,7 +1718,10 @@ namespace GoF2Remake.UI
             var left = new VisualElement();
             left.AddToClassList("debug-column");
             left.AddToClassList("debug-column--missions");
-            var right = new VisualElement();
+            // The cheats scroll on a short screen (the panel is sized to the screen, MainMenu.uss .debug-panel).
+            var right = new ScrollView(ScrollViewMode.Vertical) { horizontalScrollerVisibility = ScrollerVisibility.Hidden };
+            right.AddManipulator(new DragScroll(right));
+            right.RegisterCallback<FocusInEvent>(e => { if (e.target is VisualElement v && v != right) right.ScrollTo(v); });   // follows the D-pad
             right.AddToClassList("debug-column");
             right.AddToClassList("debug-column--cheats");
             columns.Add(left);
@@ -2229,6 +2236,75 @@ namespace GoF2Remake.UI
                     System.IO.Path.GetFileName(path), r.problem));
         }
 
+        // ---- the original game's saves (OriginalSaveTransfer) ----------------------------------------------------------
+
+        bool pickingOriginal;
+        string OriginalImportTitle => Localization.Extra("importOriginalSave", "Import original save");
+        string OriginalExportTitle => Localization.Extra("exportOriginalSaves", "Export for original game");
+
+        /// <summary>Import, step 1: the system's file picker (polled until it answers, like the mod browser's).</summary>
+        void PickOriginalImport()
+        {
+            if (pickingOriginal || dialog.ClassListContains("dialog-backdrop--shown")) return;
+            pickingOriginal = true;
+            var poll = Modding.ModImport.Pick(OriginalImportTitle, "Galaxy on Fire 2 saves (gof2_save_game_N)", new[] { "*" });
+            Modding.ModImport.Picked picked = null;
+            root.schedule.Execute(() =>
+            {
+                picked = poll();
+                if (picked != null) { pickingOriginal = false; OriginalPicked(picked); }
+            }).Every(200).Until(() => picked != null);
+        }
+
+        /// <summary>Step 2: the file read and converted (nothing written yet), then the question with what it is.</summary>
+        void OriginalPicked(Modding.ModImport.Picked p)
+        {
+            if (p.cancelled) return;
+            if (p.error != null) { ShowNotice(OriginalImportTitle, Localization.Extra("originalImportFailed", "The save couldn't be imported:") + " " + p.error); return; }
+            var imported = OriginalSaveTransfer.Inspect(p.path);
+            Modding.ModImport.Discard(p.path);
+            if (imported.problem != null)
+            {
+                ShowNotice(OriginalImportTitle, Localization.Extra("originalImportFailed", "The save couldn't be imported:") + "\n" + p.name + ": " + imported.problem
+                    + "\n" + Localization.Extra("originalImportHint", "Pick a gof2_save_game_N file from the original game's save folder (Android: Android/data/net.fishlabs.gof2hdallandroid2012/files)."));
+                return;
+            }
+            int slot = OriginalSaveTransfer.FreeSlot();
+            if (slot < 0)
+            {
+                ShowNotice(OriginalImportTitle, Localization.Extra("originalImportNoSlot", "There is no empty save slot. Delete a save first (hold it in the list)."));
+                return;
+            }
+            string notes = imported.notes.Count > 0 ? "\n(" + string.Join("; ", imported.notes) + ")" : "";
+            ShowDialog(OriginalImportTitle,
+                string.Format(Localization.Extra("originalImportAsk", "{0}\nfrom {1}.\nImport it into save slot {2}?"), imported.summary, imported.version, slot) + notes,
+                () => root.schedule.Execute(() =>
+                {
+                    string problem = OriginalSaveTransfer.Import(imported, slot);
+                    BuildSlots();
+                    resumeButton.EnableInClassList("menu-button--gone", SaveGame.MostRecentSlot() < 0);
+                    UpdateColumnFit();
+                    ShowNotice(OriginalImportTitle, problem == null
+                        ? string.Format(Localization.Extra("originalImportDone", "Imported into save slot {0}. Load it from the list."), slot)
+                        : Localization.Extra("originalImportFailed", "The save couldn't be imported:") + " " + problem);
+                }).ExecuteLater(1));
+        }
+
+        /// <summary>Export: what it does and which game takes the files, then every slot written.</summary>
+        void AskOriginalExport()
+        {
+            if (dialog.ClassListContains("dialog-backdrop--shown")) return;
+            ShowDialog(OriginalExportTitle, Localization.Extra("originalExportAsk",
+                "Every save slot is written as the original Android game's save files (gof2_save_game_N with its preview) into a new folder. Copy them into Android/data/net.fishlabs.gof2hdallandroid2012/files: they load in the community builds (KiritoJPK's, PB-207's); Fishlabs' own build refuses saves made on another phone. Mod items and remake-only progress are left out. Export?"),
+                () => root.schedule.Execute(() =>
+                {
+                    var r = OriginalSaveTransfer.Export();
+                    if (r.problem != null) { ShowNotice(OriginalExportTitle, Localization.Extra("exportFailed", "Export failed:") + " " + r.problem); return; }
+                    string notes = r.notes.Count > 0 ? "\n(" + string.Join("; ", r.notes) + ")" : "";
+                    ShowNotice(OriginalExportTitle, string.Format(Localization.Extra("exportDone", "{0} saves exported to:\n{1}"), r.slots, r.folder) + notes);
+                }).ExecuteLater(1));
+        }
+
         void SelectTab(string page)
         {
             currentOptionsPage = page;
@@ -2337,6 +2413,10 @@ namespace GoF2Remake.UI
             Set("loadTitle", T(29));
             Set("exportSavesButton", Localization.Extra("exportSaves", "Export saves").ToUpperInvariant());
             Set("importSavesButton", Localization.Extra("importSaves", "Import saves").ToUpperInvariant());
+            Set("importOriginalButton", Localization.Extra("importOriginalSave", "Import original save").ToUpperInvariant());
+            Set("exportOriginalButton", Localization.Extra("exportOriginalSaves", "Export for original game").ToUpperInvariant());
+            var originalRow = root.Q("originalSaveRow");
+            if (originalRow != null) originalRow.style.display = Modding.ModImport.Available ? DisplayStyle.Flex : DisplayStyle.None;
             // Without a file dialog (Linux, Android) the files go to and come from the Transfer folder: shown under the buttons.
             var transferNote = root.Q<Label>("saveTransferNote");
             if (transferNote != null)

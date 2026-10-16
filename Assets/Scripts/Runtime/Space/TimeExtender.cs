@@ -47,6 +47,8 @@ namespace GoF2Remake.Flight
         /// <summary>Hud::setTimeExtender flash: highlighted one frame in 80 ms for 2000 ms after the cooldown.</summary>
         public bool Flashing => flashMs > 0f && ((int)(flashMs / 80f) & 1) == 0;
         public float RechargeRate => state < 0f ? -state / cooldownMs : 1f;
+        /// <summary>What is left of a running slow-down, 1 at its start, 0 when it ends.</summary>
+        public float RunLeft => state > 0f && durationMs > 0f ? Mathf.Clamp01(state / durationMs) : 0f;
 
         public static TimeExtender Attach(GameObject player, Database db)
         {

@@ -5,7 +5,8 @@ prices differ). Use these numbers and names in mod files and event graphs: `base
 `system`, `looksLike`, `planet`, `sky`, `startStation`, `startShip`, `replaces`, speakers, `textures/<name>.png`,
 `music/<name>.ogg`, `sounds/<name>.ogg`, `/spawn` objects... Mod content is referred to by key instead (`mod_id:id`).
 Beside this file: `voices.md` (every voice clip with its line), `events.md` (every event graph node with its options and
-ports, every command), `guide.md` (the full modders' guide: every field of every mod file).
+ports, every command), `quests.md` + `quest.schema.json` (the .gof2quest step format), `guide.md` (the full modders' guide:
+every field of every mod file).
 
 Contents: Races, Items, Item categories, Item stats (attribute numbers), Blueprints, Ships, Ship hardpoints, Default
 economy, Systems, Skies, Stations, Planets, Story steps, Story speakers, Models and their textures, Backdrop textures,
@@ -361,6 +362,25 @@ remake's own. The original's attributes without a name: 37, 56, 57, 58, 59 (set 
 | 102 | miningBeamLayerMs |  |
 | 103 | miningBeamLook |  |
 | 104 | phaseCloak |  |
+| 105 | missiles |  |
+| 106 | salvoShots |  |
+| 107 | salvoCount |  |
+| 108 | salvoGapMs |  |
+| 109 | turretRange |  |
+| 110 | flightScope |  |
+| 111 | topSpeed |  |
+| 112 | turnRate |  |
+| 113 | strafeSpeed |  |
+| 114 | originalTopSpeed |  |
+| 115 | originalTurnRate |  |
+| 116 | originalStrafeSpeed |  |
+| 117 | freeTopSpeed |  |
+| 118 | freeTurnRate |  |
+| 119 | freeStrafeSpeed |  |
+| 120 | freeAcceleration |  |
+| 121 | freeBoostFactor |  |
+| 122 | tractorTargets |  |
+| 123 | tractorRange |  |
 
 ## Blueprints
 
@@ -1289,6 +1309,8 @@ Every assembled object of the game (the names `/spawn` and the Spawn node take f
 one-model skins), with the textures it draws: a mod's `textures/<texture>.png` replaces that texture on every model using
 it, `textures/<model>/<texture>.png` on that model only. Keep the original's UV layout. `_normal_specular` = normal map,
 `_metallic_smoothness` = the remake's metallic map; `glow_<race>` / `ship_engine_glow` and the like are shared lights.
+Any of them is also a model a mod can use without a file: `"model": "gof2:<name>"` in ships.json, stations.json and
+items.json fx (see the guide's "The game's own models").
 
 ### ships
 

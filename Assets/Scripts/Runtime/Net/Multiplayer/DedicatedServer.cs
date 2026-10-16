@@ -13,6 +13,9 @@
 //   -freepvp         players may fight anywhere (else only in arena matches, NetArena)
 //   -cloakhides -capitalships -informeroriginal -nopirateevents -nokaamostacking -nokaamoequipment -nocloakbay -noempcloak
 //                    the session's gameplay options (NetRules), each the other way from the game's default
+//   -kaamomaxlevel N how many times one Kaamo Club upgrade can be fitted to a ship (2..20, default 5; NetRules)
+//   -flightmodel M   the flight model everyone flies: gof2 (the game's, default), es2 (EVERSPACE 2 style) or player (each
+//                    player's own option; NetRules.HostFlight)
 //   -noprofiles      no player profiles (NetProfiles; on by default: credits, ships, cargo, Kaamo Club, squad kept
 //                    per player between sessions; no limit, one unused for 30 days is pruned); -maxearn N (worth a profile may gain
 //                    per minute online without -allowdebug, default 1 000 000), -profiledir PATH (default
@@ -111,6 +114,9 @@ namespace GoF2Remake.Multiplayer
             NetGame.FreePvp = HasFlag("-freepvp");
             NetRules.Host = NetRules.Defaults;   // the session's gameplay options: the defaults, a flag turns one the other way
             foreach (var r in NetRules.All) if (HasFlag(r.flag)) NetRules.Host ^= r.bit;
+            NetRules.HostKaamoLevel = SessionRules.ClampKaamoLevel(int.TryParse(Value(NetRules.KaamoLevelFlag), out int kaamo) ? kaamo : SessionRules.DefaultKaamoLevel);
+            int flight = SessionRules.ParseFlight(Value(NetRules.FlightFlag));
+            NetRules.HostFlight = flight >= -1 ? flight : SessionRules.DefaultFlight;
             NetProfiles.Configure(!HasFlag("-noprofiles"),
                 int.TryParse(Value("-maxearn"), out int earn) ? earn : NetProfiles.DefaultEarnPerMinute,
                 Value("-profiledir"));
@@ -118,7 +124,7 @@ namespace GoF2Remake.Multiplayer
                 int.TryParse(Value("-maxclaims"), out int maxClaims) ? maxClaims : NetFactions.DefaultMaxClaims,
                 int.TryParse(Value("-claimdays"), out int days) ? days : NetFactions.DefaultLapseDays,
                 int.TryParse(Value("-siegecost"), out int siegeCost) ? siegeCost : NetFactions.DefaultSiegeCost,
-                int.TryParse(Value("-toll"), out int toll) ? toll : NetFactions.DefaultToll);
+                NetFactions.ParseToll(Value("-toll")) ?? NetFactions.DefaultToll);   // credits or "5%"
             ListName = Value("-name") ?? DefaultListName;
             // The settings saved by the admins (server_settings.json) for whatever the command line didn't give.
             NetServerSettings.Load(HasFlag);
@@ -388,7 +394,8 @@ namespace GoF2Remake.Multiplayer
                 {
                     if (p.Where == NetPlayer.Place.None) continue;   // still loading: their name and place come with their scene
                     known[id] = (p.DisplayName, where, Time.unscaledTime);
-                    Log($"{p.DisplayName} (client {id}) joined, {where}. {Count()}");
+                    string who = NetProfiles.Describe(id);
+                    Log($"{p.DisplayName} (client {id}{(who.Length > 0 ? ", " + who : "")}) joined, {where}. {Count()}");
                 }
                 else if (k.where != where || k.name != p.DisplayName)
                 {
@@ -464,7 +471,10 @@ namespace GoF2Remake.Multiplayer
                            "  faction disband <TAG>  ends a faction\n" +
                            "  sieges              the factions' sieges\n" +
                            "  profiles            the player profiles (id, name, devices, worth, who is online)\n" +
-                           "  profile delete <id> deletes a profile (not while it is online; its file is kept as .bak)\n" +
+                           "  profile info <id|name>    one profile: role, devices, worth, last seen, online, blocked\n" +
+                           "  profile delete <id|name> [force]   deletes a profile (online only with force: dropped first; its file is kept as .bak)\n" +
+                           "  profile block <id|name> [reason]   bans the profile and its devices for good (online: dropped)\n" +
+                           "  profile unblock <id|name>  lifts it; profile blocked: the bans\n" +
                            "  profile restore <id> brings back a profile pruned after 30 days unused (Pruned/)\n" +
                            "  stop                tells the players and shuts the server down (also quit, exit, Ctrl+C)\n" +
                            "The chat's commands, run by the same code (players by name or client id; with profiles kick, tempban, ban, unban,\n" +
@@ -500,9 +510,30 @@ namespace GoF2Remake.Multiplayer
                 case "profiles":
                     return NetProfiles.ConsoleList();
                 case "profile":
-                    if (rest.StartsWith("delete ", StringComparison.OrdinalIgnoreCase)) return NetProfiles.ConsoleDelete(rest.Substring(7).Trim());
-                    if (rest.StartsWith("restore ", StringComparison.OrdinalIgnoreCase)) return NetProfiles.ConsoleRestore(rest.Substring(8).Trim());
-                    return "profile delete <id> | profile restore <id>";
+                {
+                    // For scripts and control panels too: every verb takes a profile id or its last pilot name.
+                    string verb = rest, arg = "";
+                    int sp = rest.IndexOf(' ');
+                    if (sp >= 0) { verb = rest.Substring(0, sp); arg = rest.Substring(sp + 1).Trim(); }
+                    switch (verb.ToLowerInvariant())
+                    {
+                        case "delete":
+                        {
+                            bool force = arg.EndsWith(" force", StringComparison.OrdinalIgnoreCase);
+                            if (force) arg = arg.Substring(0, arg.Length - 6).Trim();
+                            if (arg.Length > 0) return NetProfiles.ConsoleDelete(arg, force);
+                            break;
+                        }
+                        case "restore": if (arg.Length > 0) return NetProfiles.ConsoleRestore(arg); break;
+                        case "info": if (arg.Length > 0) return NetProfiles.ConsoleInfo(arg); break;
+                        // Block = a ban for good on the profile and every device it signed in from (online: dropped at once).
+                        case "block": if (arg.Length > 0) return NetModeration.ConsoleCommand("ban", arg); break;
+                        case "unblock": if (arg.Length > 0) return NetModeration.ConsoleCommand("unban", arg); break;
+                        case "blocked": return NetModeration.ConsoleCommand("bans", "");
+                    }
+                    return "profile info <id|name> | profile delete <id|name> [force] | profile block <id|name> [reason] | " +
+                           "profile unblock <id|name> | profile blocked | profile restore <id>";
+                }
                 case "stop": case "quit": case "exit": case "shutdown":
                     Log("Stopping the server...");
                     NetGame.StopServer();

@@ -68,6 +68,8 @@ namespace GoF2Remake.Tests
                 s => s.station = 0, s => s.station = 134, s => s.station = Session.VoidOrbit, s => s.previousStation = 134,
                 s => s.ship = 63, s => s.credits = int.MaxValue, s => s.cargo.Add(new ItemStack(232, 0)),
                 s => s.voidInvasionSystem = 33, s => s.voidInvasionStation = 134,
+                // A finished game: nothing attacked any more (Story.OnDepart writes -10; #117 refused it).
+                s => { s.voidInvasionSystem = -10; s.voidInvasionStation = -10; },
                 s => s.version = 9, // an unknown economy number before version 10 isn't checked (the economy was always Android)
             })
             {

@@ -31,8 +31,8 @@
 // Remake picks where the decompile lost floats or the cutscene is only described (listed in campaign_levels_b/c.md's
 // "uncertain"): the cutscene cameras' middle drift axis (0), the camera paths of 157 (qualitative), the helper shots of
 // 145 and 157 (a rocket mesh flying at 8 / 35 u/ms), the Rhinos' and shuttles' docking (a stop of the route's docking time
-// at each end, unloading while at the drop-off), the hidden-blueprint-wreck-like freighter route of 154 (straight to
-// Valkyrie, "docked" within 3000 units).
+// at each end, unloading while at the drop-off; 154's freighter docks the same way on Valkyrie's pad and, its route ending
+// there, stays at its last waypoint).
 // Harval in 157 / 158 (Level::assignGuns, campaign 0x9d / 0x9e): item 7 Berger Retribution x3 and the Shesha cluster
 // missiles (item 0xd6) x4 in the second slot, toggled every 20 s like a Wanted pilot's.
 
@@ -756,10 +756,11 @@ namespace GoF2Remake.World
                     var valkyrie = S(1);
                     if (hans != null && valkyrie != null)
                     {
-                        var at = G(valkyrie) + new Vector3(-10000, 0, 22000).normalized * 3000f;
+                        // skipCutscene 0x16f61c: AI on, set to route waypoint 0; the route then docks him on Valkyrie's pad.
+                        var at = new Vector3(-10000, 1000, 15000);
                         hans.Place(ToUnity(at), Dir(G(valkyrie) - at));
                         hans.frozen = false;
-                        hans.scriptedSpeed = 0f;
+                        StartHansRoute(hans, valkyrie);
                     }
                     Step = 9;
                     stepMs = 2001f;
@@ -866,12 +867,13 @@ namespace GoF2Remake.World
             cam.LateTick(dtMs);
         }
 
-        /// <summary>A save of hull / shield / armour / gamma, nextCampaignMission, and the next orbit (the scripts' jumps).</summary>
-        void AdvanceAndTravel(int times, int station)
+        /// <summary>A save of hull / shield / armour / gamma, nextCampaignMission, and the next orbit (the scripts' jumps);
+        /// 'streamOut' false: Level::initStreamOutPosition 0, the undock point.</summary>
+        void AdvanceAndTravel(int times, int station, bool streamOut = true)
         {
             loading = true;
             for (int i = 0; i < times; i++) Story.Advance(level.Database);
-            if (station == Session.StationIndex) level.TravelTo(station); else level.TravelTo(station);
+            level.TravelTo(station, streamOut);
         }
 
         void AdvanceAndDock(int station)
@@ -1582,7 +1584,16 @@ namespace GoF2Remake.World
                         s.scriptedSpeed = stepMs * 0.05f / 33f;
                     }
                     if (stepMs >= 4000f && S(0) != null) S(0).scriptedSpeed = (stepMs - 4000f) * 0.05f / 33f;
-                    if (stepMs >= 7001f) AdvanceAndTravel(1, 112);
+                    if (stepMs >= 7001f)
+                    {
+                        // LevelScript::process 0x90: the 145 attack is a stream-out arrival (the hidden gate of this gate orbit)
+                        // only after index 143 was won in space here (Level::initStreamOutPositionAfterCutscene, set by
+                        // MGame::successCheck); else initStreamOutPosition stays 0 and the player starts at the undock point
+                        // (a player's report: always at the gate).
+                        bool streamOut = Session.StreamOutAfterCutscene;
+                        Session.StreamOutAfterCutscene = false;
+                        AdvanceAndTravel(1, 112, streamOut);
+                    }
                     break;
             }
         }
@@ -1629,7 +1640,10 @@ namespace GoF2Remake.World
                         explosionAnim.SetActive(true);
                         foreach (var a in explosionAnim.GetComponentsInChildren<PartAnimation>(true)) { a.speed = 0.3f; a.loop = false; a.Restart(); }
                     }
-                    if (helper != null) { Object.Destroy(helper); helper = null; }
+                    // The shot's helper (+0xcc) stays the camera's target where its flight ended (LevelScript::process 0x91: it
+                    // is invisible and kept): destroyed, the camera looked at the origin, Var Lupra station, past the array
+                    // (a player's report).
+                    if (helper != null) helper.SetActive(false);
                     Step = 6;   // event 5 is radio 2's trigger: only once the aftermath is over
                     break;
                 case 6:
@@ -1643,6 +1657,7 @@ namespace GoF2Remake.World
                     if (stepMs < 10000f) break;
                     arrayBurn?.SetEmitting(false);
                     for (int i = 0; i <= 12; i++) { if (S(i) != null) S(i).scriptedFire = false; Remove(S(i)); }
+                    if (helper != null) { Object.Destroy(helper); helper = null; }
                     LeaveCutscene();
                     c.Event = 5;   // radio 2, then the win (Objective(4, 2))
                     break;
@@ -1688,18 +1703,15 @@ namespace GoF2Remake.World
                 case 5:
                     if (!Over(5) || stepMs < 1000f) break;
                     cam.LookAt(PlayerGame + new Vector3(150, 400, -1500), Player);
-                    if (hans != null) { hans.Place(ToUnity(new Vector3(-10000, 0, 22000)), Dir(-new Vector3(-10000, 0, 22000))); hans.frozen = false; hans.scriptedSpeed = 2f; }
+                    // setPosition(-10000, 0, 22000) and AI on (heading kept): Hans flies his route to Valkyrie's pad.
+                    if (hans != null) { hans.Place(ToUnity(new Vector3(-10000, 0, 22000)), hans.transform.forward); hans.frozen = false; if (valkyrie != null) StartHansRoute(hans, valkyrie); }
                     for (int i = 2; i < 22; i++) if (S(i) != null) S(i).scriptedSpeed = 0f;
                     Step = 6;
                     break;
                 case 6: if (Over(6) && stepMs >= 1000f && hans != null) { cam.LookAt(G(hans) + new Vector3(200, 300, 1800), hans.transform); Step = 7; } break;
                 case 7:
-                    if (hans != null && valkyrie != null)
-                    {
-                        var to = valkyrie.transform.position - hans.transform.position;
-                        if (to.sqrMagnitude > 1e-6f) hans.transform.rotation = Quaternion.LookRotation(to.normalized, Vector3.up);
-                        if (to.magnitude / M < 3000f) { hans.scriptedSpeed = 0f; Step = 8; }
-                    }
+                    // KIPlayer::isDocked (PlayerFighter state 9): Hans on Valkyrie's pad (it used to fly into the hull's centre).
+                    if (hansRoute == null || hansRoute.finished || hansRoute.leg > 1 || (hansRoute.leg == 1 && hansRoute.waiting)) Step = 8;
                     break;
                 case 8: if (stepMs >= 2000f) Step = 9; break;
                 case 9:
@@ -2105,6 +2117,7 @@ namespace GoF2Remake.World
             public Transform[] dockAt;
             public int[] dockSets;
             public int dockPhase;            // 0 flying to the approach point, 1 easing onto the pad, 2 docked
+            public bool once, finished;      // once: the route ends at its last point (154's freighter), no loop
             public int taken = -1;           // the docking point index taken on dockAt[leg]
             public Vector3 approachLocal, pivotLocal, fromPos;
             public Quaternion localRot, fromRot;
@@ -2208,6 +2221,26 @@ namespace GoF2Remake.World
             s.transform.rotation = Quaternion.RotateTowards(s.transform.rotation, Quaternion.LookRotation(to.normalized, Vector3.up), 0.05f * dtMs);
         }
 
+        /// <summary>On to the next leg; a route that runs once (154's freighter) holds at its last point.</summary>
+        static void NextLeg(Shuttle sh)
+        {
+            if (sh.once && sh.leg == sh.points.Length - 1) { sh.finished = true; sh.ship.scriptedSpeed = 0f; return; }
+            sh.leg = (sh.leg + 1) % sh.points.Length;
+        }
+
+        /// <summary>154: Hans' route (createCampaignMission 0x9a, Route(int*, Array*, int*, 9)): (-10000, 1000, 15000), docked on
+        /// Valkyrie's pad (docking set 7, the waypoint's parameter 10000 = the stay), back to (-10000, 1000, 15000). A player's
+        /// report: he flew into the battlestation's centre and the camera stared at its hull.</summary>
+        void StartHansRoute(NpcShip hans, NpcShip valkyrie)
+        {
+            if (hansRoute != null) { ShuttleUndock(hansRoute); hansRoute.leg = 0; hansRoute.waiting = hansRoute.finished = false; return; }
+            var wp = new Vector3(-10000, 1000, 15000);
+            hansRoute = new Shuttle { ship = hans, points = new[] { wp, Vector3.zero, wp }, dockMs = new[] { 0f, 10000f, 0f }, dropOff = -1, once = true,
+                                      dockAt = new[] { null, valkyrie.transform, null }, dockSets = new[] { 0, 7, 0 } };
+            shuttles.Add(hansRoute);
+        }
+        Shuttle hansRoute;
+
         /// <summary>Leaving a pad: the point is free again, the exhaust on; the ship flies off nose first.</summary>
         void ShuttleUndock(Shuttle sh)
         {
@@ -2226,7 +2259,7 @@ namespace GoF2Remake.World
             foreach (var sh in shuttles)
             {
                 var s = sh.ship;
-                if (s == null || !s.Target.Alive || s.Gone) continue;
+                if (s == null || !s.Target.Alive || s.Gone || sh.finished) continue;
                 var target = sh.points[sh.leg];
                 if (sh.waiting)
                 {
@@ -2242,7 +2275,7 @@ namespace GoF2Remake.World
                     if (sh.waitMs < sh.dockMs[sh.leg]) continue;
                     sh.waiting = false;
                     ShuttleUndock(sh);
-                    sh.leg = (sh.leg + 1) % sh.points.Length;
+                    NextLeg(sh);
                     continue;
                 }
                 // A leg at an object: its pads (the original's docking route waypoint), not the object's centre.
@@ -2253,7 +2286,7 @@ namespace GoF2Remake.World
                     {
                         sh.waiting = sh.dockMs[sh.leg] > 0f;
                         sh.waitMs = sh.tickMs = 0f;
-                        if (!sh.waiting) { ShuttleUndock(sh); sh.leg = (sh.leg + 1) % sh.points.Length; }
+                        if (!sh.waiting) { ShuttleUndock(sh); NextLeg(sh); }
                     }
                     if (sh.taken >= 0) continue;
                     // Remake: no free pad (another ship or the player on it): wait 5000 units out from the nearest one (it
@@ -2266,7 +2299,7 @@ namespace GoF2Remake.World
                 {
                     sh.waiting = sh.dockMs[sh.leg] > 0f;
                     sh.waitMs = sh.tickMs = 0f;
-                    if (!sh.waiting) sh.leg = (sh.leg + 1) % sh.points.Length;
+                    if (!sh.waiting) NextLeg(sh);
                     continue;
                 }
                 s.scriptedSpeed = 2f;

@@ -89,7 +89,7 @@ namespace GoF2Remake.Tests
         [Test]
         public void EveryTriggerWordIsAccepted()
         {
-            foreach (var t in new[] { "died", "docked", "launched", "joined", "left", "entered", "kill", "cleared", "pvpkill", "respawned" })
+            foreach (var t in new[] { "died", "docked", "launched", "joined", "left", "entered", "kill", "cleared", "pvpkill", "respawned", "hacked" })
                 Valid("on " + t + "\nend");
             Valid("on docked 78\nend");
             Valid("on near 78 0 0 20000 500\nend");

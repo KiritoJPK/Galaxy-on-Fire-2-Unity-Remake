@@ -1972,6 +1972,48 @@
     "rotation": null,
     "scale": null,
     "note": "separate PlayerStatic at (0,0,0)"
+   },
+   {
+    "mesh": 99001,
+    "model": "Models/main/bars/bar_vossk_bot_a_anim_alpha.fbx",
+    "role": "bot_a",
+    "variant": null,
+    "position": [
+     0,
+     0,
+     0
+    ],
+    "rotation": null,
+    "scale": null,
+    "note": "remake: the unused bartender arm at the bar's end (no resource id; 99001 is build_assemblies.py's MODEL_OVERRIDE), one-shot, StationLevel replays it (VosskBarBots)"
+   },
+   {
+    "mesh": 99002,
+    "model": "Models/main/bars/bar_vossk_bot_b_anim_alpha.fbx",
+    "role": "bot_b",
+    "variant": null,
+    "position": [
+     0,
+     0,
+     0
+    ],
+    "rotation": null,
+    "scale": null,
+    "note": "remake: the second bartender arm, one-shot, replayed by StationLevel (VosskBarBots)"
+   },
+   {
+    "mesh": 99003,
+    "model": "Models/main/bars/bar_vossk_bot_c_anim_alpha.fbx",
+    "role": "bot_c",
+    "variant": null,
+    "position": [
+     0,
+     0,
+     0
+    ],
+    "rotation": null,
+    "scale": null,
+    "note": "remake: the end arm's other animation (shown instead of bot_a while it plays), replayed by StationLevel (VosskBarBots)"
    }
   ],
   "lods": [],

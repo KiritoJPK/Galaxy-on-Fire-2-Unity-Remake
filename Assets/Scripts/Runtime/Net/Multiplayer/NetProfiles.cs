@@ -21,7 +21,13 @@
 //     that is all (client-authoritative); without it an upload is also turned away when the profile's worth (credits +
 //     ships + items at their lowest price, Worth) grew faster than EarnBurst + EarnPerMinute per minute online
 //     (-maxearn), or when it flies a hull nobody can own (13 / 14 / 15). Not a real server authority: that needs the
-//     trades and rewards decided by the server (the plan's phase 2).
+//     trades and rewards decided by the server (the plan's phase 2). Kaamo upgrades past Session.MaxModLevel per mod and
+//     hull (a day's builds stacked them without a cap) are cut back on every upload and at every sign-in (ClampMods).
+//     A refused upload is logged once per RejectLogSeconds per profile (with the count since), and the online staff
+//     (ops and up) hear about it as often.
+//   Reconnects: a profile (or a device without one) signing in more than ReconnectMax times in ReconnectWindow is
+//     turned away for ReconnectBlockSeconds (a relog loop floods the log and the others' chat, and re-runs whatever the
+//     sign-in gives).
 //   Squads: an account remembers its squad (a key); joining / leaving one updates it, a disconnect doesn't, and a
 //     controller signing in joins a squadmate who is online (NetState.RestoreSquad).
 // Profiles go over the network gzipped in 4000-byte chunks (Pack / Unpack): Unity Transport's default payload limit is
@@ -53,6 +59,8 @@ namespace GoF2Remake.Multiplayer
         const float LinkCodeSeconds = 300f, HandoverSeconds = 5f;
         const string LinkAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";   // no 0 / O, 1 / I
         const int MaxDeviceLength = 64;
+        const int ReconnectMax = 8;
+        const float ReconnectWindow = 600f, ReconnectBlockSeconds = 600f, RejectLogSeconds = 600f;
 
         [Serializable] class Device { public string device, tokenHash, added; }
 
@@ -86,6 +94,9 @@ namespace GoF2Remake.Multiplayer
         static AccountIndex index;
         static readonly Dictionary<ulong, Login> logins = new Dictionary<ulong, Login>();
         static readonly Dictionary<ulong, Incoming> incoming = new Dictionary<ulong, Incoming>();
+        static readonly Dictionary<string, List<float>> recentLogins = new Dictionary<string, List<float>>();   // profile / device -> sign-in times
+        static readonly Dictionary<string, float> reconnectBlocked = new Dictionary<string, float>();           // profile / device -> until
+        static readonly Dictionary<string, (float at, int count)> rejectLog = new Dictionary<string, (float, int)>();   // profile -> last logged refusal
         static readonly Dictionary<string, (string account, float until)> links = new Dictionary<string, (string, float)>();
         // A /control in progress, per account: the old controller uploads, then the new one gets the profile.
         static readonly Dictionary<string, (ulong from, ulong to, float until)> handovers = new Dictionary<string, (ulong, ulong, float)>();
@@ -100,6 +111,7 @@ namespace GoF2Remake.Multiplayer
             EarnPerMinute = DefaultEarnPerMinute;
             logins.Clear();
             incoming.Clear();
+            recentLogins.Clear(); reconnectBlocked.Clear(); rejectLog.Clear();
             links.Clear();
             handovers.Clear();
         }
@@ -132,6 +144,7 @@ namespace GoF2Remake.Multiplayer
         public static void Start()
         {
             logins.Clear(); incoming.Clear(); links.Clear(); handovers.Clear();
+            recentLogins.Clear(); reconnectBlocked.Clear(); rejectLog.Clear();
             if (!configured) return;
             try
             {
@@ -185,6 +198,9 @@ namespace GoF2Remake.Multiplayer
             a.worth += delta;
             SaveIndex();
         }
+
+        /// <summary>A profile's worth at its last accepted upload (credits + ships + items), 0 = unknown.</summary>
+        internal static long WorthOf(string id) => id == null ? 0 : index?.accounts.Find(x => x.id == id)?.worth ?? 0;
 
         /// <summary>A profile's role (NetModeration), 0 for none / a guest.</summary>
         internal static int RoleOf(string id) => id == null ? 0 : index?.accounts.Find(x => x.id == id)?.role ?? 0;
@@ -271,6 +287,11 @@ namespace GoF2Remake.Multiplayer
             {
                 Debug.Log($"Server: client {client} ({(account != null ? "profile " + account.id : "no profile")}) is banned; dropped.");
                 NetGame.Kick(client, banned);
+                return;
+            }
+            if (!IsHostClient(client) && ReconnectRefusal(account != null ? account.id : "device " + device, name) is string tooFast)
+            {
+                NetGame.Kick(client, tooFast);
                 return;
             }
             if (account == null)
@@ -389,9 +410,73 @@ namespace GoF2Remake.Multiplayer
             if (login.account != null)
                 try { if (File.Exists(ProfilePath(login.account.id))) json = File.ReadAllText(ProfilePath(login.account.id)); }
                 catch (Exception e) { Debug.LogError($"NetProfiles: profile {login.account.id} unreadable: {e.Message}"); }
+            // A profile saved before the upgrade cap: cut back here too, so the game gets (and next uploads) the capped hull.
+            SaveData saved = null;
+            int cut = json.Length > 0 && SaveGame.TryParse(json, NetGame.Db, out saved, out _) ? ClampMods(saved) : 0;
+            if (cut > 0)
+            {
+                json = JsonUtility.ToJson(saved, false);
+                if (Write(ProfilePath(login.account.id), json))
+                    Debug.LogWarning($"Server: profile {login.account.id} ({login.account.name}): {cut} Kaamo upgrade level(s) past {Session.MaxModLevel} per mod removed.");
+            }
             int home = login.account != null ? NetFactions.HomeOf(login.account.id) : -1;   // a faction member starts at its home
             NetState.Instance?.SendProfile(login.client, newToken, login.controller, login.account == null, json, home);
             NetModeration.SyncRole(login.client);   // the profile's role onto its NetPlayer (NetCommands' rights)
+        }
+
+        /// <summary>The log's note on a signed-in client: its profile and device label ("" when it has none).</summary>
+        public static string Describe(ulong client)
+        {
+            if (!logins.TryGetValue(client, out var l)) return "";
+            string dev = string.IsNullOrEmpty(l.device) ? "?" : l.device.Length > 8 ? l.device.Substring(0, 8) : l.device;
+            return l.account != null ? $"profile {l.account.id}, device {dev}{(l.controller ? "" : ", observer")}" : $"no profile, device {dev}";
+        }
+
+        /// <summary>OnLogin: why this sign-in is turned away for reconnecting too often (null = it may sign in). 'key' is the
+        /// profile, or the device for a game without one.</summary>
+        static string ReconnectRefusal(string key, string name)
+        {
+            float now = Time.realtimeSinceStartup;
+            if (reconnectBlocked.TryGetValue(key, out float until))
+            {
+                if (now < until) return ReconnectText(until - now);
+                reconnectBlocked.Remove(key);
+            }
+            if (!recentLogins.TryGetValue(key, out var times)) recentLogins[key] = times = new List<float>();
+            times.RemoveAll(t => now - t > ReconnectWindow);
+            times.Add(now);
+            if (times.Count <= ReconnectMax) return null;
+            times.Clear();
+            reconnectBlocked[key] = now + ReconnectBlockSeconds;
+            Debug.LogWarning($"Server: {key} ({(name.Length > 0 ? name : "no name")}) signed in more than {ReconnectMax} times in " +
+                             $"{ReconnectWindow / 60f:0} minutes; turned away for {ReconnectBlockSeconds / 60f:0} minutes.");
+            return ReconnectText(ReconnectBlockSeconds);
+        }
+
+        static string ReconnectText(float seconds) => string.Format(Localization.Extra("mpReconnectTooFast",
+            "You reconnected too often. Try again in {0} minutes."), Mathf.Max(1, Mathf.CeilToInt(seconds / 60f)));
+
+        /// <summary>Kaamo upgrades past Session.MaxModLevel of one mod on one hull (the flown ship, the Kaamo Club's and the
+        /// parked one) cut back to it. Returns how many levels went.</summary>
+        static int ClampMods(SaveData s)
+        {
+            int Clamp(List<int> mods)
+            {
+                if (mods == null || mods.Count == 0) return 0;
+                var levels = new Dictionary<int, int>();
+                int before = mods.Count;
+                mods.RemoveAll(m =>
+                {
+                    levels.TryGetValue(m, out int n);
+                    levels[m] = n + 1;
+                    return n >= Session.MaxModLevel;
+                });
+                return before - mods.Count;
+            }
+            int cut = Clamp(s.shipMods);
+            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) cut += Clamp(k.mods);
+            if (s.parkedShip != null) cut += Clamp(s.parkedShip.mods);
+            return cut;
         }
 
         // ---- uploads ----------------------------------------------------------------------------------------
@@ -422,6 +507,12 @@ namespace GoF2Remake.Multiplayer
                 Reject(login, problem);
                 return;
             }
+            int cut = ClampMods(save);
+            if (cut > 0)
+            {
+                json = JsonUtility.ToJson(save, false);
+                Debug.LogWarning($"Server: profile {account.id} ({account.name}): {cut} Kaamo upgrade level(s) past {Session.MaxModLevel} per mod removed.");
+            }
             long worth = Worth(save);
             if (!NetGame.HostAllowsDebug && !IsHostClient(client) && Implausible(login, save, worth) is string why)
             {
@@ -450,8 +541,20 @@ namespace GoF2Remake.Multiplayer
 
         static void Reject(Login login, string why)
         {
-            Debug.LogWarning($"Server: profile {login.account.id} ({login.account.name}): upload not saved: {why}.");
             NetState.Instance?.Notify(login.client, string.Format(Localization.Extra("mpNotSaved", "The server didn't save your progress: {0}."), why));
+            // The log and the staff: the first refusal, then one line per RejectLogSeconds with the count (an upload a
+            // minute filled the log with one line each).
+            float now = Time.realtimeSinceStartup;
+            string id = login.account.id;
+            rejectLog.TryGetValue(id, out var last);
+            if (last.at > 0f && now - last.at < RejectLogSeconds) { rejectLog[id] = (last.at, last.count + 1); return; }
+            string since = last.count > 0 ? $" ({last.count} more refused since the last report)" : "";
+            rejectLog[id] = (now, 0);
+            Debug.LogWarning($"Server: profile {id} ({login.account.name}, client {login.client}): upload not saved: {why}.{since}");
+            string staff = $"[server] {login.account.name}'s upload was not saved: {why}.";
+            foreach (var other in logins.Values)
+                if (other.account != null && other.account.role >= NetModeration.Op && other.client != login.client)
+                    NetState.Instance?.Notify(other.client, staff);
         }
 
         /// <summary>Without the Debug menu: what can't have happened in the game (null = plausible).</summary>
@@ -670,15 +773,42 @@ namespace GoF2Remake.Multiplayer
         }
 
         /// <summary>DedicatedServer's "profile delete &lt;id&gt;": not while one of its devices is online.</summary>
-        public static string ConsoleDelete(string id)
+        /// <summary>Console "profile delete": a profile by its id or last pilot name. Online it is refused unless 'force': its
+        /// devices are signed out (what they still upload is ignored) and dropped, then it goes.</summary>
+        public static string ConsoleDelete(string who, bool force = false)
         {
             if (!Enabled) return "Player profiles are off (-noprofiles).";
-            var a = index.accounts.Find(x => x.id == id);
-            if (a == null) return $"No profile \"{id}\" (see \"profiles\").";
-            foreach (var l in logins.Values) if (l.account == a) return $"Profile {id} is online (client {l.client}): kick it first.";
+            string id = FindAccount((who ?? "").Trim());
+            var a = id != null ? index.accounts.Find(x => x.id == id) : null;
+            if (a == null) return $"No profile \"{who}\" (see \"profiles\").";
+            var online = new List<ulong>();
+            foreach (var l in logins.Values) if (l.account == a) online.Add(l.client);
+            if (online.Count > 0 && !force)
+                return $"Profile {id} ({a.name}) is online (client {string.Join(", ", online)}): kick it first, or \"profile delete {id} force\".";
+            foreach (ulong c in online)
+            {
+                logins.Remove(c);
+                incoming.Remove(c);
+                NetGame.Kick(c, Localization.Extra("mpProfileDeleted", "Your profile on this server was deleted."));
+            }
             DeleteAccount(a);
             SaveIndex();
-            return $"Deleted profile {id} (its file is kept as {id}.json.bak).";
+            return $"Deleted profile {id} ({(string.IsNullOrEmpty(a.name) ? "?" : a.name)}){(online.Count > 0 ? $", {online.Count} device(s) dropped" : "")} (its file is kept as {id}.json.bak).";
+        }
+
+        /// <summary>Console "profile info": one profile's details, ban included.</summary>
+        public static string ConsoleInfo(string who)
+        {
+            if (!Enabled) return "Player profiles are off (-noprofiles).";
+            string id = FindAccount((who ?? "").Trim());
+            var a = id != null ? index.accounts.Find(x => x.id == id) : null;
+            if (a == null) return $"No profile \"{who}\" (see \"profiles\").";
+            var online = new List<string>();
+            foreach (var l in logins.Values) if (l.account == a) online.Add($"client {l.client}{(l.controller ? "" : " (watching)")}");
+            string ban = NetModeration.BanReason(a.id, null);
+            return $"Profile {a.id}: {(string.IsNullOrEmpty(a.name) ? "?" : a.name)}, role {NetModeration.RoleName(a.role)}, {a.devices.Count} device(s), " +
+                   $"worth {a.worth:N0}, played {a.playSeconds / 3600f:0.#} h, created {a.created}, last seen {a.lastSeen}, " +
+                   $"{(online.Count > 0 ? "online: " + string.Join(", ", online) : "offline")}, {(ban != null ? "BLOCKED: " + ban : "not blocked")}.";
         }
 
         /// <summary>Profiles nobody signed in to for PruneDays (by lastSeen, else created) go: not one that is online, nor

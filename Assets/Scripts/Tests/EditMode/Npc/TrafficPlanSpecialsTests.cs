@@ -569,7 +569,8 @@ namespace GoF2Remake.Tests
             Settings.CapitalShips = true;
             const int n = 4000;
             int battles = 0;
-            Repeat(70, n, 32, list =>
+            int union = Db.Systems.Find(s => s.index == 11).stations[0];   // Union, Average (Dis, 70, is in a Secure system)
+            Repeat(union, n, 32, list =>
             {
                 var hosts = list.Where(x => x.fleetBattle).ToList();
                 if (hosts.Count == 0) return;
@@ -593,6 +594,18 @@ namespace GoF2Remake.Tests
             InCompletedWorld(5);
             Repeat(20, 2000, 35, list => Assert.That(list.All(x => !x.fleetBattle)), default);   // Midorian
             Repeat(105, 500, 36, list => Assert.That(list.All(x => !x.fleetBattle)));   // Loma
+        }
+
+        [Test]
+        public void NoFleetBattlesInSecureSystems()
+        {
+            // a player's report 2026-10-16: a war in the safe orbits. Magnetar (14) is a Secure Terran system.
+            InCompletedWorld(5);
+            Settings.CapitalShips = true;
+            var magnetar = Db.Systems.Find(s => s.index == 14);
+            Assert.AreEqual(TrafficPlan.SecureSystem, magnetar.securityLevel);
+            foreach (int st in magnetar.stations)
+                Repeat(st, 1500, 37, list => Assert.That(list.All(x => !x.fleetBattle)), default);
         }
     }
 }

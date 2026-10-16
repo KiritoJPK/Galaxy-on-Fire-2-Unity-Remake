@@ -6,7 +6,7 @@
 //   rim          = smoothstep(0.8, 1, 1 - N.V)
 //   reflectivity = clamp(smoothstep(0.6, 1, 1 - N.V), reflectTex, 2 spec + rim)
 //   out += cubemap(reflect(V, N)) * reflectivity + rim * reflectTex * rimColor
-// The cubemap is the environment reflection (unity_SpecCube0: the system's cubemap, SkyReflection), sampled sharp like the
+// The cubemap is _GoF2ReflectionCube (the system's cubemap, or a hangar's own: SkyReflection), sampled sharp like the
 // original's textureCube (the GPU's mip choice). Only materials with a specular map (_METALLICSPECGLOSSMAP) get the terms, scaled down by the
 // material's metallic (a mod's metal parts already reflect through URP). Globals (SRP batcher safe): _GoF2HullReflection
 // (strength, 0 = URP Lit as it is), _GoF2HullRimColor (3 x the system's rim table, StarSystem::initLight).

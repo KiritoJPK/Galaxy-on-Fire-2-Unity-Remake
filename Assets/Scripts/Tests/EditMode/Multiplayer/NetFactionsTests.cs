@@ -3,9 +3,10 @@
 // letters / digits, a name of at most 24, at most 50 members); a deleted profile leaves its faction, a leaderless faction
 // passes to its first officer, else its first member, an empty one ends (and its claims with it); a faction's home is a
 // station it claims; claims cost 500 000 from the bank, at most 3 per faction, lapse after 14 days, not the Kaamo Club
-// (108) or Loma (system 25); sieges cost 250 000, the toll is 10 000; at a held station members pay 10 % less and other
-// factions 5 % more, the tax going to the holder's bank; the console disbands by tag.
-// Expected values: CLAUDE.md's numbers; the tax worked out by hand (a price of 1050 with 5 % on top holds 50 of tax).
+// (108) or Loma (system 25); sieges cost 250 000, the toll is 10 000 (or -N = N % of the pilot's credits); at a held
+// station members pay 10 % less and everyone else pays the claim's VAT (default 5 %, at most 20 %): the list price plus a
+// tenth of the rate, the rate's share of the paid price going to the holder's bank; the console disbands by tag.
+// Expected values: CLAUDE.md's numbers; the VAT worked out from VatMarkup (5 % on a 1000 list price: 1005 paid, 50 of VAT).
 // A dedicated server's profile folder with a factions.json is set up in the sandbox (NetServerFixture).
 
 using System.Collections.Generic;
@@ -52,7 +53,8 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(250_000, NetFactions.DefaultSiegeCost);
             Assert.AreEqual(10_000, NetFactions.DefaultToll);
             Assert.AreEqual(10, NetFactions.MemberDiscountPercent);
-            Assert.AreEqual(5, NetFactions.TaxPercent);
+            Assert.AreEqual(5, NetFactions.DefaultVat);
+            Assert.AreEqual(20, NetFactions.MaxVat);
         }
 
         [Test]
@@ -63,7 +65,9 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(100, NetFactions.MaxClaims);
             Assert.AreEqual(1, NetFactions.LapseDays);
             Assert.AreEqual(0, NetFactions.SiegeCost);
-            Assert.AreEqual(0, NetFactions.Toll);
+            Assert.AreEqual(-10, NetFactions.Toll);   // 10 % of the pilot's credits
+            NetFactions.Configure(0, 3, 14, 0, -500);
+            Assert.AreEqual(-100, NetFactions.Toll);   // at most all of them
             NetFactions.Configure(750_000, 5, 30, 100_000, 2500);
             Assert.AreEqual(750_000, NetFactions.ClaimCost);
             Assert.AreEqual(5, NetFactions.MaxClaims);
@@ -159,15 +163,34 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
-        public void TheOtherFactionsPayATaxToTheHolder()
+        public void TheOtherFactionsPayVatToTheHolder()
         {
-            // A price with 5 % on top: 1050 = 1000 + 50 of tax.
+            Assert.AreEqual(1005, NetFactions.VatMarkup(1000, 5));   // a tenth of the rate on top
+            Assert.AreEqual(1020, NetFactions.VatMarkup(1000, 20));
+            Assert.AreEqual(1000, NetFactions.VatMarkup(1000, 0));
+            int item = PricedItem(out int max);
+            int paid = NetFactions.VatMarkup(max, 5);
+            long vat = (long)System.Math.Round(paid / 1.005 * 0.05);
+            Assert.Greater(vat, 0);
             var alpha = NetFactions.Of("a");
             long before = alpha.bank;
-            NetFactions.OnPurchase(99, AlphaStation, 1050);
-            Assert.AreEqual(before + 50, alpha.bank);
-            NetFactions.OnPurchase(99, AlphaStation, 105);
-            Assert.AreEqual(before + 55, alpha.bank);
+            NetFactions.OnPurchase(99, AlphaStation, item, paid, 1);
+            Assert.AreEqual(before + vat, alpha.bank);
+            NetFactions.OnPurchase(99, AlphaStation, item, paid, 2);
+            Assert.AreEqual(before + 3 * vat, alpha.bank);
+            NetFactions.OnPurchase(99, AlphaStation, item, int.MaxValue, 1);   // a claimed price is capped at the list maximum
+            Assert.AreEqual(before + 4 * vat, alpha.bank);
+        }
+
+        /// <summary>An item of the session's tables with a list price high enough for its VAT to round above 0.</summary>
+        static int PricedItem(out int max)
+        {
+            var items = NetGame.Db.Items;
+            for (int i = 0; i < items.Count; i++)
+                if (items[i] != null && items[i].maxPrice >= 1000) { max = items[i].maxPrice; return i; }
+            Assert.Fail("no item with a list price of 1000 or more");
+            max = 0;
+            return -1;
         }
 
         [Test]
@@ -176,9 +199,11 @@ namespace GoF2Remake.Tests
             var alpha = NetFactions.Of("a");
             var solo = NetFactions.Of("s");
             long a = alpha.bank, s = solo.bank;
-            NetFactions.OnPurchase(99, 78, 1050);
-            NetFactions.OnPurchase(99, AlphaStation, 0);
-            NetFactions.OnPurchase(99, AlphaStation, -10);
+            int item = PricedItem(out int max);
+            NetFactions.OnPurchase(99, 78, item, max, 1);
+            NetFactions.OnPurchase(99, AlphaStation, item, 0, 1);
+            NetFactions.OnPurchase(99, AlphaStation, item, -10, 1);
+            NetFactions.OnPurchase(99, AlphaStation, item, max, 0);
             Assert.AreEqual(a, alpha.bank);
             Assert.AreEqual(s, solo.bank);
         }

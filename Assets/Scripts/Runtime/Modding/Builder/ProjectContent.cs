@@ -18,6 +18,8 @@ namespace GoF2Remake.Modding
         protected ProjectEntry(JObject o) { json = o; }
 
         public JObject ToJson() => (JObject)json.DeepClone();
+        /// <summary>The entry's JSON itself (the graph editor and Edit as JSON work on it in place).</summary>
+        public JObject Json => json;
 
         protected string S(string k) => json[k] is JValue v && v.Type == JTokenType.String ? (string)v : null;
         protected int? N(string k) => json[k] is JValue v && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float) ? Mathf.RoundToInt((float)v) : (int?)null;
@@ -26,6 +28,30 @@ namespace GoF2Remake.Modding
         protected void SetN(string k, int? v) { if (v == null) json.Remove(k); else json[k] = v.Value; }
         /// <summary>A flag written only when it isn't the game's default.</summary>
         protected void SetB(string k, bool v, bool d) { if (v == d) json.Remove(k); else json[k] = v; }
+        protected float? F(string k) => json[k] is JValue v && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float) ? (float)v : (float?)null;
+        protected void SetF(string k, float? v) { if (v == null) json.Remove(k); else json[k] = Mathf.Round(v.Value * 1000f) / 1000f; }
+
+        /// <summary>A reference to other content: a game number or a key ("mod_id:id"), as text (null = none).</summary>
+        protected string R(string k) => RefText(json[k]);
+        protected void SetR(string k, string v) { if (string.IsNullOrEmpty(v)) json.Remove(k); else json[k] = RefToken(v); }
+
+        /// <summary>A reference as written: a number stays a number, a key a string.</summary>
+        public static JToken RefToken(string v) => int.TryParse(v, out int n) ? new JValue(n) : new JValue(v);
+        public static string RefText(JToken t) =>
+            t is JValue v && (v.Type == JTokenType.Integer || v.Type == JTokenType.String) ? v.ToString() : null;
+
+        /// <summary>[x, y, z] numbers (null = none).</summary>
+        protected Vector3? V3(string k) => json[k] is JArray a && a.Count >= 3 ? new Vector3((float)a[0], (float)a[1], (float)a[2]) : (Vector3?)null;
+        protected void SetV3(string k, Vector3? v)
+        {
+            if (v == null) { json.Remove(k); return; }
+            float R3(float f) => Mathf.Round(f * 1000f) / 1000f;
+            json[k] = new JArray(R3(v.Value.x), R3(v.Value.y), R3(v.Value.z));
+        }
+
+        /// <summary>A field read as raw JSON (the builder's less common fields), null = none.</summary>
+        public JToken Get(string k) => json[k];
+        public void Set(string k, JToken v) { if (v == null || v.Type == JTokenType.Null) json.Remove(k); else json[k] = v; }
 
         /// <summary>A text field: a string, or one per language ({"en": ..., "de": ...}). The builder edits the English one
         /// (else the only one); a per-language field keeps its other languages.</summary>
@@ -111,6 +137,122 @@ namespace GoF2Remake.Modding
             foreach (var p in o.Properties().ToList()) if (ItemStats.IdOf(p.Name) == attribute) p.Remove();
             if (value != null) o[name] = value.Value;
             if (!o.HasValues) json.Remove("stats");
+        }
+
+        /// <summary>fx "turret": the turret's own model (a GLB in the project, ModWeapons.BuildTurret), null = the base
+        /// item's. Read from either form ("file" or { "model": ... }), written as the object; the rest of "fx" stays. The
+        /// size, offset, muzzle and shot start apply to either model; a "turret" left empty is dropped.</summary>
+        public string TurretModel
+        {
+            get => Turret is JValue v && v.Type == JTokenType.String ? (string)v : Turret is JObject o ? (string)o["model"] : null;
+            set
+            {
+                var o = TurretObject();
+                if (string.IsNullOrEmpty(value)) o.Remove("model"); else { o["model"] = value; o.Remove("item"); }
+                DropEmptyTurret();
+            }
+        }
+
+        /// <summary>fx "turret" "item": another item's turret model (a game turret's: no file), null = none.</summary>
+        public int? TurretItem
+        {
+            get => Turret is JObject o && o["item"] is JValue v && v.Type == JTokenType.Integer ? (int)v : (int?)null;
+            set
+            {
+                var o = TurretObject();
+                if (value == null) o.Remove("item"); else { o["item"] = value.Value; o.Remove("model"); }
+                DropEmptyTurret();
+            }
+        }
+
+        // ---- the look: another item's projectile / muzzle flash / impact and sounds (ModWeapons: no files needed) ----
+
+        /// <summary>The fx part names the builder edits.</summary>
+        public static readonly string[] FxParts = { "projectile", "muzzle", "impact" };
+
+        /// <summary>A part with a sprite or model of its own (a hand edit): the builder leaves it alone.</summary>
+        public bool FxPartIsCustom(string part) => json["fx"] is JObject fx && fx[part] is JObject p && (p["sprite"] != null || p["model"] != null);
+
+        /// <summary>fx part "item": another item's part (the base item's own when null).</summary>
+        public int? FxPartItem(string part) =>
+            json["fx"] is JObject fx && fx[part] is JObject p && p["item"] is JValue v && v.Type == JTokenType.Integer ? (int)v : (int?)null;
+
+        /// <summary>fx part "scale": its size against the original's (null = 1).</summary>
+        public float? FxPartScale(string part) =>
+            json["fx"] is JObject fx && fx[part] is JObject p && p["scale"] is JValue v && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float) ? (float)v : (float?)null;
+
+        public void SetFxPartItem(string part, int? item) => SetFxPartValue(part, "item", item.HasValue ? new JValue(item.Value) : null);
+        public void SetFxPartScale(string part, float? scale) => SetFxPartValue(part, "scale", scale.HasValue && !Mathf.Approximately(scale.Value, 1f) ? new JValue(scale.Value) : null);
+
+        void SetFxPartValue(string part, string key, JToken value)
+        {
+            if (FxPartIsCustom(part)) return;
+            var p = json["fx"] is JObject fx && fx[part] is JObject o ? o : new JObject();
+            if (value == null) p.Remove(key); else p[key] = value;
+            SetFx(part, p.HasValues ? p : null);
+        }
+
+        /// <summary>fx "shot" / "explosionSound" given as an item's number: that item's sounds (null = the base item's, or files
+        /// a hand edit gave: SoundIsCustom).</summary>
+        public int? SoundItem(string key) => json["fx"] is JObject fx && fx[key] is JValue v && v.Type == JTokenType.Integer ? (int)v : (int?)null;
+        public bool SoundIsCustom(string key) => json["fx"] is JObject fx && fx[key] != null && SoundItem(key) == null;
+        public void SetSoundItem(string key, int? item) { if (!SoundIsCustom(key)) SetFx(key, item.HasValue ? new JValue(item.Value) : null); }
+
+        /// <summary>fx "turret" "muzzle" / "shotStart": game units along the gun node, null = the base item's.</summary>
+        public float? TurretMuzzle { get => TurretNumber("muzzle"); set => SetTurretNumber("muzzle", value); }
+        public float? TurretShotStart { get => TurretNumber("shotStart"); set => SetTurretNumber("shotStart", value); }
+        /// <summary>fx "turret" "scale": the model's size factor, null = 1 (as made).</summary>
+        public float? TurretScale { get => TurretNumber("scale"); set => SetTurretNumber("scale", value); }
+
+        /// <summary>fx "turret" "offset": the model moved off its mount (game units: x toward the pilot's left, y up, z forward).</summary>
+        public Vector3Int TurretOffset
+        {
+            get => Turret is JObject o && o["offset"] is JArray a && a.Count >= 3
+                ? new Vector3Int(Mathf.RoundToInt((float)a[0]), Mathf.RoundToInt((float)a[1]), Mathf.RoundToInt((float)a[2])) : Vector3Int.zero;
+            set
+            {
+                var o = TurretObject();
+                if (value == Vector3Int.zero) o.Remove("offset"); else o["offset"] = new JArray(value.x, value.y, value.z);
+                DropEmptyTurret();
+            }
+        }
+
+        JToken Turret => json["fx"] is JObject fx ? fx["turret"] : null;
+
+        float? TurretNumber(string k) =>
+            Turret is JObject o && o[k] is JValue v && (v.Type == JTokenType.Integer || v.Type == JTokenType.Float) ? (float)v : (float?)null;
+
+        void SetTurretNumber(string k, float? value)
+        {
+            var o = TurretObject();
+            if (value == null) o.Remove(k); else o[k] = value.Value;
+            DropEmptyTurret();
+        }
+
+        void DropEmptyTurret()
+        {
+            if (Turret is JObject o && !o.HasValues) SetFx("turret", null);
+        }
+
+        /// <summary>fx "turret" as an object (a plain file name turned into { "model": file }).</summary>
+        JObject TurretObject()
+        {
+            if (Turret is JObject o) return o;
+            o = new JObject();
+            if (Turret is JValue v && v.Type == JTokenType.String) o["model"] = (string)v;
+            SetFx("turret", o);
+            return o;
+        }
+
+        void SetFx(string k, JToken value)
+        {
+            if (!(json["fx"] is JObject fx))
+            {
+                if (value == null) return;
+                json["fx"] = fx = new JObject();
+            }
+            if (value == null) fx.Remove(k); else fx[k] = value;
+            if (!fx.HasValues) json.Remove("fx");
         }
     }
 

@@ -25,7 +25,7 @@ using UnityEngine;
 namespace GoF2Remake.Flight
 {
     [DefaultExecutionOrder(50)]   // after ShipController has moved the ship
-    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // 'overlaps' is a scratch buffer: nothing to reset
     public class PlayerCollision : MonoBehaviour
     {
         /// <summary>Set by the level each frame: launch / arrival camera, jump scenes (collision off).</summary>

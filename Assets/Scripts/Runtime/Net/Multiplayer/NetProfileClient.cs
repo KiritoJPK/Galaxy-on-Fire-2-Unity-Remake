@@ -32,7 +32,6 @@ namespace GoF2Remake.Multiplayer
         static byte[][] inParts;
         static string inToken;
         static bool inController, inGuest;
-        static int inHome = -1;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()
@@ -103,7 +102,6 @@ namespace GoF2Remake.Multiplayer
 
         internal static void OnProfileHeader(int seq, int count, string token, bool controller, bool guest, int home)
         {
-            inHome = home;
             inSeq = seq;
             inGot = 0;
             inParts = new byte[Mathf.Max(0, count)][];
@@ -136,8 +134,8 @@ namespace GoF2Remake.Multiplayer
             if (waiting)
             {
                 waiting = false;
-                // A faction member's game starts docked at the faction's home (NetFactions).
-                if (inHome >= 0 && inHome < NetGame.Db.Stations.Count) Session.StationIndex = inHome;
+                // The game starts docked where the profile last docked (SaveGame.ApplyProfile; a new pilot: Dis). Not the
+                // faction's home any more: signing out and in was a free trip home.
                 NetGame.EnterWorld(seed);
                 return;
             }

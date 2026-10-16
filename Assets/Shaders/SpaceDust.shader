@@ -29,6 +29,7 @@ Shader "GoF2/SpaceDust"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             TEXTURE2D(_MainTex); SAMPLER(sampler_MainTex);
@@ -37,12 +38,14 @@ Shader "GoF2/SpaceDust"
                 float _Radius, _FadeOutStart, _FadeInEnd, _Inner;
             CBUFFER_END
 
-            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 corner : TEXCOORD1; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; half alpha : TEXCOORD1; };
+            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 corner : TEXCOORD1; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; half alpha : TEXCOORD1; UNITY_VERTEX_OUTPUT_STEREO };
 
             Varyings vert(Attributes i)
             {
                 Varyings o;
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 float3 cam = _WorldSpaceCameraPos;
                 float size = 2 * _Radius;
                 float3 rel = i.positionOS.xyz - cam;
@@ -61,6 +64,7 @@ Shader "GoF2/SpaceDust"
 
             half4 frag(Varyings i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 half4 t = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv) * _Color;
                 return half4(t.rgb, t.a * i.alpha);
             }

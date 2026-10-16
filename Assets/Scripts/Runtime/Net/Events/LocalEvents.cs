@@ -35,6 +35,8 @@ namespace GoF2Remake.Events
             get
             {
                 if (NetGame.SessionGame || Data.Session.EndingPending) return false;
+                // The Mod Builder's game runs no quests by themselves, only in a play test (Modding.ModBuilder.PlayTesting).
+                if (Modding.ModBuilder.Active && !Modding.ModBuilder.PlayTesting) return false;
                 string scene = SceneManager.GetActiveScene().name;
                 return scene == "Space" || scene == "Station";
             }

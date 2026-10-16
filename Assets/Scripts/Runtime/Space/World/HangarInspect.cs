@@ -85,6 +85,20 @@ namespace GoF2Remake.World
         /// <summary>Back to orbiting the ship's centre.</summary>
         public void ResetPan() => pan = Vector3.zero;
 
+        /// <summary>Looks from 'worldDirection' (from the ship's centre toward the camera) at 'radii' x the ship's radius
+        /// (0 = the distance kept), at once (the Mod Builder's MCP view tool); the pitch stays within the orbit's limits.</summary>
+        public void SetView(Vector3 worldDirection, float radii)
+        {
+            var d = worldDirection.normalized;
+            yaw = Mathf.Atan2(d.x, d.z);
+            pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(d.y, -1f, 1f)), -MaxPitch, MaxPitch);
+            if (radii > 0f) targetDistance = Mathf.Clamp(radius * radii, minDistance, maxDistance);
+            distance = targetDistance;
+        }
+
+        /// <summary>The orbit's pitch now (rad; the floor may have raised it).</summary>
+        public float Pitch => pitch;
+
         Vector3 Direction => new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch));
 
         /// <summary>Zooms: the distance it eases to x 'factor' (&lt; 1 = closer).</summary>

@@ -118,7 +118,7 @@ namespace GoF2Remake.Tests
 
         // ---- NetServerSettings ----
 
-        int savedMaxPlayers, savedClaims, savedLapse, savedRules;
+        int savedMaxPlayers, savedClaims, savedLapse, savedRules, savedKaamoLevel, savedFlight;
 
         void BeginSettings()
         {
@@ -126,6 +126,8 @@ namespace GoF2Remake.Tests
             savedClaims = NetFactions.MaxClaims;
             savedLapse = NetFactions.LapseDays;
             savedRules = NetRules.Host;
+            savedKaamoLevel = NetRules.HostKaamoLevel;
+            savedFlight = NetRules.HostFlight;
             NetProfiles.Configure(false, NetProfiles.DefaultEarnPerMinute, Path.Combine(Sandbox, "ServerProfiles"));
             Directory.CreateDirectory(Path.Combine(Sandbox, "ServerProfiles"));
             NetServerSettings.Load(_ => false);
@@ -137,6 +139,8 @@ namespace GoF2Remake.Tests
             NetFactions.MaxClaims = savedClaims;
             NetFactions.LapseDays = savedLapse;
             NetRules.Host = savedRules;
+            NetRules.HostKaamoLevel = savedKaamoLevel;
+            NetRules.HostFlight = savedFlight;
             ResetStatics(typeof(NetServerSettings));
             ResetStatics(typeof(NetProfiles));
         }
@@ -153,7 +157,7 @@ namespace GoF2Remake.Tests
         {
             var keys = NetServerSettings.All.Select(s => s.key).ToList();
             Assert.AreEqual(keys.Count, keys.Distinct().Count());
-            foreach (var k in new[] { "name", "password", "maxplayers", "allowdebug", "freepvp", "maxearn", "claimcost", "maxclaims", "claimdays", "siegecost", "toll" })
+            foreach (var k in new[] { "name", "password", "maxplayers", "allowdebug", "freepvp", "maxearn", "claimcost", "maxclaims", "claimdays", "siegecost", "toll", "kaamomaxlevel" })
                 Assert.Contains(k, keys);
             foreach (var r in NetRules.All) Assert.Contains(r.key, keys, "the rules are settings too");
             foreach (var s in NetServerSettings.All) StringAssert.StartsWith("-", s.option, s.key);
@@ -175,6 +179,89 @@ namespace GoF2Remake.Tests
                 Assert.AreEqual(1, NetFactions.LapseDays);
                 NetServerSettings.Set("maxplayers", "1,000", "test");
                 Assert.AreEqual(100, NetGame.MaxPlayers, "thousands separators are fine");
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void FlightModelIsASessionSetting()
+        {
+            BeginSettings();
+            try
+            {
+                Assert.AreEqual(FlightStyles.Original, SessionRules.DefaultFlight, "the game's flight model by default (fair PvP)");
+                var s = NetServerSettings.All.Single(x => x.key == "flightmodel");
+                Assert.AreEqual("-flightmodel", s.option);
+                NetServerSettings.Set("flightmodel", "es2", "test");
+                Assert.AreEqual(FlightStyles.Free, NetRules.HostFlight);
+                Assert.AreEqual("es2", NetServerSettings.All.Single(x => x.key == "flightmodel").get());
+                NetServerSettings.Set("flightmodel", "free", "test");
+                Assert.AreEqual(FlightStyles.Free, NetRules.HostFlight, "free is read as es2 too");
+                NetServerSettings.Set("flightmodel", "player", "test");
+                Assert.AreEqual(SessionRules.PlayerFlight, NetRules.HostFlight);
+                NetServerSettings.Set("flightmodel", "GoF2", "test");
+                Assert.AreEqual(FlightStyles.Original, NetRules.HostFlight);
+                Assert.IsNotEmpty(NetServerSettings.Set("flightmodel", "fast", "test"), "an unknown model is refused");
+                Assert.AreEqual(FlightStyles.Original, NetRules.HostFlight);
+                Assert.AreEqual("gof2", SessionRules.FlightText(FlightStyles.Original));
+                Assert.AreEqual(FlightStyles.Free, SessionRules.ParseFlight(SessionRules.FlightText(FlightStyles.Free)));
+                Assert.AreEqual(SessionRules.PlayerFlight, SessionRules.ParseFlight(SessionRules.FlightText(SessionRules.PlayerFlight)));
+                Assert.IsFalse(NetRules.TryGetFlight(out _), "outside a session the player's own option");
+                // The admin command: no argument shows it, a value sets it like /set.
+                StringAssert.Contains("gof2", NetCommands.RunOnServer("flightmodel", "", null));
+                NetCommands.RunOnServer("flightmodel", "es2", null);
+                Assert.AreEqual(FlightStyles.Free, NetRules.HostFlight);
+                StringAssert.StartsWith("/flightmodel", NetCommands.RunOnServer("flightmodel", "fast", null));
+                Assert.AreEqual(FlightStyles.Free, NetRules.HostFlight);
+            }
+            finally { EndSettings(); }
+        }
+
+        [Test]
+        public void ASessionsFlightModelBeatsThePlayersOption()
+        {
+            var hook = GameHooks.SessionFlightStyle;
+            int option = Settings.FlightStyle;
+            try
+            {
+                Settings.FlightStyle = FlightStyles.Free;
+                GameHooks.SessionFlightStyle = (out int v) => { v = FlightStyles.Original; return true; };
+
+                Assert.AreEqual(FlightStyles.Original, ForcedNow(), "the session's GoF2 flight");
+                GameHooks.SessionFlightStyle = (out int v) => { v = SessionRules.PlayerFlight; return true; };
+                Assert.AreEqual(-1, ForcedNow(), "each player's own: nothing forced");
+                GameHooks.SessionFlightStyle = (out int v) => { v = 0; return false; };
+                Assert.AreEqual(-1, ForcedNow(), "no session");
+            }
+            finally { GameHooks.SessionFlightStyle = hook; Settings.FlightStyle = option; }
+        }
+
+        /// <summary>ModFlight's decision now (its per-frame cache skipped).</summary>
+        static int ForcedNow()
+        {
+            var m = typeof(Modding.ModFlight).GetMethod("Decide", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(m, "ModFlight.Decide");
+            var args = new object[] { null };
+            return (int)m.Invoke(null, args);
+        }
+
+        [Test]
+        public void KaamoUpgradeLimitIsANumberSetting()
+        {
+            BeginSettings();
+            try
+            {
+                var s = NetServerSettings.All.Single(x => x.key == "kaamomaxlevel");
+                Assert.AreEqual("-kaamomaxlevel", s.option);
+                Assert.AreEqual(NetServerSettings.All.FindIndex(x => x.key == "kaamostacking") + 1, NetServerSettings.All.IndexOf(s),
+                    "right after the stacking rule");
+                NetServerSettings.Set("kaamomaxlevel", "3", "test");
+                Assert.AreEqual(3, NetRules.HostKaamoLevel);
+                NetServerSettings.Set("kaamomaxlevel", "500", "test");
+                Assert.AreEqual(SessionRules.MaxKaamoLevel, NetRules.HostKaamoLevel);
+                NetServerSettings.Set("kaamomaxlevel", "1", "test");
+                Assert.AreEqual(SessionRules.MinKaamoLevel, NetRules.HostKaamoLevel);
+                Assert.IsFalse(NetRules.TryGetKaamoLevel(out _), "outside a session the player's own option");
             }
             finally { EndSettings(); }
         }

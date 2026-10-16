@@ -24,7 +24,7 @@ namespace GoF2Remake.World
         /// 'name' (/spawn ... named): the lock plate's name (KIPlayer+0x18 as a literal, SpawnSpec.name), numbered for
         /// several; the result text.</summary>
         public static string SpawnShip(SpaceLevel level, int race, int ship, Behaviour behaviour, int count = 1, Vector3? at = null, int eventTag = 0,
-                                       string name = null)
+                                       string name = null, System.Collections.Generic.IList<int> turrets = null)
         {
             if (level == null || level.Traffic == null || level.Player == null) return Localization.Extra("debugNoFlight", "Only in flight.");
             var p = level.Player.transform;
@@ -45,6 +45,8 @@ namespace GoF2Remake.World
                     alwaysNeutral = behaviour == Behaviour.Neutral,
                     eventTag = eventTag,
                     name = string.IsNullOrEmpty(name) ? null : count > 1 ? $"{name} {i + 1}" : name,
+                    // Remake (generic turrets): turret items on its turret mounts (/spawn ... turrets), null = its type's.
+                    turretItems = turrets != null ? new System.Collections.Generic.List<int>(turrets) : null,
                 };
                 if (level.Traffic.SpawnShip(spec) != null) made++;
             }
@@ -56,14 +58,34 @@ namespace GoF2Remake.World
                  : string.Format(Localization.Extra("debugShipsSpawned", "{0} x {1} spawned."), made, shown);
         }
 
+        /// <summary>Remake (events, quests: "spawn ... wreck"): a hackable freighter wreck (TrafficPlan.HackableWreck; race 0-3,
+        /// else rolled) 1.5 km ahead of the player or at 'at' (a Unity position in this orbit); 'name' its name on the HUD
+        /// (else "Damaged Freighter"). Hacked once (SpawnSpec.eventWreck), which fires "on hacked" (SpaceHooks.WreckHacked).
+        /// The result text.</summary>
+        public static string SpawnWreck(SpaceLevel level, int race, Vector3? at = null, string name = null)
+        {
+            if (level == null || level.Traffic == null || level.Player == null) return Localization.Extra("debugNoFlight", "Only in flight.");
+            var p = level.Player.transform;
+            var spec = TrafficPlan.HackableWreck(race, ToGame(at ?? p.position + p.forward * 1500f));
+            spec.eventWreck = true;
+            if (!string.IsNullOrEmpty(name)) spec.name = name;
+            var made = level.Traffic.SpawnShip(spec);
+            level.Traffic.ConnectPlayers();
+            string shown = string.IsNullOrEmpty(name) ? Localization.Get(3211) : name;
+            return made == null ? string.Format(Localization.Extra("debugSpawnFailed", "{0} couldn't be spawned."), shown)
+                                : string.Format(Localization.Extra("debugShipSpawned", "{0} spawned."), shown);
+        }
+
         /// <summary>A capital ship (SpawnSpec.Capital*) with the remake's enhancements (CapitalShips: turrets, escorts, killable,
-        /// whatever the option says) about 3.5 km ahead of the player; the result text.</summary>
-        public static string SpawnCapital(SpaceLevel level, int kind)
+        /// whatever the option says) about 3.5 km ahead of the player; the result text. 'turretItem' >= 0 (remake, generic
+        /// turrets): its turret objects are that turret item (SpawnSpec.turretItem).</summary>
+        public static string SpawnCapital(SpaceLevel level, int kind, int turretItem = -1)
         {
             if (level == null || level.Traffic == null || level.Player == null) return Localization.Extra("debugNoFlight", "Only in flight.");
             var p = level.Player.transform;
             var list = new System.Collections.Generic.List<SpawnSpec>();
             TrafficPlan.AddCapitalShipAt(level.Database, list, kind, ToGame(p.position + p.forward * 3500f), true);
+            if (turretItem >= 0) foreach (var s in list) if (s.turretAssembly != null) s.turretItem = turretItem;
             foreach (var s in list) level.Traffic.SpawnShip(s);
             level.Traffic.ConnectPlayers();
             return string.Format(Localization.Extra("debugShipSpawned", "{0} spawned."), CapitalName(kind));

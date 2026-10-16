@@ -66,7 +66,9 @@ namespace GoF2Remake.Multiplayer
             Num("maxclaims", "-maxclaims", "Stations per faction", 0, 100, () => NetFactions.MaxClaims, v => NetFactions.MaxClaims = v),
             Num("claimdays", "-claimdays", "Days before an unvisited claim lapses", 1, 3650, () => NetFactions.LapseDays, v => NetFactions.LapseDays = v),
             Num("siegecost", "-siegecost", "Siege cost", 0, int.MaxValue, () => NetFactions.SiegeCost, v => NetFactions.SiegeCost = v),
-            Num("toll", "-toll", "Toll at a faction's station (0 = none)", 0, int.MaxValue, () => NetFactions.Toll, v => { NetFactions.Toll = v; NetState.Instance?.SetToll(v); }),
+            new Setting { key = "toll", option = "-toll", label = "Toll at a faction's station: credits, or N% of the pilot's credits (0 = none)", kind = Kind.Text,
+                          get = () => NetFactions.TollText(NetFactions.Toll),
+                          apply = v => { int t = NetFactions.ParseToll(v) ?? throw new FormatException(); NetFactions.Toll = t; NetState.Instance?.SetToll(t); } },
         });
 
         /// <summary>NetRules: the session's gameplay options, after free PvP ("on" = the option on, whatever its flag).</summary>
@@ -77,7 +79,17 @@ namespace GoF2Remake.Multiplayer
             {
                 int bit = r.bit;
                 list.Insert(at++, Flag(r.key, r.flag, r.label, () => (NetRules.Host & bit) != 0, v => NetRules.Set(bit, v)));
+                if (bit == NetRules.KaamoStacking)
+                    list.Insert(at++, Num(NetRules.KaamoLevelKey, NetRules.KaamoLevelFlag, NetRules.KaamoLevelLabel,
+                        SessionRules.MinKaamoLevel, SessionRules.MaxKaamoLevel, () => NetRules.HostKaamoLevel, NetRules.SetKaamoLevel,
+                        "profiles above it are cut back at sign-in"));
             }
+            list.Insert(at++, new Setting
+            {
+                key = NetRules.FlightKey, option = NetRules.FlightFlag, label = NetRules.FlightLabel, kind = Kind.Text,
+                get = () => SessionRules.FlightText(NetRules.HostFlight),
+                apply = v => { int s = SessionRules.ParseFlight(v); if (s < -1) throw new FormatException(); NetRules.SetFlight(s); },
+            });
             return list;
         }
 
@@ -125,6 +137,17 @@ namespace GoF2Remake.Multiplayer
                     break;
                 default:
                     if (value.Length == 0) return string.Format(Localization.Extra("mpSetText", "/set {0} <value>"), s.key);
+                    if (s.key == "toll")
+                    {
+                        if (NetFactions.ParseToll(value) is not int t) return Localization.Extra("mpSetToll", "toll is a number of credits or a percentage (0-100%).");
+                        value = NetFactions.TollText(t);
+                    }
+                    if (s.key == NetRules.FlightKey)
+                    {
+                        int f = SessionRules.ParseFlight(value);
+                        if (f < SessionRules.PlayerFlight) return Localization.Extra("mpSetFlight", "flightmodel is gof2, es2 or player.");
+                        value = SessionRules.FlightText(f);
+                    }
                     break;
             }
             s.apply(value);

@@ -1,5 +1,5 @@
-/* Input hints shared by the HUDs (InputGlyph): a hint row (glyphs + label), keyboard keycaps and Xbox-style
-   controller buttons (the game always shows Xbox labels). */
+/* Input hints shared by the HUDs (InputGlyph): a hint row (glyphs + label), keyboard keycaps and controller buttons in
+   the Xbox or the PlayStation style (PadGlyph, InputMode.Style: the controller last used or the option). */
 
 /* The button hints option (Settings.InputHints). Specific enough to beat the HUDs' own ".input-keyboard .hints" /
    ".input-gamepad .station-hints" rules, which showed the hints again (the option did nothing in flight). */
@@ -71,6 +71,14 @@
 
 .pad-face--x {
     background-color: #3F8FE8;
+}
+
+/* PlayStation's face buttons: dark like the pad's own, the symbol drawn by PadGlyph in its colour (cross blue, circle red,
+   square pink, triangle green). */
+.pad-face--ps {
+    background-color: rgb(16, 21, 28);
+    border-width: 2px;
+    border-color: rgba(216, 236, 247, 0.55);
 }
 
 .pad-stick {

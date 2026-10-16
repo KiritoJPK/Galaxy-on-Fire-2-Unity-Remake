@@ -466,6 +466,18 @@ namespace GoF2Remake.Data
             return false;
         }
 
+        /// <summary>A scene starts (SpaceLevel / StationLevel): a mission still marked won here never had its success
+        /// conversation (that runs within one scene and advances the step), so it is opened again and completes anew. #88:
+        /// step 72's call completed, the scene changed before its conversation (a docking or jump in the 1.5 s before it
+        /// opens) and the save kept the step won: no check reported it again, the Valkyrie story stopped there for good.</summary>
+        public static void ReopenUnshownSuccess()
+        {
+            var m = Mission;
+            if (m == null || !m.won || Session.FreePlay) return;
+            m.won = false;
+            Debug.Log($"Story: step {Index} was won without its success conversation; it completes again.");
+        }
+
         /// <summary>Is the current campaign mission done? (null-safe; a mission already won is not reported again.)</summary>
         public static bool IsComplete(Database db, StoryContext c)
         {
@@ -577,7 +589,7 @@ namespace GoF2Remake.Data
         /// remake waits a second after the landing), and a quick tap on Hangar sold the loaner's guns or the loaner itself.</summary>
         public static bool HangarUnlocked => Session.FreePlay || (Index >= 5 && Index != 48 && Index != 49 && Index != 56 && Session.ParkedShip == null);
         public static bool MapUnlocked => Session.FreePlay || (Index >= 9 && Index != 15 && Index != 48 && Index != 49);
-        public static bool LoungeUnlocked(int station) => station != 100 && station != 101 && (Session.FreePlay || (Index >= 12 && Index != 15 && Index != 49));
+        public static bool LoungeUnlocked(int station) => station != 100 && station != 101 && (Session.FreePlay || (Index >= 13 && Index != 15 && Index != 49));
         /// <summary>ModStation::OnKeyPress, the Map at index 77: only in the Cronus Khador left in the hangar (326), else null.</summary>
         public static string MapRefusal => !Session.FreePlay && Index == 77 && Session.ShipIndex != 37 ? Localization.Get(326) : null;
         /// <summary>ModStation::OnInitialize: no autosave while imprisoned on Valkyrie (index 77 at station 101).</summary>

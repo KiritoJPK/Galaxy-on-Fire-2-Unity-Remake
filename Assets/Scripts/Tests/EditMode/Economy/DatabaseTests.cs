@@ -140,6 +140,12 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(102, ItemStats.IdOf("miningBeamLayerMs"));
             Assert.AreEqual(103, ItemStats.IdOf("miningBeamLook"));
             Assert.AreEqual(104, ItemStats.IdOf("phaseCloak"));
+            // missile turrets and salvos (Modding/README.md "Stats")
+            Assert.AreEqual(105, ItemStats.IdOf("missiles"));
+            Assert.AreEqual(106, ItemStats.IdOf("salvoShots"));
+            Assert.AreEqual(107, ItemStats.IdOf("salvoCount"));
+            Assert.AreEqual(108, ItemStats.IdOf("salvoGapMs"));
+            Assert.AreEqual(109, ItemStats.IdOf("turretRange"));
         }
 
         [Test]

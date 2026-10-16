@@ -28,12 +28,19 @@
 // at its foot. The content comes from the server's snapshot (NetPanel.Latest, asked for every 2 s while open) and is
 // rebuilt only when it changed, so a text field keeps its focus. Esc / B closes it (StationMenu.Back); while it is open
 // the station menu's own keys wait. Built in code; the buttons use Squad.uss.
+// Rework (players' report from a Retroid Pocket G2): on a small high-density screen (UiScale.Large) the window fills the
+// screen with text about 1.45x and finger-sized buttons (.mpw--large); a phone typing into a field moves the window to the
+// top half (the on-screen keyboard covers the bottom) and scrolls to the field. Controllers / keys: LB / RB (Q / E) switch
+// the tabs, the focus starts on the current tab, the list scrolls to the focused control, and a rebuild (a new snapshot)
+// puts the focus back on the same button; the Chat tab takes the focus into its line only with keys and mouse (a
+// controller's D-pad stayed trapped in it, a phone's keyboard covered the window at once).
 
 using System;
 using System.Collections.Generic;
 using GoF2Remake.Data;
 using GoF2Remake.Multiplayer;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 
 namespace GoF2Remake.UI
@@ -50,7 +57,7 @@ namespace GoF2Remake.UI
 
         public static void CloseAny() { if (current != null) current.Close(); }
 
-        VisualElement plate, window, tabs, body, chatPane;
+        VisualElement plate, window, tabs, body, chatPane, flightColumn;
         Button sosButton;
         ScrollView scroll, chatScroll;
         TextField chatField;
@@ -68,6 +75,13 @@ namespace GoF2Remake.UI
         bool pendingRebuild;      // a snapshot came while a field had the focus or a finger / button was down
         float pressedSince = -1f; // a pointer went down on the window (unscaled time), -1 = none
         StyleSheet sheet;
+        VisualElement host;           // the parent the window was built on (the scale's measure)
+        bool large, raised;           // UiScale.Large; the window moved up for a phone's keyboard
+        float nextScaleCheck;
+        Button currentTabButton;
+        /// <summary>The text's scale: 1, or LargeScale on a small high-density screen.</summary>
+        static float scale = 1f;
+        const float LargeScale = 1.45f;
 
         static readonly Color Panel = new Color(0.02f, 0.04f, 0.07f, 0.93f), Accent = new Color(0.56f, 0.85f, 1f),
                               Dim = new Color(0.85f, 0.92f, 0.97f, 0.65f), Good = new Color(0.47f, 0.9f, 0.55f), Bad = new Color(1f, 0.55f, 0.47f);
@@ -128,6 +142,7 @@ namespace GoF2Remake.UI
             sosButton?.RemoveFromHierarchy();
             plate?.RemoveFromHierarchy();
             window?.RemoveFromHierarchy();
+            flightColumn?.RemoveFromHierarchy();
         }
 
         // ---- building -------------------------------------------------------------------------------------
@@ -139,6 +154,9 @@ namespace GoF2Remake.UI
             plate?.RemoveFromHierarchy();
             window?.RemoveFromHierarchy();
             sheet = Resources.Load<StyleSheet>("GoF2Net/Squad");
+            host = parent;
+            large = UiScale.Large(parent);
+            scale = large ? LargeScale : 1f;
 
             // The button: in the top bar, left of the Menu button (its look); else under the station's information.
             plate = new VisualElement { name = "factionPlate" };
@@ -147,26 +165,44 @@ namespace GoF2Remake.UI
             if (flight)
             {
                 // In flight: on the right, under the HUD readout (top right) and over the squad window (26 %).
-                plateButton = Btn(Localization.Extra("mpMultiplayer", "Multiplayer"), Toggle, null);
+                plateButton = Btn(Localization.Extra("mpMultiplayer", "Multiplayer"), Toggle, large ? "squad-button--big" : null);
+                plateButton.AddToClassList("mp-hud-button");   // the size of the station's Menu button and the Chat button
                 if (sheet != null) plateButton.styleSheets.Add(sheet);
-                plateButton.style.position = Position.Absolute;
-                plateButton.style.right = 24;
-                plateButton.style.top = new Length(17, LengthUnit.Percent);
+                // The two buttons stacked in one column on the right (bigger now, like the Menu and Chat buttons: placed
+                // separately in percentages they overlapped on a phone).
+                flightColumn?.RemoveFromHierarchy();
+                flightColumn = new VisualElement { pickingMode = PickingMode.Ignore };
+                flightColumn.style.position = Position.Absolute;
+                flightColumn.style.right = 24;
+                flightColumn.style.top = new Length(17, LengthUnit.Percent);
+                flightColumn.style.alignItems = Align.FlexEnd;
+                parent.Add(flightColumn);
                 plateButton.style.marginLeft = 0;
                 plate = plateButton;
-                parent.Add(plateButton);
+                flightColumn.Add(plateButton);
+                // The Chat button (ChatView) on the left side at the same height, the Multiplayer button's look.
+                var chatTab = parent.Q<Button>("chatTab");
+                if (chatTab != null)
+                {
+                    LookLike(chatTab, plateButton);
+                    chatTab.style.position = Position.Absolute;
+                    chatTab.style.left = 40;   // the status bars' left edge
+                    chatTab.style.top = new Length(17, LengthUnit.Percent);
+                    chatTab.style.marginLeft = chatTab.style.marginRight = chatTab.style.marginTop = chatTab.style.marginBottom = 0;
+                    parent.Add(chatTab);
+                }
                 // The squad's distress call (NetDistress) under it: shown in a squad in space. A click / tap or the
                 // "Distress call" binding (unbound by default) only: like the button above it never takes the focus, so
                 // Space / Enter / a controller's A can't press it by accident.
                 sosButton = Btn(Localization.Extra("mpDistressCall", "Distress call"), ToggleDistress, "squad-button--leave");
+                if (large) sosButton.AddToClassList("squad-button--big");
+                sosButton.AddToClassList("mp-hud-button");
                 if (sheet != null) sosButton.styleSheets.Add(sheet);
                 sosButton.focusable = false;
-                sosButton.style.position = Position.Absolute;
-                sosButton.style.right = 24;
-                sosButton.style.top = new Length(22, LengthUnit.Percent);
                 sosButton.style.marginLeft = 0;
+                sosButton.style.marginTop = 6;
                 sosButton.style.display = DisplayStyle.None;
-                parent.Add(sosButton);
+                flightColumn.Add(sosButton);
             }
             else if (menu != null && menu.parent != null)
             {
@@ -176,6 +212,17 @@ namespace GoF2Remake.UI
                 plateButton.style.marginRight = 12;
                 plate = plateButton;
                 menu.parent.Insert(menu.parent.IndexOf(menu), plateButton);
+                // The Chat button (ChatView) next to it, on its left, the same size (the bar's buttons).
+                var chatTab = parent.Q<Button>("chatTab");
+                if (chatTab != null)
+                {
+                    LookLike(chatTab, plateButton);
+                    chatTab.style.marginTop = chatTab.style.marginBottom = 0;
+                    chatTab.style.marginRight = 12;
+                    chatTab.style.marginLeft = new StyleLength(StyleKeyword.Auto);   // pushes the group right, like the bar's first button
+                    menu.parent.Insert(menu.parent.IndexOf(plateButton), chatTab);
+                    plateButton.style.marginLeft = 0;
+                }
             }
             else
             {
@@ -209,8 +256,8 @@ namespace GoF2Remake.UI
             w.position = Position.Absolute;
             w.left = new Length(50, LengthUnit.Percent); w.top = new Length(50, LengthUnit.Percent);
             w.translate = new Translate(new Length(-50, LengthUnit.Percent), new Length(-50, LengthUnit.Percent));
-            w.width = new Length(64, LengthUnit.Percent); w.height = new Length(78, LengthUnit.Percent);
             w.minWidth = 560;
+            ApplyWindowSize();
             w.backgroundColor = Panel;
             w.borderTopWidth = w.borderBottomWidth = w.borderLeftWidth = w.borderRightWidth = 1;
             w.borderTopColor = w.borderBottomColor = w.borderLeftColor = w.borderRightColor = new Color(Accent.r, Accent.g, Accent.b, 0.45f);
@@ -221,6 +268,11 @@ namespace GoF2Remake.UI
             window.RegisterCallback<PointerDownEvent>(_ => pressedSince = Time.unscaledTime, TrickleDown.TrickleDown);
             window.RegisterCallback<PointerUpEvent>(_ => pressedSince = -1f, TrickleDown.TrickleDown);
             window.RegisterCallback<PointerCancelEvent>(_ => pressedSince = -1f, TrickleDown.TrickleDown);
+            // The list follows the focus (a controller's D-pad, the keys).
+            window.RegisterCallback<FocusInEvent>(e =>
+            {
+                if (e.target is VisualElement v && body != null && body.Contains(v)) scroll.ScrollTo(v);
+            });
 
             var head = Row();
             head.style.justifyContent = Justify.SpaceBetween;
@@ -249,6 +301,19 @@ namespace GoF2Remake.UI
             BuildTabs();
         }
 
+        /// <summary>ChatView's Chat button takes the classes of the button it sits beside (the station's top-bar button, the
+        /// flight HUD's Multiplayer button): the same size, border, font and padding. Its own state classes stay
+        /// (chat-tab--open...); the chat's base look (.chat-tab) goes.</summary>
+        Button movedChat;   // the Chat button placed beside this window's button (its large class follows UpdateLayout)
+
+        void LookLike(Button chatTab, Button neighbour)
+        {
+            movedChat = chatTab;
+            chatTab.RemoveFromClassList("chat-tab");
+            foreach (var c in neighbour.GetClasses()) chatTab.AddToClassList(c);
+            if (sheet != null && !chatTab.styleSheets.Contains(sheet)) chatTab.styleSheets.Add(sheet);
+        }
+
         void BuildTabs()
         {
             tabs.Clear();
@@ -263,10 +328,80 @@ namespace GoF2Remake.UI
                 if (t == Tab.Chat) name = Localization.Extra("mpChat", "Chat");
                 if (t == Tab.Squad) name = Localization.Extra("mpTabSquad", "Squad");
                 if (t == Tab.Trade) name = Localization.Extra("mpTabTrade", "Trade");
-                var b = Btn(name, () => { tab = t; confirmLeave = false; BuildTabs(); ShowPane(); Rebuild(); }, t == tab ? "squad-button--accept" : null);
+                var b = Btn(name, () => SelectTab(t), t == tab ? "squad-button--accept" : null);
                 b.style.marginRight = 8;
                 tabs.Add(b);
+                if (t == tab) currentTabButton = b;
             }
+            if (isOpen && InputMode.Current == InputKind.Gamepad) FocusLater(currentTabButton);
+        }
+
+        void SelectTab(Tab t)
+        {
+            tab = t;
+            confirmLeave = false;
+            BuildTabs();
+            ShowPane();
+            Rebuild();
+        }
+
+        /// <summary>LB / RB (Q / E): the previous / next tab this player sees, wrapping.</summary>
+        void StepTab(int dir)
+        {
+            var shown = new List<Tab>();
+            int role = NetPanel.Latest != null ? NetPanel.Latest.role : 0;
+            foreach (Tab t in Enum.GetValues(typeof(Tab))) if (t != Tab.Admin || role >= NetModeration.Op) shown.Add(t);
+            int i = Mathf.Max(0, shown.IndexOf(tab));
+            SelectTab(shown[(i + dir + shown.Count) % shown.Count]);
+        }
+
+        static void FocusLater(VisualElement e) => e?.schedule.Execute(() => { if (e.panel != null) e.Focus(); }).ExecuteLater(1);
+
+        /// <summary>The window's size: 64 x 78 % centred; large, almost the whole screen; raised (a phone typing into a
+        /// field), the top half, clear of the on-screen keyboard.</summary>
+        void ApplyWindowSize()
+        {
+            var w = window.style;
+            // Large: under the top-right buttons (the flight HUD's pause button, the station's Menu): its × overlapped them.
+            w.width = new Length(large ? 96 : 64, LengthUnit.Percent);
+            w.top = new Length(raised ? 1 : large ? 55 : 50, LengthUnit.Percent);
+            w.height = new Length(raised ? 50 : large ? 82 : 78, LengthUnit.Percent);
+            w.translate = new Translate(new Length(-50, LengthUnit.Percent), new Length(raised ? 0 : -50, LengthUnit.Percent));
+            window.EnableInClassList("mpw--large", large);
+        }
+
+        /// <summary>Once a second: the large variant (a resolution change); every frame: raised while a phone types.</summary>
+        void UpdateLayout()
+        {
+            bool phoneTyping = typing && Application.isMobilePlatform;
+            if (phoneTyping != raised)
+            {
+                raised = phoneTyping;
+                ApplyWindowSize();
+                if (raised && window.focusController?.focusedElement is VisualElement f)
+                    f.schedule.Execute(() => { if (body != null && body.Contains(f)) scroll.ScrollTo(f); }).ExecuteLater(50);
+            }
+            if (Time.unscaledTime < nextScaleCheck || host == null || host.panel == null) return;
+            nextScaleCheck = Time.unscaledTime + 1f;
+            bool l = UiScale.Large(host);
+            if (l == large) return;
+            large = l;
+            scale = l ? LargeScale : 1f;
+            ApplyWindowSize();
+            plateButton?.EnableInClassList("squad-button--big", l && flight);
+            movedChat?.EnableInClassList("squad-button--big", l && flight);
+            sosButton?.EnableInClassList("squad-button--big", l);
+            if (isOpen) Rebuild();
+        }
+
+        /// <summary>LB / RB and Q / E switch the tabs while the window is open and no field is being typed into.</summary>
+        void UpdateTabKeys()
+        {
+            if (!isOpen || typing || GoF2Remake.Flight.GameControls.BlocksMenus) return;
+            var pad = Gamepad.current;
+            var kb = Keyboard.current;
+            if ((pad != null && pad.leftShoulder.wasPressedThisFrame) || (kb != null && kb.qKey.wasPressedThisFrame)) StepTab(-1);
+            else if ((pad != null && pad.rightShoulder.wasPressedThisFrame) || (kb != null && kb.eKey.wasPressedThisFrame)) StepTab(1);
         }
 
         // ---- open / close / refresh -----------------------------------------------------------------------
@@ -280,6 +415,7 @@ namespace GoF2Remake.UI
             confirmLeave = false;
             window.style.display = DisplayStyle.Flex;
             window.BringToFront();
+            if (InputMode.Current == InputKind.Gamepad) FocusLater(currentTabButton);
             status.text = "";
             refresh = 0f;
             ShowPane();
@@ -301,6 +437,8 @@ namespace GoF2Remake.UI
             // A / D) are off while one has the focus.
             bool fieldFocused = TypingAny;
             if (fieldFocused != typing) { typing = fieldFocused; NetChat.SetTyping(fieldFocused); }
+            UpdateLayout();
+            UpdateTabKeys();
             if (pendingRebuild && !Busy) { pendingRebuild = false; Rebuild(); }
             UpdateSos();
             bool session = NetGame.Active;
@@ -385,7 +523,16 @@ namespace GoF2Remake.UI
             pendingRebuild = false;
             if (body == null) return;
             float y = scroll.scrollOffset.y;
+            // The focused button (a controller's place) is found again after the rebuild: by its text and which of that text.
+            string focusText = null;
+            int focusNth = 0;
+            if (window.focusController?.focusedElement is Button fb && body.Contains(fb))
+            {
+                focusText = fb.text;
+                foreach (var other in body.Query<Button>().ToList()) { if (other == fb) break; if (other.text == focusText) focusNth++; }
+            }
             body.Clear();
+            if (focusText != null) body.schedule.Execute(() => RestoreFocus(focusText, focusNth)).ExecuteLater(1);
             if (tab == Tab.Chat) return;   // the chat pane is built once (its line keeps the focus and the draft)
             if (tab == Tab.Squad) { BuildSquad(); scroll.scrollOffset = new Vector2(0f, y); return; }   // no snapshot needed
             if (tab == Tab.Trade) { BuildTrade(); scroll.scrollOffset = new Vector2(0f, y); return; }
@@ -399,6 +546,19 @@ namespace GoF2Remake.UI
                 default: BuildProfile(s); break;
             }
             scroll.scrollOffset = new Vector2(0f, y);
+        }
+
+        void RestoreFocus(string text, int nth)
+        {
+            if (!isOpen || body == null) return;
+            Button last = null;
+            foreach (var b in body.Query<Button>().ToList())
+            {
+                if (b.text != text) continue;
+                last = b;
+                if (nth-- == 0) break;
+            }
+            (last ?? body.Query<Button>().First())?.Focus();
         }
 
         void BuildFaction(NetPanel.State s)
@@ -472,8 +632,12 @@ namespace GoF2Remake.UI
 
             Section(string.Format(Localization.Extra("mpPanelTerritory", "Territory ({0} / {1})"), s.claims.Count, s.maxClaims));
             foreach (var c in s.claims)
+            {
                 body.Add(Line($"{c.name}{(c.home ? "  ⌂ " + Localization.Extra("mpPanelHome", "home") : "")}{(c.sieged ? "  ⚔ " + Localization.Extra("mpPanelSieged", "under siege") : "")}  ·  " +
                               string.Format(Localization.Extra("mpPanelLapses", "lapses in {0:0.#} days without a member docking"), c.daysLeft), c.sieged ? Bad : Color.white));
+                GarrisonRow(c, officer);
+                VatRow(c, officer);
+            }
             if (s.dockedStation >= 0)
             {
                 string here = StationName(s.dockedStation);
@@ -504,6 +668,66 @@ namespace GoF2Remake.UI
                 end.Add(Btn(confirmLeave ? Localization.Extra("mpPanelConfirmDisband", "Really disband? The bank is lost") : Localization.Extra("mpPanelDisband", "Disband"),
                             () => { if (confirmLeave) Send("/faction disband"); else { confirmLeave = true; Rebuild(); } }, "squad-button--leave"));
             body.Add(end);
+        }
+
+        // The garrison being edited per claim (ships, level), until it is sent or the claim is gone.
+        readonly Dictionary<int, (int ships, int level)> garrisonEdit = new Dictionary<int, (int, int)>();
+
+        /// <summary>A claim's garrison (NetFactions): what it is, and for officers steppers for ships / level and Set with the
+        /// day's upkeep ("/faction garrison ships level station").</summary>
+        void GarrisonRow(NetPanel.ClaimRow c, bool officer)
+        {
+            (int ships, int level) current = (c.garrisonSize, Mathf.Clamp(c.garrisonLevel, 1, NetFactions.MaxGarrisonLevel));
+            (int ships, int level) edit = garrisonEdit.TryGetValue(c.station, out var e) ? e : current;
+            string now = c.garrisonSize > 0
+                ? string.Format(Localization.Extra("mpPanelGarrison", "Garrison: {0} fighters, level {1} ({2:N0} credits a day)"), c.garrisonSize, current.level,
+                                NetFactions.GarrisonCost(c.garrisonSize, current.level))
+                : Localization.Extra("mpPanelNoGarrison", "Garrison: none");
+            body.Add(Text("    " + now, 14, Dim));
+            if (!officer || c.sieged) return;
+            var row = Row();
+            void Set((int, int) v) { garrisonEdit[c.station] = v; Rebuild(); }
+            row.Add(Text("    " + Localization.Extra("mpPanelGarrisonShips", "Fighters"), 14, Color.white));
+            row.Add(Btn("−", () => Set((Mathf.Max(0, edit.ships - 1), edit.level)), null));
+            row.Add(Text(edit.ships.ToString(), 16, Accent));
+            row.Add(Btn("+", () => Set((Mathf.Min(NetFactions.MaxGarrison, edit.ships + 1), edit.level)), null));
+            row.Add(Text(Localization.Extra("mpPanelGarrisonLevel", "Level"), 14, Color.white));
+            row.Add(Btn("−", () => Set((edit.ships, Mathf.Max(1, edit.level - 1))), null));
+            row.Add(Text(edit.level.ToString(), 16, Accent));
+            row.Add(Btn("+", () => Set((edit.ships, Mathf.Min(NetFactions.MaxGarrisonLevel, edit.level + 1))), null));
+            if (edit != current)
+                row.Add(Btn(string.Format(Localization.Extra("mpPanelGarrisonSet", "Set ({0:N0} / day)"), NetFactions.GarrisonCost(edit.ships, edit.level)), () =>
+                {
+                    garrisonEdit.Remove(c.station);
+                    Send($"/faction garrison {edit.ships} {edit.level} {c.station}");
+                }, "squad-button--accept"));
+            body.Add(row);
+        }
+
+        // The VAT rate being edited per claim, until it is sent or the claim is gone.
+        readonly Dictionary<int, int> vatEdit = new Dictionary<int, int>();
+
+        /// <summary>A claim's VAT (NetFactions): its rate and the goods it costs, for officers a stepper (0..MaxVat) and Set
+        /// ("/faction vat rate station").</summary>
+        void VatRow(NetPanel.ClaimRow c, bool officer)
+        {
+            int current = Mathf.Clamp(c.vat, 0, NetFactions.MaxVat);
+            int edit = vatEdit.TryGetValue(c.station, out int e) ? e : current;
+            body.Add(Text("    " + string.Format(Localization.Extra("mpPanelVat", "VAT: {0}% (non-members pay +{1:0.#}%, {0}% fewer goods)"), current, current / 10f), 14, Dim));
+            if (!officer) return;
+            var row = Row();
+            void Set(int v) { vatEdit[c.station] = v; Rebuild(); }
+            row.Add(Text("    " + Localization.Extra("mpPanelVatRate", "VAT"), 14, Color.white));
+            row.Add(Btn("−", () => Set(Mathf.Max(0, edit - 1)), null));
+            row.Add(Text(edit + "%", 16, Accent));
+            row.Add(Btn("+", () => Set(Mathf.Min(NetFactions.MaxVat, edit + 1)), null));
+            if (edit != current)
+                row.Add(Btn(Localization.Extra("mpPanelVatSet", "Set"), () =>
+                {
+                    vatEdit.Remove(c.station);
+                    Send($"/faction vat {edit} {c.station}");
+                }, "squad-button--accept"));
+            body.Add(row);
         }
 
         void FactionList(NetPanel.State s)
@@ -1055,6 +1279,8 @@ namespace GoF2Remake.UI
             chatField.style.flexShrink = 1;
             chatField.style.marginLeft = 6;
             chatField.textEdition.placeholder = Localization.Extra("mpChatWindowPlaceholder", "Type a message");
+            chatField.selectAllOnFocus = false;   // refocused after a send, the next line's letters showed selected
+            chatField.selectAllOnMouseUp = false;
             // Enter sends (the TextField would take it as its own submit and drop the focus); Tab switches the channel
             // unless a command is being typed.
             chatField.RegisterCallback<KeyDownEvent>(e =>
@@ -1091,14 +1317,16 @@ namespace GoF2Remake.UI
             if (!chat) { if (chatField?.focusController?.focusedElement == chatField) chatField.Blur(); return; }
             unreadChat = false;
             ScrollChatDown();
-            chatField.schedule.Execute(() => { if (isOpen && tab == Tab.Chat) chatField.Focus(); }).ExecuteLater(50);
+            // Into the line only with keys and mouse: a controller's D-pad stayed trapped in it, a phone's keyboard covered the window.
+            if (InputMode.Current == InputKind.KeyboardMouse)
+                chatField.schedule.Execute(() => { if (isOpen && tab == Tab.Chat) chatField.Focus(); }).ExecuteLater(50);
         }
 
         void AddChatLine(NetChat.Message m)
         {
             if (chatScroll == null || m == null) return;
             var l = new Label(ChatView.Format(m)) { pickingMode = PickingMode.Ignore };
-            l.style.fontSize = 16;
+            l.style.fontSize = Mathf.Round(16 * scale);
             l.style.whiteSpace = WhiteSpace.Normal;
             l.style.marginBottom = 2;
             l.style.color = m.channel == NetChat.Channel.Notice ? Dim : m.own ? new Color(1f, 1f, 1f, 0.8f) : Color.white;
@@ -1119,6 +1347,7 @@ namespace GoF2Remake.UI
         {
             string line = chatField.value;
             chatField.value = "";
+            chatField.SelectRange(0, 0);
             if (!string.IsNullOrWhiteSpace(line)) NetChat.Send(line);
             chatField.schedule.Execute(() => chatField.Focus()).ExecuteLater(1);   // keep typing
         }
@@ -1210,7 +1439,7 @@ namespace GoF2Remake.UI
         static Label Text(string text, int size, Color colour)
         {
             var l = new Label(text) { pickingMode = PickingMode.Ignore };
-            l.style.fontSize = size;
+            l.style.fontSize = Mathf.Round(size * scale);
             l.style.color = colour;
             l.style.whiteSpace = WhiteSpace.Normal;
             return l;
@@ -1232,7 +1461,7 @@ namespace GoF2Remake.UI
             var f = new TextField { value = value, maxLength = max, keyboardType = keyboard };
             f.textEdition.placeholder = label;
             TextFieldKeys.Guard(f);   // typed keys stay in the field (no menu navigation, no game keys)
-            f.style.width = width;
+            f.style.width = Mathf.Round(width * scale);
             f.style.marginLeft = 6;
             f.RegisterValueChangedCallback(e => changed(e.newValue));
             return f;

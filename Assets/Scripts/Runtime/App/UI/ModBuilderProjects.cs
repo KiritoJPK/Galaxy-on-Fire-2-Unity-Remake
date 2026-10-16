@@ -2,8 +2,8 @@
 // Remake-only: the main menu's Mod Builder page (Mods > Mod Builder): the player's mod projects (Modding.ModProject,
 // Application.persistentDataPath/ModProjects). On the left the projects (the newest first) under a "new project" row
 // (a name and Create); on the right the selected project: its name, author, version and description (saved as they are
-// typed), what it holds by kind of content (Ships, Items, Characters and Skins open the hangar editor on that kind; the other
-// kinds show "Coming soon" for now),
+// typed), what it holds by kind of content (each opens the builder on that kind, where it is edited in the game: the hangar,
+// the Space Lounge, the star map or space), the mods it depends on,
 // and Open in hangar, Export as mod (zips it into the Mods folder, asks before replacing an installed mod with its id),
 // Open folder (desktop) and Delete (asks).
 // Plain C#: MainMenu creates it in its panel host and hands it its sound, focus, dialog hooks and the opening of a project
@@ -30,7 +30,7 @@ namespace GoF2Remake.UI
         readonly Action<string, string, Action> ask;
         readonly Action<string, string> notice;
         readonly ScrollView list;
-        readonly Label count, empty, note, title, meta;
+        readonly Label count, empty, note, title, meta, depsLine;
         readonly VisualElement detail, content;
         readonly TextField newName, nameField, authorField, versionField, descField;
         readonly Label idHint;
@@ -42,28 +42,22 @@ namespace GoF2Remake.UI
         static string T(string key, string english) => Localization.Extra(key, english);
         static string Count(int n, string oneKey, string one, string manyKey, string many) => n == 1 ? T(oneKey, one) : string.Format(T(manyKey, many), n);
 
-        /// <summary>The kinds of content a mod can hold, in the order the page shows them; ships, items, characters and skins
-        /// can be built so far (their ModBuilder.Kind in Buildable).</summary>
-        static readonly (string key, string english, string desc)[] Kinds =
+        /// <summary>The kinds of content a mod can hold, in the order the page shows them, with the builder's tab.</summary>
+        static readonly (string key, string english, string desc, ModBuilder.Kind kind)[] Kinds =
         {
-            ("mbShips", "Ships", "New ships from a .glb model, or changes to the game's ships: stats, hardpoints, test flights."),
-            ("mbItems", "Items", "New weapons and equipment, or changes to the game's items."),
-            ("mbFx", "Weapon fx", "Projectiles, muzzle flashes, impacts and shot sounds."),
-            ("mbSystems", "Systems", "New star systems and stations on the map."),
-            ("mbInteriors", "Hangars", "Custom hangar and Space Lounge rooms."),
-            ("mbQuests", "Quests", "Event graphs: quests and missions with dialogue."),
-            ("mbCharacters", "Characters", "Portraits and names for conversations: your own characters, or new looks for the story's."),
-            ("mbCampaigns", "Campaigns", "A new game of your own: start, galaxy, ships."),
-            ("mbAudio", "Audio", "Replace or add music, sound effects and voices."),
-            ("mbSkins", "Skins", "New textures for the game's ships: hull paint, lights and engine glow, for one ship or all that share them."),
-            ("mbBlueprints", "Blueprints", "Ships and items built from ingredients."),
-        };
-
-        /// <summary>The kinds the builder edits: their place in Kinds and the builder's tab.</summary>
-        static ModBuilder.Kind? Buildable(string key) => key switch
-        {
-            "mbShips" => ModBuilder.Kind.Ships, "mbItems" => ModBuilder.Kind.Items, "mbCharacters" => ModBuilder.Kind.Characters,
-            "mbSkins" => ModBuilder.Kind.Skins, _ => null,
+            ("mbShips", "Ships", "New ships from a .glb model or a game model, or changes to the game's ships: stats, hardpoints, test flights. In the hangar.", ModBuilder.Kind.Ships),
+            ("mbItems", "Items", "New weapons and equipment, or changes to the game's items. In the hangar.", ModBuilder.Kind.Items),
+            ("mbFx", "Weapon fx", "Projectiles, muzzle flashes, impacts and shot sounds, on a firing range in space.", ModBuilder.Kind.WeaponFx),
+            ("mbSkins", "Skins", "New textures for the game's ships: hull paint, lights and engine glow, for one ship or all that share them.", ModBuilder.Kind.Skins),
+            ("mbKits", "Ship kits", "Customizable ships: parts (.glb) the players combine in the hangar's Customize screen, with colours and stats. In the hangar.", ModBuilder.Kind.Kits),
+            ("mbBlueprints", "Blueprints", "Ships and items built from ingredients, and where they are found. In the hangar.", ModBuilder.Kind.Blueprints),
+            ("mbCharacters", "Characters", "Portraits and names for conversations: your own characters, or new looks for the story's. In the Space Lounge.", ModBuilder.Kind.Characters),
+            ("mbQuests", "Quests", "Quests and bar missions as steps: conversations, fights, rewards. In the Space Lounge.", ModBuilder.Kind.Quests),
+            ("mbAudio", "Audio", "Replace or add music, sound effects and voice lines. In the Space Lounge.", ModBuilder.Kind.Audio),
+            ("mbSystems", "Systems", "New star systems and their routes, placed on the star map.", ModBuilder.Kind.Systems),
+            ("mbStations", "Stations", "New stations and changes to the game's: models, rooms, planets. In their own orbit.", ModBuilder.Kind.Stations),
+            ("mbInteriors", "Hangars & bars", "Hangar and Space Lounge rooms of your own, with their markers. In the room itself.", ModBuilder.Kind.Interiors),
+            ("mbCampaigns", "Campaign", "A new game of your own: start, galaxy, ships; new-game options.", ModBuilder.Kind.Campaigns),
         };
 
         public ModBuilderProjects(VisualElement host, Action back, Action<VisualElement> hookFocus, Action click, Action<ModProject> open,
@@ -133,9 +127,10 @@ namespace GoF2Remake.UI
             descField = Field(fields, T("mbDescription", "Description"), 600, v => selected.Description = v, true);
             Add(detailScroll, new Label(T("mbContent", "Content").ToUpperInvariant()), "mb-section", "gof-semibold");
             content = Add(detailScroll, new VisualElement(), "mb-kinds");
+            depsLine = Add(detailScroll, new Label(), "mods-note");
 
             var actions = Add(detail, new VisualElement(), "mods-actions", "mb-actions");
-            openButton = ActionButton(actions, T("mbOpen", "Open in hangar"), () => { if (selected != null) { selected.Save(); open(selected); } }, "mods-toggle");
+            openButton = ActionButton(actions, T("mbOpenProject", "Open"), () => { if (selected != null) { selected.Save(); open(selected); } }, "mods-toggle");
             exportButton = ActionButton(actions, T("mbExport", "Export as mod"), Export);
             if (!Application.isMobilePlatform)
                 ActionButton(actions, T("mbFolder", "Open folder"), () => { if (selected != null) Application.OpenURL("file:///" + selected.Folder.Replace('\\', '/')); });
@@ -169,6 +164,7 @@ namespace GoF2Remake.UI
         TextField Field(VisualElement parent, string label, int max, Action<string> set, bool multiline = false)
         {
             var box = Add(parent, new VisualElement(), "mb-field-box");
+            if (parent.childCount == 1) box.AddToClassList("mb-field-box--first");   // USS has no :first-child
             Add(box, new Label(label.ToUpperInvariant()), "mb-field-label");
             var f = Add(box, new TextField { maxLength = max, multiline = multiline }, "mb-field");
             if (multiline) f.AddToClassList("mb-field--multi");
@@ -317,10 +313,26 @@ namespace GoF2Remake.UI
             Part(p.Items.Count, "mbOneItem", "1 item", "mbItemsN", "{0} items");
             Part(p.Characters.Count, "mbOneCharacter", "1 character", "mbCharactersN", "{0} characters");
             Part(p.SkinShips().Count, "mbOneSkin", "1 skin", "mbSkinsN", "{0} skins");
+            Part(p.Blueprints.Count, "mbOneBlueprint", "1 blueprint", "mbBlueprintsN", "{0} blueprints");
+            Part(p.Quests.Count, "mbOneQuest", "1 quest", "mbQuestsN", "{0} quests");
+            Part(AudioCount(p), "mbOneAudio", "1 sound", "mbAudioN", "{0} sounds");
+            Part(p.Systems.Count, "mbOneSystem", "1 system", "mbSystemsN", "{0} systems");
+            Part(p.Stations.Count, "mbOneStation", "1 station", "mbStationsN", "{0} stations");
+            Part(p.Interiors.Count, "mbOneRoom", "1 room", "mbRoomsN", "{0} rooms");
+            if (p.Campaign != null) parts.Add(T("mbHasCampaign", "a campaign"));
             return parts.Count > 0 ? string.Join("  ·  ", parts) : T("mbProjectEmpty", "Empty");
         }
 
-        static bool HasContent(ModProject p) => p.Ships.Count + p.Items.Count + p.Characters.Count + p.SkinShips().Count > 0;
+        static int AudioCount(ModProject p) =>
+            p.AudioFiles(ModProject.MusicFolder).Count + p.AudioFiles(ModProject.SoundsFolder).Count + p.AudioFiles(ModProject.VoicesFolder).Count
+            + p.AudioFiles(ModProject.VoicesFolder + "/de").Count + p.AudioFiles(ModProject.VoicesFolder + "/en").Count;
+
+        /// <summary>The weapons with a look of their own (items.json "fx").</summary>
+        static int FxCount(ModProject p) => p.Items.Count(i => i.Get("fx") != null);
+
+        static bool HasContent(ModProject p) => p.Ships.Count + p.Items.Count + p.Characters.Count + p.SkinShips().Count + p.Blueprints.Count + p.Quests.Count
+                                               + p.Systems.Count + p.Stations.Count + p.Interiors.Count + p.GameOptions.Count + AudioCount(p) > 0 || p.Campaign != null
+                                               || p.EventGraphs().Count > 0;
 
         static string Sub(ModProject p) => $"{Contents(p)}  ·  v{p.Version}  ·  {p.Modified.ToLocalTime():yyyy-MM-dd HH:mm}";
 
@@ -351,27 +363,37 @@ namespace GoF2Remake.UI
             content.Clear();
             for (int i = 0; i < Kinds.Length; i++)
             {
-                var (key, english, desc) = Kinds[i];
-                var kind = Buildable(key);
-                bool on = kind != null;
-                var tile = new Button(() => { if (on && selected != null) { click(); selected.Save(); ModBuilder.OpenKind = kind.Value; open(selected); } });
+                var (key, english, desc, kind) = Kinds[i];
+                var tile = new Button(() => { if (selected != null) { click(); selected.Save(); ModBuilder.OpenKind = kind; open(selected); } });
                 tile.AddToClassList("mb-kind");
-                tile.SetEnabled(on);
-                if (!on) tile.AddToClassList("mb-kind--soon");
                 Add(tile, new Label(T(key, english).ToUpperInvariant()) { pickingMode = PickingMode.Ignore }, "mb-kind-title", "gof-semibold");
                 string state = kind switch
                 {
                     ModBuilder.Kind.Ships => Count(selected.Ships.Count, "mbOneShip", "1 ship", "mbShipsN", "{0} ships"),
                     ModBuilder.Kind.Items => Count(selected.Items.Count, "mbOneItem", "1 item", "mbItemsN", "{0} items"),
+                    ModBuilder.Kind.WeaponFx => Count(FxCount(selected), "mbOneFx", "1 weapon", "mbFxN", "{0} weapons"),
                     ModBuilder.Kind.Characters => Count(selected.Characters.Count, "mbOneCharacter", "1 character", "mbCharactersN", "{0} characters"),
                     ModBuilder.Kind.Skins => Count(selected.SkinShips().Count, "mbOneSkin", "1 skin", "mbSkinsN", "{0} skins"),
-                    _ => T("mbSoon", "Coming soon"),
+                    ModBuilder.Kind.Blueprints => Count(selected.Blueprints.Count, "mbOneBlueprint", "1 blueprint", "mbBlueprintsN", "{0} blueprints"),
+                    ModBuilder.Kind.Kits => Count(selected.Kits.Count, "mbOneKit", "1 kit", "mbKitsN", "{0} kits"),
+                    ModBuilder.Kind.Quests => Count(selected.Quests.Count + selected.EventGraphs().Count, "mbOneQuest", "1 quest", "mbQuestsN", "{0} quests"),
+                    ModBuilder.Kind.Audio => Count(AudioCount(selected), "mbOneAudio", "1 sound", "mbAudioN", "{0} sounds"),
+                    ModBuilder.Kind.Systems => Count(selected.Systems.Count, "mbOneSystem", "1 system", "mbSystemsN", "{0} systems"),
+                    ModBuilder.Kind.Stations => Count(selected.Stations.Count, "mbOneStation", "1 station", "mbStationsN", "{0} stations"),
+                    ModBuilder.Kind.Interiors => Count(selected.Interiors.Count, "mbOneRoom", "1 room", "mbRoomsN", "{0} rooms"),
+                    ModBuilder.Kind.Campaigns => selected.Campaign != null ? T("mbYes", "yes") + (selected.GameOptions.Count > 0 ? " · " + Count(selected.GameOptions.Count, "mbOneOption", "1 option", "mbOptionsN", "{0} options") : "")
+                                               : selected.GameOptions.Count > 0 ? Count(selected.GameOptions.Count, "mbOneOption", "1 option", "mbOptionsN", "{0} options") : T("mbNone", "none"),
+                    _ => "",
                 };
                 Add(tile, new Label(state.ToUpperInvariant()) { pickingMode = PickingMode.Ignore }, "mb-kind-state");
                 tile.tooltip = T(key + "Desc", desc);
-                if (on) hookFocus(tile);
+                hookFocus(tile);
                 content.Add(tile);
             }
+            // The mods it uses (picked anywhere in the builder: another mod's ship, item, station or character).
+            var deps = selected.Dependencies;
+            depsLine.text = deps.Count == 0 ? T("mbNoDeps", "Uses no other mods.")
+                          : string.Format(T("mbDepsLine", "Uses the mods: {0}"), string.Join(", ", deps.Select(d => ModManager.Find(d)?.Name ?? d + " (" + T("mbDepMissing", "not installed") + ")")));
             openButton.SetEnabled(selected.LoadError == null);
             deleteButton.SetEnabled(true);
             exportButton.SetEnabled(selected.LoadError == null);
@@ -402,7 +424,7 @@ namespace GoF2Remake.UI
                 if (path == null) notice(heading, string.Format(T("mbExportFailed", "The mod couldn't be exported: {0}"), error));
                 else notice(heading, string.Format(T("mbExported", "\"{0}\" is in your Mods folder:\n{1}\nTurn it on in the Mod Browser to play with it."), selected.Name, path));
             }
-            if (!HasContent(selected)) { notice(heading, T("mbExportEmpty", "This project has nothing in it yet. Open it in the hangar and add a ship, item, character or skin first.")); return; }
+            if (!HasContent(selected)) { notice(heading, T("mbExportEmpty", "This project has nothing in it yet. Open it and add some content first.")); return; }
             var old = selected.InstalledMod;
             if (old != null)
                 ask(heading, string.Format(T("mbExportReplace", "A mod with the id \"{0}\" is already installed (\"{1}\" v{2}). Replace it with this project?"),

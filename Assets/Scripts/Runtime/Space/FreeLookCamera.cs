@@ -105,6 +105,8 @@ namespace GoF2Remake.Flight
             Set(Next);
         }
 
+        bool heldLook;   // free look by the held key (FreeLookHold)
+
         public void Set(Mode m, bool announce = true)
         {
             if (m == Current) return;
@@ -163,6 +165,14 @@ namespace GoF2Remake.Flight
         {
             bool halted = Time.timeScale <= 0f;
             if (!halted && cycleAction.WasPressedThisFrame()) Cycle();
+            // Remake: free look while a key is held (GameControls.FreeLookHold, EVERSPACE 2's Alt in the free-flight layout):
+            // from the standard view, back to it on release.
+            if (!halted && !Navigation.InputHalted)
+            {
+                bool hold = GameControls.FreeLookHold.IsPressed();
+                if (hold && Current == Mode.Standard && !heldLook && (Blocked == null || !Blocked())) { heldLook = true; Set(Mode.FreeLook, false); }
+                else if (!hold && heldLook) { heldLook = false; if (Current == Mode.FreeLook) Set(Mode.Standard, false); }
+            }
             // The turret view ended on its own (mining, blocked guns): back to the standard mode.
             if (Current == Mode.Turret && (CurrentTurret == null || !CurrentTurret.InTurretView)) { Current = Mode.Standard; turretIndex = 0; }
             if (Current != Mode.FreeLook) return;

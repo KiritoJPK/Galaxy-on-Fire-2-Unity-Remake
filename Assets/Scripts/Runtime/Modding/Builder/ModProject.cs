@@ -7,7 +7,10 @@
 // The ships are ProjectShip: their ships.json entry as a JObject (fields the builder doesn't know, from a hand edit, are
 // kept), with typed accessors for what the builder edits and the hardpoints as WeaponMounts. Items (items.json) and
 // characters (characters.json) are ProjectItem / ProjectCharacter (ProjectContent.cs) the same way; their files are written
-// only once the project has some (or had the file). The other kinds of content come later ("Coming soon").
+// only once the project has some (or had the file). So are the systems / stations / rooms (ProjectWorld.cs), blueprints,
+// new-game options and the campaign (ProjectGame.cs) and the quests made in the builder (events/<name>.gof2quest,
+// ProjectQuest). Its audio is plain files: music/, sounds/ and voices/ (AudioFiles). What other mods it uses is its
+// manifest's "dependencies" (AddDependency: ModRefs adds one when another mod's content is picked).
 // Plain C#.
 
 using System;
@@ -37,11 +40,95 @@ namespace GoF2Remake.Modding
         public string Description { get => Str(manifest, "description") ?? ""; set => manifest["description"] = value; }
         public string Author { get => Str(manifest, "author") ?? ""; set => manifest["author"] = value; }
         public string Version { get => Str(manifest, "version") ?? "1.0"; set => manifest["version"] = value; }
+        public string Website { get => Str(manifest, "website") ?? ""; set { if (string.IsNullOrWhiteSpace(value)) manifest.Remove("website"); else manifest["website"] = value.Trim(); } }
+        /// <summary>mod.json "credits": who made what (the Mods screen shows it).</summary>
+        public string Credits { get => Str(manifest, "credits") ?? ""; set { if (string.IsNullOrWhiteSpace(value)) manifest.Remove("credits"); else manifest["credits"] = value; } }
+        /// <summary>The Mods screen's picture (mod.json "preview", default preview.png): its path in the project, or null.</summary>
+        public string PreviewImage
+        {
+            get
+            {
+                string p = Str(manifest, "preview") ?? "preview.png";
+                return File.Exists(Path.Combine(Folder, p)) ? p : null;
+            }
+        }
+
+        public void SetPreviewImage(string sourcePng)
+        {
+            File.Copy(sourcePng, Path.Combine(Folder, "preview.png"), true);
+            manifest.Remove("preview");
+        }
+
+        // ---- translations (text/<lang>.json) ------------------------------------------------------------------
+
+        public const string TextFolder = "text";
+        public static readonly string[] TextLanguages = { "de", "fr", "es", "it", "nl", "pl", "ru", "pt", "zh", "hi", "ja", "ko", "ar" };
+
+        /// <summary>Every text of the project a translation can carry: key ("items.plasma_lance.name") and its English.</summary>
+        public List<(string key, string english)> TranslatableTexts()
+        {
+            var list = new List<(string, string)>();
+            foreach (var it in Items)
+            {
+                string id = it.IsOverride ? it.OverrideIndex.ToString() : it.LocalId;
+                if (id == null) continue;
+                list.Add(($"items.{id}.name", it.Name ?? ""));
+                list.Add(($"items.{id}.description", it.Description ?? ""));
+            }
+            foreach (var s in Ships)
+            {
+                string id = s.IsOverride ? s.OverrideIndex.ToString() : s.LocalId;
+                if (id == null) continue;
+                list.Add(($"ships.{id}.name", s.Name ?? ""));
+                list.Add(($"ships.{id}.description", s.Description ?? ""));
+            }
+            foreach (var s in Systems) { string id = s.IsOverride ? s.OverrideRef : s.LocalId; if (id != null) list.Add(($"systems.{id}.name", s.Name ?? "")); }
+            foreach (var s in Stations) { string id = s.IsOverride ? s.OverrideRef : s.LocalId; if (id != null) list.Add(($"stations.{id}.name", s.Name ?? "")); }
+            return list;
+        }
+
+        /// <summary>text/&lt;lang&gt;.json as key -> text (empty when there is none).</summary>
+        public Dictionary<string, string> Texts(string lang)
+        {
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string f = Path.Combine(Folder, TextFolder, lang + ".json");
+            try
+            {
+                if (File.Exists(f) && JToken.Parse(File.ReadAllText(f)) is JObject o)
+                    foreach (var p in o.Properties()) if (p.Value.Type == JTokenType.String) d[p.Name] = (string)p.Value;
+            }
+            catch (Exception e) { Debug.LogWarning($"Mod Builder: {f}: {e.Message}"); }
+            return d;
+        }
+
+        /// <summary>One translation set (empty: removed); the file goes when none is left.</summary>
+        public void SetText(string lang, string key, string text)
+        {
+            var d = Texts(lang);
+            if (string.IsNullOrWhiteSpace(text)) d.Remove(key); else d[key] = text;
+            string dir = Path.Combine(Folder, TextFolder), f = Path.Combine(dir, lang + ".json");
+            if (d.Count == 0) { try { if (File.Exists(f)) File.Delete(f); } catch { } return; }
+            Directory.CreateDirectory(dir);
+            var o = new JObject();
+            foreach (var kv in d.OrderBy(k => k.Key, StringComparer.Ordinal)) o[kv.Key] = kv.Value;
+            File.WriteAllText(f, o.ToString(Formatting.Indented));
+        }
         public DateTime Modified { get; private set; }
 
         public readonly List<ProjectShip> Ships = new List<ProjectShip>();
         public readonly List<ProjectItem> Items = new List<ProjectItem>();
         public readonly List<ProjectCharacter> Characters = new List<ProjectCharacter>();
+        public readonly List<ProjectSystem> Systems = new List<ProjectSystem>();
+        public readonly List<ProjectStation> Stations = new List<ProjectStation>();
+        public readonly List<ProjectInterior> Interiors = new List<ProjectInterior>();
+        public readonly List<ProjectBlueprint> Blueprints = new List<ProjectBlueprint>();
+        /// <summary>shipkits.json: the customizable ships' kits of parts (ModShipKits).</summary>
+        public readonly List<ProjectKit> Kits = new List<ProjectKit>();
+        public readonly List<ProjectGameOption> GameOptions = new List<ProjectGameOption>();
+        public readonly List<ProjectQuest> Quests = new List<ProjectQuest>();
+        /// <summary>campaign.json, null = the mod has no campaign.</summary>
+        public ProjectCampaign Campaign;
+        public const string CampaignFile = "campaign.json", InteriorsFile = "interiors.json";
         JObject manifest = new JObject();
         JObject builder = new JObject();
         /// <summary>A content file couldn't be read (a hand edit gone wrong): shown, and the project isn't saved over it.</summary>
@@ -125,7 +212,8 @@ namespace GoF2Remake.Modding
                 p.manifest = JObject.Parse(File.ReadAllText(Path.Combine(folder, ModManifest.FileName)));
                 p.Id = Str(p.manifest, "id") ?? Path.GetFileName(folder);
                 p.Modified = Directory.GetLastWriteTimeUtc(folder);
-                foreach (var f in new[] { ModManifest.FileName, ModContent.ShipsFile, ModContent.ItemsFile, ModCharacters.File, BuilderFile })
+                foreach (var f in new[] { ModManifest.FileName, ModContent.ShipsFile, ModContent.ItemsFile, ModCharacters.File, BuilderFile,
+                                          ModWorld.SystemsFile, ModWorld.StationsFile, InteriorsFile, ModBlueprints.File, ModGameOptions.File, CampaignFile, ProjectKit.File })
                 {
                     string path = Path.Combine(folder, f);
                     if (File.Exists(path)) { var t = File.GetLastWriteTimeUtc(path); if (t > p.Modified) p.Modified = t; }
@@ -142,6 +230,25 @@ namespace GoF2Remake.Modding
                 }
                 p.ReadList(ModContent.ItemsFile, o => p.Items.Add(new ProjectItem(o)));
                 p.ReadList(ModCharacters.File, o => p.Characters.Add(new ProjectCharacter(o)));
+                p.ReadList(ModWorld.SystemsFile, o => p.Systems.Add(new ProjectSystem(o)));
+                p.ReadList(ModWorld.StationsFile, o => p.Stations.Add(new ProjectStation(o)));
+                p.ReadList(InteriorsFile, o => p.Interiors.Add(new ProjectInterior(o)));
+                p.ReadList(ModBlueprints.File, o => p.Blueprints.Add(new ProjectBlueprint(o)));
+                p.ReadList(ProjectKit.File, o => p.Kits.Add(new ProjectKit(o)));
+                p.ReadList(ModGameOptions.File, o => p.GameOptions.Add(new ProjectGameOption(o)));
+                string campaign = Path.Combine(folder, CampaignFile);
+                if (File.Exists(campaign))
+                {
+                    try { p.Campaign = new ProjectCampaign(JObject.Parse(File.ReadAllText(campaign))); }
+                    catch (Exception e) { p.LoadError ??= $"{CampaignFile}: {e.Message}"; }
+                }
+                string events = Path.Combine(folder, ProjectQuest.Folder);
+                if (Directory.Exists(events))
+                    foreach (var f in Directory.GetFiles(events, "*." + ProjectQuest.Extension).OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                    {
+                        try { p.Quests.Add(new ProjectQuest(Path.GetFileNameWithoutExtension(f), JObject.Parse(File.ReadAllText(f)))); }
+                        catch (Exception e) { p.LoadError ??= $"{ProjectQuest.Folder}/{Path.GetFileName(f)}: {e.Message}"; }
+                    }
                 string b = Path.Combine(folder, BuilderFile);
                 if (File.Exists(b)) { try { p.builder = JObject.Parse(File.ReadAllText(b)); } catch { p.builder = new JObject(); } }
                 return p;
@@ -173,8 +280,82 @@ namespace GoF2Remake.Modding
             Write(ModContent.ShipsFile, list.ToString(Formatting.Indented));
             WriteList(ModContent.ItemsFile, Items.Select(i => i.ToJson()));
             WriteList(ModCharacters.File, Characters.Select(c => c.ToJson()));
+            WriteList(ModWorld.SystemsFile, Systems.Select(c => c.ToJson()));
+            WriteList(ModWorld.StationsFile, Stations.Select(c => c.ToJson()));
+            WriteList(InteriorsFile, Interiors.Select(c => c.ToJson()));
+            WriteList(ModBlueprints.File, Blueprints.Select(c => c.ToJson()));
+            WriteList(ProjectKit.File, Kits.Select(c => c.ToJson()));
+            WriteList(ModGameOptions.File, GameOptions.Select(c => c.ToJson()));
+            string campaign = Path.Combine(Folder, CampaignFile);
+            if (Campaign != null) Write(CampaignFile, Campaign.ToJson().ToString(Formatting.Indented));
+            else if (File.Exists(campaign)) File.Delete(campaign);
+            WriteQuests();
             Write(BuilderFile, builder.ToString(Formatting.Indented));
             Modified = DateTime.UtcNow;
+        }
+
+        // ---- undo / redo (ModProjectHistory) ----------------------------------------------------------------------
+
+        /// <summary>builder.json keys an undo never takes back: where the builder sits (its hangar: switching reloads the
+        /// scene), the ship last worked on, the ids this project had (a rename is done on the projects page).</summary>
+        static readonly string[] KeptBuilderKeys = { "station", "lastShip", "previousIds" };
+
+        /// <summary>Everything the project's JSON files hold, as it is in memory now (the mod, ships with their hardpoints,
+        /// items, characters, systems, stations, rooms, blueprints, new-game options, the campaign, the builder's quests,
+        /// builder.json).</summary>
+        public JObject CaptureState()
+        {
+            var b = (JObject)builder.DeepClone();
+            foreach (var k in KeptBuilderKeys) b.Remove(k);
+            var quests = new JObject();
+            foreach (var q in Quests) quests[q.Name] = q.ToJson();
+            return new JObject
+            {
+                ["manifest"] = manifest.DeepClone(),
+                ["ships"] = new JArray(Ships.Select(s => s.ToJson())),
+                ["items"] = new JArray(Items.Select(i => i.ToJson())),
+                ["characters"] = new JArray(Characters.Select(c => c.ToJson())),
+                ["systems"] = new JArray(Systems.Select(c => c.ToJson())),
+                ["stations"] = new JArray(Stations.Select(c => c.ToJson())),
+                ["interiors"] = new JArray(Interiors.Select(c => c.ToJson())),
+                ["blueprints"] = new JArray(Blueprints.Select(c => c.ToJson())),
+                ["kits"] = new JArray(Kits.Select(c => c.ToJson())),
+                ["gameOptions"] = new JArray(GameOptions.Select(c => c.ToJson())),
+                ["campaign"] = Campaign != null ? (JToken)Campaign.ToJson() : JValue.CreateNull(),
+                ["quests"] = quests,
+                ["builder"] = b,
+            };
+        }
+
+        static IEnumerable<JObject> Objects(JObject state, string key) =>
+            (state[key] as JArray)?.OfType<JObject>().Select(o => (JObject)o.DeepClone()) ?? Enumerable.Empty<JObject>();
+
+        /// <summary>Puts a CaptureState back (new entry objects: look the current ones up again by their Ref); the project's
+        /// id and the builder.json keys in KeptBuilderKeys stay as they are now.</summary>
+        public void RestoreState(JObject state)
+        {
+            string id = (string)manifest["id"];
+            manifest = (JObject)state["manifest"].DeepClone();
+            if (id != null) manifest["id"] = id;
+            Ships.Clear();
+            foreach (var o in ((JArray)state["ships"]).OfType<JObject>()) Ships.Add(new ProjectShip((JObject)o.DeepClone()));
+            Items.Clear();
+            foreach (var o in ((JArray)state["items"]).OfType<JObject>()) Items.Add(new ProjectItem((JObject)o.DeepClone()));
+            Characters.Clear();
+            foreach (var o in ((JArray)state["characters"]).OfType<JObject>()) Characters.Add(new ProjectCharacter((JObject)o.DeepClone()));
+            Systems.Clear(); Systems.AddRange(Objects(state, "systems").Select(o => new ProjectSystem(o)));
+            Stations.Clear(); Stations.AddRange(Objects(state, "stations").Select(o => new ProjectStation(o)));
+            Interiors.Clear(); Interiors.AddRange(Objects(state, "interiors").Select(o => new ProjectInterior(o)));
+            Blueprints.Clear(); Blueprints.AddRange(Objects(state, "blueprints").Select(o => new ProjectBlueprint(o)));
+            Kits.Clear(); Kits.AddRange(Objects(state, "kits").Select(o => new ProjectKit(o)));
+            GameOptions.Clear(); GameOptions.AddRange(Objects(state, "gameOptions").Select(o => new ProjectGameOption(o)));
+            Campaign = state["campaign"] is JObject c ? new ProjectCampaign((JObject)c.DeepClone()) : null;
+            Quests.Clear();
+            if (state["quests"] is JObject qs)
+                foreach (var prop in qs.Properties()) if (prop.Value is JObject qo) Quests.Add(new ProjectQuest(prop.Name, (JObject)qo.DeepClone()));
+            var b = (JObject)state["builder"].DeepClone();
+            foreach (var k in KeptBuilderKeys) if (builder[k] != null) b[k] = builder[k].DeepClone();
+            builder = b;
         }
 
         /// <summary>A content file, written once there is something in it or it was there already.</summary>
@@ -239,7 +420,7 @@ namespace GoF2Remake.Modding
                 foreach (var f in Directory.GetFiles(Folder, "*", SearchOption.AllDirectories))
                 {
                     string ext = Path.GetExtension(f).ToLowerInvariant();
-                    if (ext != ".json" && ext != ".gof2event" && ext != ".gof2netevent") continue;
+                    if (ext != ".json" && ext != ".gof2event" && ext != ".gof2netevent" && ext != ".gof2quest") continue;
                     if (Path.GetFileName(f) == ModManifest.FileName || Path.GetFileName(f) == BuilderFile) continue;
                     string text = File.ReadAllText(f), changed = re.Replace(text, id + ":");
                     if (changed != text) File.WriteAllText(f, changed);
@@ -330,7 +511,7 @@ namespace GoF2Remake.Modding
         public string ItemIdFor(string name) => UniqueId(name, "item", id => Items.Any(s => s.LocalId == id));
         public string CharacterIdFor(string name) => UniqueId(name, "character", id => Characters.Any(s => s.Id == id));
 
-        static string UniqueId(string name, string fallback, Func<string, bool> taken)
+        internal static string UniqueId(string name, string fallback, Func<string, bool> taken)
         {
             var chars = (name ?? "").Trim().ToLowerInvariant().Select(c => c >= 'a' && c <= 'z' || c >= '0' && c <= '9' ? c : '_').ToArray();
             string id = new string(chars).Trim('_');
@@ -396,6 +577,40 @@ namespace GoF2Remake.Modding
                 }
             }
             return set.ToList();
+        }
+
+        /// <summary>The project's replacements of game textures that aren't a ship's (stations, planets, suns, rings...):
+        /// the texture names in textures/.</summary>
+        public List<string> OtherTextures()
+        {
+            var list = new List<string>();
+            string dir = Path.Combine(Folder, ModContent.TexturesFolder);
+            if (!Directory.Exists(dir)) return list;
+            var shipName = new System.Text.RegularExpressions.Regex(@"^(?:v_|sn_)?ship_(\d{3})_");
+            foreach (var f in Directory.GetFiles(dir))
+            {
+                string n = Path.GetFileNameWithoutExtension(f);
+                if (!shipName.IsMatch(n) && ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())) list.Add(n);
+            }
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
+        }
+
+        /// <summary>backdrop.json (the retextured planets drawn as stars), null = none.</summary>
+        public JObject Backdrop
+        {
+            get
+            {
+                string f = Path.Combine(Folder, "backdrop.json");
+                try { return File.Exists(f) ? JToken.Parse(File.ReadAllText(f)) as JObject : null; }
+                catch { return null; }
+            }
+            set
+            {
+                string f = Path.Combine(Folder, "backdrop.json");
+                if (value == null || !value.HasValues) { try { if (File.Exists(f)) File.Delete(f); } catch { } return; }
+                File.WriteAllText(f, value.ToString(Formatting.Indented));
+            }
         }
 
         public void AddSkin(int ship)
@@ -470,6 +685,248 @@ namespace GoF2Remake.Modding
             });
             Characters.Add(c);
             return c;
+        }
+
+        // ---- the other kinds ------------------------------------------------------------------------------------
+
+        public string SystemIdFor(string name) => UniqueId(name, "system", id => Systems.Any(s => s.LocalId == id));
+        public string StationIdFor(string name) => UniqueId(name, "station", id => Stations.Any(s => s.LocalId == id));
+        public string InteriorIdFor(string name) => UniqueId(name, "room", id => Interiors.Any(s => s.Id == id));
+        public string BlueprintIdFor(string name) => UniqueId(name, "blueprint", id => Blueprints.Any(s => s.Id == id));
+        public string KitIdFor(string name) => UniqueId(name, "kit", id => Kits.Any(s => s.Id == id));
+        public string GameOptionIdFor(string name) => UniqueId(name, "option", id => GameOptions.Any(s => s.Id == id));
+        /// <summary>A quest's file name: one word (a-z 0-9 _), unique among the project's quests and event graphs.</summary>
+        public string QuestNameFor(string name) => UniqueId(name, "quest", id => Quests.Any(q => string.Equals(q.Name, id, StringComparison.OrdinalIgnoreCase))
+                                                                          || File.Exists(Path.Combine(Folder, ProjectQuest.Folder, id + ".gof2event")));
+
+        /// <summary>The key other content names one of the project's own entries by ("my_mod:kepler").</summary>
+        public string Key(string localId) => Id + ":" + localId;
+
+        public ProjectSystem AddSystem(string name, Vector3 position, int race)
+        {
+            var s = new ProjectSystem(new JObject { ["id"] = SystemIdFor(name), ["name"] = name, ["race"] = race, ["security"] = 2 });
+            s.Position = position;
+            Systems.Add(s);
+            return s;
+        }
+
+        /// <summary>A change to one of the game's (or another mod's) systems.</summary>
+        public ProjectSystem AddSystemOverride(string system)
+        {
+            var s = new ProjectSystem(new JObject { ["override"] = ProjectEntry.RefToken(system) });
+            Systems.Add(s);
+            return s;
+        }
+
+        public ProjectStation AddStation(string name, string system, int techLevel, int planet)
+        {
+            var s = new ProjectStation(new JObject { ["id"] = StationIdFor(name), ["name"] = name, ["system"] = ProjectEntry.RefToken(system),
+                                                     ["techLevel"] = techLevel, ["planet"] = planet });
+            Stations.Add(s);
+            return s;
+        }
+
+        public ProjectStation AddStationOverride(string station)
+        {
+            var s = new ProjectStation(new JObject { ["override"] = ProjectEntry.RefToken(station) });
+            Stations.Add(s);
+            return s;
+        }
+
+        public ProjectInterior AddInterior(string name, bool bar, string model)
+        {
+            var r = new ProjectInterior(new JObject { ["id"] = InteriorIdFor(name), ["type"] = bar ? "bar" : "hangar", ["model"] = model });
+            Interiors.Add(r);
+            return r;
+        }
+
+        public ProjectBlueprint AddBlueprint(string name, bool ship, string product)
+        {
+            var b = new ProjectBlueprint(new JObject { ["id"] = BlueprintIdFor(name) });
+            b.SetProduct(ship, product);
+            b.Ingredients = new List<ProjectStack>();
+            Blueprints.Add(b);
+            return b;
+        }
+
+        /// <summary>A new kit with no parts yet (the game skips it until it has one).</summary>
+        public ProjectKit AddKit(string name)
+        {
+            var k = new ProjectKit(new JObject { ["id"] = KitIdFor(name), ["name"] = name, ["scale"] = 1, ["slots"] = new JArray("body", "wings", "rear"), ["parts"] = new JArray() });
+            Kits.Add(k);
+            return k;
+        }
+
+        public ProjectKit FindKit(string id) => Kits.Find(k => string.Equals(k.Id, id, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>A new customizable ship flying 'kit' (this project's): sensible stats, its type 'kitType', the default
+        /// build each slot's first part (the game's Normalize does that for a slot left out).</summary>
+        public ProjectShip AddKitShip(string id, string name, ProjectKit kit, string kitType)
+        {
+            var s = new ProjectShip(new JObject
+            {
+                ["id"] = id, ["name"] = name, ["description"] = "",
+                ["race"] = 0, ["armor"] = 300, ["cargo"] = 60, ["handling"] = 110,
+                ["price"] = 400000,
+                ["slots"] = new JObject { ["primary"] = 2, ["secondary"] = 1, ["turret"] = 0, ["equipment"] = 8 },
+                ["kit"] = kit.Id, ["kitType"] = kitType, ["build"] = new JObject { ["tier"] = 0 },
+                ["mounts"] = new JArray(),
+            });
+            Ships.Add(s);
+            return s;
+        }
+
+        public ProjectGameOption AddGameOption(string name)
+        {
+            var o = new ProjectGameOption(new JObject { ["id"] = GameOptionIdFor(name), ["name"] = name });
+            GameOptions.Add(o);
+            return o;
+        }
+
+        public ProjectQuest AddQuest(string title, bool mission)
+        {
+            var q = new ProjectQuest(QuestNameFor(title), new JObject { ["title"] = title, ["kind"] = mission ? "mission" : "quest" });
+            Quests.Add(q);
+            return q;
+        }
+
+        /// <summary>A quest from a whole .gof2quest object (an event graph converted to steps, QuestFile.FromScript).</summary>
+        public ProjectQuest AddQuest(string name, JObject json)
+        {
+            var q = new ProjectQuest(QuestNameFor(string.IsNullOrWhiteSpace(name) ? (string)json["title"] ?? "quest" : name), json);
+            Quests.Add(q);
+            return q;
+        }
+
+        /// <summary>An event graph made in the Unity Editor copied into events/ as it is (it runs like the quests).</summary>
+        public string AddEventGraph(string sourceFile)
+        {
+            string name = UniqueId(Path.GetFileNameWithoutExtension(sourceFile), "event",
+                id => Quests.Any(q => string.Equals(q.Name, id, StringComparison.OrdinalIgnoreCase)) || EventGraphs().Any(g => string.Equals(g, id, StringComparison.OrdinalIgnoreCase)));
+            string dir = Path.Combine(Folder, ProjectQuest.Folder);
+            Directory.CreateDirectory(dir);
+            File.Copy(sourceFile, Path.Combine(dir, name + ".gof2event"), true);
+            return name;
+        }
+
+        /// <summary>An event graph's file in the project (.gof2event, or the old .gof2netevent), or null.</summary>
+        public string EventGraphPath(string name)
+        {
+            foreach (string ext in new[] { ".gof2event", ".gof2netevent" })
+            {
+                string f = Path.Combine(Folder, ProjectQuest.Folder, name + ext);
+                if (File.Exists(f)) return f;
+            }
+            return null;
+        }
+
+        public void RemoveEventGraph(string name)
+        {
+            string f = EventGraphPath(name);
+            if (f != null) try { File.Delete(f); } catch { }
+        }
+
+        /// <summary>events/&lt;name&gt;.gof2quest for every quest; a builder quest file no longer in the list goes.</summary>
+        void WriteQuests()
+        {
+            string dir = Path.Combine(Folder, ProjectQuest.Folder);
+            if (Quests.Count > 0) Directory.CreateDirectory(dir);
+            foreach (var q in Quests) Write(ProjectQuest.Folder + "/" + q.Name + "." + ProjectQuest.Extension, q.ToJson().ToString(Formatting.Indented));
+            if (!Directory.Exists(dir)) return;
+            foreach (var f in Directory.GetFiles(dir, "*." + ProjectQuest.Extension))
+                if (!Quests.Any(q => string.Equals(q.Name, Path.GetFileNameWithoutExtension(f), StringComparison.OrdinalIgnoreCase)))
+                    try { File.Delete(f); } catch { }
+        }
+
+        /// <summary>The event graphs made in the Unity Editor (events/*.gof2event): listed, not edited by the builder.</summary>
+        public List<string> EventGraphs()
+        {
+            string dir = Path.Combine(Folder, ProjectQuest.Folder);
+            if (!Directory.Exists(dir)) return new List<string>();
+            return Directory.GetFiles(dir, "*.gof2event").Concat(Directory.GetFiles(dir, "*.gof2netevent"))
+                            .Select(Path.GetFileNameWithoutExtension).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        // ---- audio: plain files ---------------------------------------------------------------------------------
+
+        public const string MusicFolder = "music", SoundsFolder = "sounds", VoicesFolder = "voices";
+        public static readonly string[] AudioExtensions = { ".ogg", ".wav", ".mp3" };
+
+        /// <summary>The audio files of a folder ("music", "sounds", "voices", "voices/de"): name without extension -> path in the
+        /// project.</summary>
+        public List<(string name, string path)> AudioFiles(string folder)
+        {
+            string dir = Path.Combine(Folder, folder);
+            if (!Directory.Exists(dir)) return new List<(string, string)>();
+            return Directory.GetFiles(dir).Where(f => AudioExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                            .Select(f => (Path.GetFileNameWithoutExtension(f), folder + "/" + Path.GetFileName(f))).ToList();
+        }
+
+        /// <summary>An audio file into a folder under 'name' (any other file of that name there goes: one per name).</summary>
+        public string SetAudio(string folder, string name, string sourceFile)
+        {
+            RemoveAudio(folder, name);
+            string dir = Path.Combine(Folder, folder);
+            Directory.CreateDirectory(dir);
+            string ext = Path.GetExtension(sourceFile).ToLowerInvariant();
+            if (!AudioExtensions.Contains(ext)) ext = ".ogg";
+            File.Copy(sourceFile, Path.Combine(dir, name + ext), true);
+            return folder + "/" + name + ext;
+        }
+
+        public void RemoveAudio(string folder, string name)
+        {
+            string dir = Path.Combine(Folder, folder);
+            foreach (var ext in AudioExtensions)
+            {
+                string f = Path.Combine(dir, name + ext);
+                if (File.Exists(f)) File.Delete(f);
+            }
+        }
+
+        // ---- dependencies (mod.json) ------------------------------------------------------------------------------
+
+        /// <summary>The mods it depends on (ids; "id>=version" entries by their id).</summary>
+        public List<string> Dependencies =>
+            manifest["dependencies"] is JArray a ? a.Select(t => t.ToString()).Select(d => { int ge = d.IndexOf(">=", StringComparison.Ordinal); return (ge > 0 ? d.Substring(0, ge) : d).Trim(); })
+                                                    .Where(d => d.Length > 0).ToList() : new List<string>();
+
+        /// <summary>Makes 'mod' a dependency (its version as the lowest needed); false when it was one already.</summary>
+        public bool AddDependency(string mod, string version = null)
+        {
+            if (string.IsNullOrEmpty(mod) || string.Equals(mod, Id, StringComparison.OrdinalIgnoreCase)) return false;
+            if (Dependencies.Contains(mod, StringComparer.OrdinalIgnoreCase)) return false;
+            if (!(manifest["dependencies"] is JArray a)) manifest["dependencies"] = a = new JArray();
+            a.Add(string.IsNullOrEmpty(version) ? mod : mod + ">=" + version);
+            return true;
+        }
+
+        public void RemoveDependency(string mod)
+        {
+            if (!(manifest["dependencies"] is JArray a)) return;
+            foreach (var t in a.ToList())
+            {
+                string d = t.ToString();
+                int ge = d.IndexOf(">=", StringComparison.Ordinal);
+                if (string.Equals((ge > 0 ? d.Substring(0, ge) : d).Trim(), mod, StringComparison.OrdinalIgnoreCase)) t.Remove();
+            }
+            if (a.Count == 0) manifest.Remove("dependencies");
+        }
+
+        /// <summary>The mods a key in the project's files names ("other_mod:..."), not its own and not "gof2:" / "quest:": what
+        /// ModRefs should have made a dependency.</summary>
+        public HashSet<string> ModsNamed()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var re = new System.Text.RegularExpressions.Regex("\"([a-z0-9_-]{1,40}):[a-z0-9_-]+\"");
+            foreach (var t in CaptureState().Properties().Where(p => p.Name != "manifest" && p.Name != "builder"))
+                foreach (System.Text.RegularExpressions.Match m in re.Matches(t.Value.ToString(Formatting.None)))
+                {
+                    string mod = m.Groups[1].Value;
+                    if (mod != Id && mod != GameModels.Prefix.TrimEnd(':') && mod != "id" && mod != "override") set.Add(mod);
+                }
+            return set;
         }
 
         /// <summary>Copies a GLB into the project's models folder; its path inside the project ("models/<name>.glb").</summary>
@@ -596,12 +1053,24 @@ namespace GoF2Remake.Modding
         public ProjectShip(JObject o)
         {
             json = o;
-            if (o["mounts"] is JArray a)
+            ReadMounts();
+        }
+
+        /// <summary>The hardpoints read again from the JSON (after Edit as JSON).</summary>
+        public void ReadMounts()
+        {
+            Mounts.Clear();
+            if (json["mounts"] is JArray a)
                 foreach (var m in a.OfType<JObject>())
                 {
                     try { Mounts.Add(JsonUtility.FromJson<WeaponMount>(m.ToString())); } catch { }
                 }
         }
+
+        /// <summary>The entry's JSON itself (Edit as JSON); the less common fields read and written raw.</summary>
+        public JObject Json => json;
+        public JToken Get(string k) => json[k];
+        public void Set(string k, JToken v) { if (v == null || v.Type == JTokenType.Null) json.Remove(k); else json[k] = v; }
 
         public static WeaponMount Copy(WeaponMount m) => new WeaponMount
         {
@@ -610,6 +1079,11 @@ namespace GoF2Remake.Modding
             turretAngles = m.turretAngles != null ? (float[])m.turretAngles.Clone() : null,
             glowColor = m.glowColor != null ? (float[])m.glowColor.Clone() : null,
             glowSize = m.glowSize != null ? (float[])m.glowSize.Clone() : null,
+            turretUp = m.turretUp != null ? (float[])m.turretUp.Clone() : null,
+            outline = m.outline != null ? (float[])m.outline.Clone() : null, builtIn = m.builtIn,
+            direction = m.direction != null ? (float[])m.direction.Clone() : null,
+            rotation = m.rotation != null ? (float[])m.rotation.Clone() : null,
+            nodes = m.nodes != null ? (string[])m.nodes.Clone() : null, fxScale = m.fxScale,
         };
 
         public bool IsOverride => json["override"] != null;
@@ -688,6 +1162,74 @@ namespace GoF2Remake.Modding
 
         public int MountCount(int slotType) => Mounts.Count(m => m.slotType == slotType);
 
+        // ---- a customizable ship (ModShipKits) ----
+
+        /// <summary>The kit it flies ("kit": this mod's kit id, or "mod_id:kit_id"), null = a ship with a model.</summary>
+        public string Kit { get => S("kit"); set { if (string.IsNullOrEmpty(value)) json.Remove("kit"); else json["kit"] = value; } }
+        public bool IsKitShip => !string.IsNullOrEmpty(Kit);
+        /// <summary>Which of the kit's parts it may fit (the parts' "types").</summary>
+        public string KitType { get => S("kitType") ?? ""; set => json["kitType"] = value ?? ""; }
+
+        /// <summary>The default build's part in a slot (null = the slot's first part the type may fit).</summary>
+        public string BuildPart(string slot) => json["build"] is JObject b && b[slot] is JValue v && v.Type == JTokenType.String ? (string)v : null;
+
+        public void SetBuildPart(string slot, string part)
+        {
+            if (!(json["build"] is JObject b)) json["build"] = b = new JObject();
+            if (string.IsNullOrEmpty(part)) b.Remove(slot); else b[slot] = part;
+        }
+
+        public int BuildTier
+        {
+            get => json["build"] is JObject b && b["tier"] is JValue v && v.Type == JTokenType.Integer ? (int)v : 0;
+            set { if (!(json["build"] is JObject b)) json["build"] = b = new JObject(); b["tier"] = Mathf.Max(0, value); }
+        }
+
+        /// <summary>The default build's parts as build text ("slot=part;...;tier=N"), for a preview of another part.</summary>
+        public string BuildText()
+        {
+            if (!(json["build"] is JObject b)) return "tier=0";
+            var parts = b.Properties().Where(p => p.Value.Type == JTokenType.String && p.Name != "skin" && p.Name != "weaponColor"
+                                                  && !p.Name.StartsWith("exhaust")).Select(p => p.Name + "=" + (string)p.Value);
+            return string.Join(";", parts.Append("tier=" + BuildTier));
+        }
+
+        /// <summary>The ship flies a kit: its model's own fields go.</summary>
+        public void UseKit(string kit, string kitType)
+        {
+            foreach (var k in new[] { "model", "modelLength", "modelYaw", "modelPitch", "modelRoll", "modelOffset", "materials", "hangarHeight", "engineGlowRadius" })
+                json.Remove(k);
+            Kit = kit;
+            KitType = kitType;
+            if (!(json["build"] is JObject)) json["build"] = new JObject { ["tier"] = 0 };
+            NeedsLayout = false;
+        }
+
+        /// <summary>The ship flies one of the game's own models ("gof2:<name>", GameModels), not a file.</summary>
+        public bool HasGameModel => GameModels.Is(Model);
+
+        /// <summary>Remake (GameModels): the ship flies one of the game's models ('assembly', no file): the file model's sizing,
+        /// turns, offset, hull textures and hangar height go (the game model sits as made, on the pads like its ship), and
+        /// the hardpoints become 'mounts' (that ship's, copied; empty for a model that is no ship's). 'from': that ship's
+        /// stats, slots and race for a new ship (null = keep them).</summary>
+        public void UseGameModel(string assembly, ShipData from, IEnumerable<WeaponMount> mounts, int race = -1)
+        {
+            Model = GameModels.Ref(assembly);
+            foreach (var k in new[] { "modelLength", "modelYaw", "modelPitch", "modelRoll", "modelOffset", "materials", "hangarHeight", "engineGlowRadius" })
+                json.Remove(k);
+            Mounts.Clear();
+            if (mounts != null) Mounts.AddRange(mounts.Select(Copy));
+            NeedsLayout = false;   // the model's own hardpoints, not the builder's first guess from its box
+            if (from == null) return;
+            Armor = from.armor;
+            Cargo = from.cargo;
+            Handling = Mathf.RoundToInt(from.handling);
+            Price = from.price;
+            int[] counts = { from.slots?.primary ?? 0, from.slots?.secondary ?? 0, from.slots?.turret ?? 0, from.slots?.equipment ?? 0 };
+            for (int k = 0; k < 4; k++) SetSlotCount(k, counts[k]);
+            if (race >= 0) Race = race;
+        }
+
         /// <summary>An override's stats and slots the entry doesn't give, from the game's ship (they are the game's anyway):
         /// the builder shows and counts what the ship really has (a hand-written override without "slots" had none).</summary>
         public void FillFromGame(ShipData d)
@@ -706,18 +1248,32 @@ namespace GoF2Remake.Modding
         public JObject ToJson()
         {
             var o = (JObject)json.DeepClone();
-            var a = new JArray();
-            foreach (var m in Mounts)
-            {
-                var e = new JObject { ["slotType"] = m.slotType, ["position_engine"] = new JArray(m.position_engine ?? new int[3]) };
-                if (m.turretAngles != null && m.turretAngles.Length > 0) e["turretAngles"] = new JArray(m.turretAngles.Select(f => (float)Math.Round(f, 3)));
-                if (m.upsideDown) e["upsideDown"] = true;
-                if (m.glowColor != null && m.glowColor.Length >= 3) e["glowColor"] = new JArray(m.glowColor.Select(f => (float)Math.Round(f, 3)));
-                if (m.glowSize != null && m.glowSize.Length >= 3) e["glowSize"] = new JArray(m.glowSize.Select(f => (float)Math.Round(f, 1)));
-                a.Add(e);
-            }
-            o["mounts"] = a;
+            o["mounts"] = new JArray(Mounts.Select(MountJson));
             return o;
+        }
+
+        /// <summary>A hardpoint as ships.json / shipkits.json write it (the remake's mod fields only when set: a mount the
+        /// builder doesn't edit keeps them).</summary>
+        public static JObject MountJson(WeaponMount m)
+        {
+            JArray Floats(float[] a, int digits) => new JArray(a.Select(f => (float)Math.Round(f, digits)));
+            var e = new JObject { ["slotType"] = m.slotType, ["position_engine"] = new JArray(m.position_engine ?? new int[3]) };
+            if (m.turretAngles != null && m.turretAngles.Length > 0) e["turretAngles"] = Floats(m.turretAngles, 3);
+            // A turret's facing: turretUp, but a plain top / under-hull one as before (none / upsideDown).
+            var up = m.TurretUpLocal;
+            if (m.slotType == 2 && m.turretUp != null && m.turretUp.Length >= 3 && up.y < 0.9999f && up.y > -0.9999f)
+                e["turretUp"] = Floats(m.turretUp, 3);
+            else if (m.slotType == 2 && up.y <= -0.9999f) e["upsideDown"] = true;
+            else if (m.slotType != 2 && m.upsideDown) e["upsideDown"] = true;
+            if (m.glowColor != null && m.glowColor.Length >= 3) e["glowColor"] = Floats(m.glowColor, 3);
+            if (m.glowSize != null && m.glowSize.Length >= 3) e["glowSize"] = Floats(m.glowSize, 1);
+            if (m.outline != null && m.outline.Length >= 6) e["outline"] = Floats(m.outline, 1);
+            if (m.builtIn) e["builtIn"] = true;
+            if (m.direction != null && m.direction.Length >= 3) e["direction"] = Floats(m.direction, 3);
+            if (m.rotation != null && m.rotation.Length >= 3) e["rotation"] = Floats(m.rotation, 3);
+            if (m.nodes != null && m.nodes.Length > 0) e["nodes"] = new JArray(m.nodes);
+            if (m.fxScale > 0f) e["fxScale"] = (float)Math.Round(m.fxScale, 3);
+            return e;
         }
     }
 }

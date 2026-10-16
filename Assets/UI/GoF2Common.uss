@@ -769,6 +769,46 @@
     flex-basis: 0;
 }
 
+/* The Debug pages on a small high-density screen (UiScale, the root's ui-large): tabs, the result line, the cards and
+   the pickers about 1.35x (the station's and the pause menu's rows grow in their own sheets). */
+.ui-large .debug-tab {
+    padding: 14px 24px;
+    font-size: 26px;
+}
+
+.ui-large .debug-tab-hint {
+    font-size: 20px;
+}
+
+.ui-large .debug-status {
+    font-size: 25px;
+}
+
+.ui-large .debug-card-title {
+    font-size: 24px;
+}
+
+.ui-large .debug-card .choice-label {
+    min-width: 200px;
+}
+
+.ui-large .choice-label,
+.ui-large .choice-value,
+.ui-large .choice-arrow,
+.ui-large .option-item .option-button {
+    font-size: 25px;
+}
+
+.ui-large .choice-arrow {
+    min-width: 56px;
+    min-height: 56px;
+}
+
+.ui-large .option-item .option-button {
+    min-height: 60px;
+    padding: 10px 22px;
+}
+
 /* Option rows that are actions (Reset key bindings, Steering Calibration): a framed button, not a row of plain text. */
 .option-item .option-button {
     align-self: flex-start;
@@ -1084,6 +1124,21 @@
     color: #FFFFFF;
     border-color: var(--gof-amber);
     background-color: rgba(255, 166, 48, 0.24);
+}
+
+/* Text fields (the theme doesn't import Unity's default one, which gives these): the input clips its text to its own box
+   and keeps its width, so a line longer than the field scrolls inside it with the caret (players' report: the caret ran
+   off past the field's end and the text didn't follow it). */
+.unity-base-text-field__input {
+    overflow: hidden;
+    -unity-overflow-clip-box: content-box;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-width: 0;
+}
+
+.unity-base-text-field__input--single-line .unity-text-element {
+    white-space: nowrap;
 }
 
 /* A text field with the controller's focus (#20: the multiplayer panel's fields gave no sign of it). */

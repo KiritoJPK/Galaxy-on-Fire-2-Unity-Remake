@@ -19,7 +19,7 @@ namespace GoF2Remake.EditorTools
     {
         public override void OnViewBuilt() => EventGraphPickers.Add(this, "Pick ship or object...", EventSpawnNode.Ship, () =>
         {
-            var list = new List<(string, string)>();
+            var list = new List<(string, string)>{ ("Hackable wreck", "wreck") };
             foreach (string s in EventNames.Ships()) list.Add(("Ships/" + s, s));
             foreach (string o in EventNames.Objects()) list.Add(("Objects/" + o, o));
             return list;

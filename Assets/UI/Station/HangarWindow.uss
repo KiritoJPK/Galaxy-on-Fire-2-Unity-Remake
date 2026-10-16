@@ -613,6 +613,7 @@
 
 /* Remake: USS has no first-child selector, so Sell all kept the 8px left margin and sat off to the right: the gap is split
    between the two by name instead. */
+.trade-all--first,   /* the carrier shop's row */
 #sellAllButton {
     margin-left: 0;
     margin-right: 4px;

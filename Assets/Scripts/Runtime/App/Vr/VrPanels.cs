@@ -101,10 +101,23 @@ namespace GoF2Remake.Vr
             if (old != null) { old.Release(); Object.Destroy(old); }
         }
 
-        /// <summary>A screen quad's material: URP Unlit, transparent (alpha blended), no depth writes, drawn in 'queue' order.</summary>
+        /// <summary>A material made from Resources/GoF2Vr/'name' (a template asset: its shader and keywords are in every
+        /// build), else from the shader by name. #115: Shader.Find("Universal Render Pipeline/Unlit") was null in the Windows
+        /// build (nothing else uses Unlit, so it was stripped): VrRig.Init threw and the VR UI never appeared.</summary>
+        public static Material FromTemplate(string name, string shader)
+        {
+            var template = Resources.Load<Material>("GoF2Vr/" + name);
+            if (template != null) return new Material(template);
+            var s = Shader.Find(shader);
+            if (s == null) { Debug.LogError($"VR: no material template {name} and no shader {shader} in this build"); s = Shader.Find("Hidden/InternalErrorShader"); }
+            return new Material(s);
+        }
+
+        /// <summary>A screen quad's material: URP Unlit, transparent (alpha blended), no depth writes, drawn in 'queue' order
+        /// (the template VrScreen is set up that way already; set again for the shader-by-name fallback).</summary>
         public static Material ScreenMaterial(int queue)
         {
-            var m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            var m = FromTemplate("VrScreen", "Universal Render Pipeline/Unlit");
             m.SetFloat("_Surface", 1f);   // transparent
             m.SetFloat("_Blend", 0f);     // alpha
             m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);

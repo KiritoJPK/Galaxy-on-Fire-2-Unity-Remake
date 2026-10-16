@@ -190,6 +190,43 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void ADerelictCanBePlaced()
+        {
+            WriteMod("d", "t_place", "1.0", "", ("blueprints.json",
+                "[ { 'id': 'a', 'item': 2, 'ingredients': [ { 'item': 155 } ], 'derelict': { 'race': 'nivelian', 'stations': [ 78, '79' ], 'position': [ 1000, -2000, 30000.5 ] } }," +
+                "  { 'id': 'b', 'item': 3, 'ingredients': [ { 'item': 155 } ], 'derelict': { } } ]"));
+            ScanAndEnable("t_place");
+            Assert.IsFalse(Installed("t_place").Broken, AllMessages(Installed("t_place")));
+            Database.Load();
+            var a = ModBlueprints.Of(2);
+            Assert.AreEqual(100f, a.derelictChance, "in named orbits the chance defaults to always");
+            CollectionAssert.AreEqual(new[] { 78, 79 }, a.derelictStations);
+            Assert.AreEqual(new UnityEngine.Vector3(1000f, -2000f, 30000.5f), a.derelictPosition);
+            Assert.IsTrue(ModBlueprints.DerelictAllowedAt(a, 78));
+            Assert.IsFalse(ModBlueprints.DerelictAllowedAt(a, 80));
+            var b = ModBlueprints.Of(3);
+            Assert.AreEqual(5f, b.derelictChance, "anywhere: 5 % per visit");
+            Assert.IsNull(b.derelictPosition);
+            Assert.IsTrue(ModBlueprints.DerelictAllowedAt(b, 80));
+            Assert.AreEqual("a", ModBlueprints.RollDerelict(78)?.localId, "pinned at 100 %: always there");
+            for (int i = 0; i < 50; i++) Assert.AreNotEqual("a", ModBlueprints.RollDerelict(80)?.localId, "never outside its orbits");
+        }
+
+        [Test]
+        public void ADerelictInUnknownOrbitsIsNowhere()
+        {
+            WriteMod("d", "t_nowhere", "1.0", "", ("blueprints.json",
+                "[ { 'id': 'a', 'item': 2, 'ingredients': [ { 'item': 155 } ], 'derelict': { 'stations': [ 'nobody:here' ], 'chance': 50 } } ]"));
+            ScanAndEnable("t_nowhere");
+            Database.Load();
+            var m = Installed("t_nowhere");
+            Assert.IsTrue(m.Warnings.Exists(w => w.Contains("nobody:here is no station")), AllMessages(m));
+            Assert.AreEqual(0f, ModBlueprints.Of(2).derelictChance);
+        }
+
+        [Test] public void ADerelictPositionIsThreeNumbers() => StringAssert.Contains("\"position\" is [ x, y, z ]", ParseError("[ { 'id': 'a', 'item': 2, 'ingredients': [ { 'item': 155 } ], 'derelict': { 'position': [ 1, 2 ] } } ]"));
+
+        [Test]
         public void AnAutocompletePriceIsNeverNegative()
         {
             string dir = WriteMod("d", "t_neg", "1.0", "", ("blueprints.json", "[ { 'id': 'a', 'item': 2, 'ingredients': [ { 'item': 155 } ], 'autocomplete': -5 } ]"));

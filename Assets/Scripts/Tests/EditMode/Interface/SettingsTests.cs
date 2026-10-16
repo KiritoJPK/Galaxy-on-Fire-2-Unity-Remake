@@ -79,6 +79,7 @@ namespace GoF2Remake.Tests
             Assert.IsFalse(Settings.CapitalShips, "off by default");
             Assert.IsFalse(Settings.InformerOriginalRule, "Remake by default");
             Assert.IsTrue(Settings.KaamoStacking, "on by default");
+            Assert.AreEqual(5, Settings.KaamoMaxLevel, "upgrade limit 5 by default");
             Assert.IsTrue(Settings.KaamoKeepsEquipment, "on by default");
             Assert.IsTrue(Settings.CloakBay, "on by default");
             Assert.IsTrue(Settings.EmpBreaksCloak, "on by default");
@@ -105,6 +106,21 @@ namespace GoF2Remake.Tests
                            SessionRules.KaamoStacking, SessionRules.KaamoKeepsEquipment, SessionRules.CloakBay, SessionRules.EmpBreaksCloak };
             Assert.AreEqual(bits.Length, bits.Distinct().Count());
             foreach (int b in bits) Assert.AreEqual(0, b & (b - 1), "a single bit");
+        }
+
+        [Test]
+        public void KaamoUpgradeLimitIsClampedAndResets()
+        {
+            AllDefaults();
+            Settings.KaamoMaxLevel = 99;
+            Assert.AreEqual(SessionRules.MaxKaamoLevel, Settings.KaamoMaxLevel);
+            Settings.KaamoMaxLevel = 0;
+            Assert.AreEqual(SessionRules.MinKaamoLevel, Settings.KaamoMaxLevel, "1 would be stacking off: that's the toggle");
+            Settings.KaamoMaxLevel = 3;
+            Assert.AreEqual(3, Settings.LocalKaamoLevel());
+            CollectionAssert.Contains(Settings.GameplayKeys, "kaamoMaxLevel");
+            Settings.Reset(Settings.GameplayKeys);
+            Assert.AreEqual(SessionRules.DefaultKaamoLevel, Settings.KaamoMaxLevel, "Default settings on the Gameplay tab");
         }
 
         [Test]

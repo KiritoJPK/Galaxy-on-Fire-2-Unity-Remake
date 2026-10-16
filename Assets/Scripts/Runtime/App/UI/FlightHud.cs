@@ -3,7 +3,7 @@
 //   Touch:      the original's controls (TouchControls: the fixed stick, the right cluster with fire / secondary / quick
 //               menu / camera, boost, pause, the throttle drag and the dodge on the empty screen); fire is the action button.
 //   Keyboard:   keycap hints (WASD, Q/E, Ctrl, F, Space, R, Esc).
-//   Controller: Xbox button hints (LS, LB/RB, RT, LT, A, Y, Menu).
+//   Controller: Xbox or PlayStation button hints (PadGlyph, InputMode.Style: LS / L, LB / L1, RT / R2, A / cross...).
 // Always: speed, throttle and boost readout, and the crosshair: the screen projection of ship + forward * 22000
 // units (where the bullets are after 22000 units), orange for 200 ms after a hit (weapons.md section 9). The chase camera uses the original's fixed touch-mode damping for
 // touch and the handling-dependent damping otherwise (TargetFollowCamera::resetShipHandling / setShipHandling).
@@ -32,6 +32,7 @@ using UnityEngine.UIElements;
 namespace GoF2Remake.UI
 {
     [RequireComponent(typeof(PanelRenderer))]
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // RadarScale: set again by every layout pass
     public class FlightHud : MonoBehaviour
     {
         public string menuScene = "MainMenu";
@@ -109,6 +110,12 @@ namespace GoF2Remake.UI
         Vector2Int lastScreen;
         Rect lastSafeArea;
 
+        /// <summary>Remake: the radar ellipse's size against the original's 657 x 491 (a 1080-high canvas): the phone layout's
+        /// panel is 900 high, so there it shrinks by 900 / 1080 to keep the original's share of the screen height (at full size
+        /// it reached past the top and bottom edges, and the off-screen dots there weren't seen). CombatView, NavigationView and
+        /// MissileWarningView place their markers and hit arcs on it with this.</summary>
+        public static float RadarScale { get; private set; } = 1f;
+
         void OnEnable()
         {
             panelRenderer = GetComponent<PanelRenderer>();
@@ -121,7 +128,13 @@ namespace GoF2Remake.UI
             InputMode.Changed += ApplyInputMode;
             GameControls.Changed += ApplyInputMode;   // a rebound key: the hints show it
             Gun.LockShaken += OnLockShaken;
+            ShipController.DampenersChanged += OnDampeners;
         }
+
+        /// <summary>Free flight's inertial dampeners toggled (ShipController.Dampeners).</summary>
+        void OnDampeners(bool on) =>
+            miningView?.ShowMessage(on ? Localization.Extra("dampenersOn", "Inertial dampeners on")
+                                       : Localization.Extra("dampenersOff", "Inertial dampeners off"));
 
         void OnDestroy()
         {
@@ -130,8 +143,13 @@ namespace GoF2Remake.UI
             if (runtimePanel != null) Destroy(runtimePanel);
         }
 
+        /// <summary>The Mod Builder's screen in space (ModBuilder.InSpace), null otherwise.</summary>
+        ModBuilderSpaceView builderSpace;
+
         void OnDisable()
         {
+            builderSpace?.Dispose();
+            builderSpace = null;
             pauseMenu?.Close();   // the scene is going: sounds and time back to normal
             UnityEngine.Cursor.lockState = CursorLockMode.None;   // the captured mouse (mouse steering) is released
             UnityEngine.Cursor.visible = true;
@@ -147,6 +165,7 @@ namespace GoF2Remake.UI
             InputMode.Changed -= ApplyInputMode;
             GameControls.Changed -= ApplyInputMode;
             Gun.LockShaken -= OnLockShaken;
+            ShipController.DampenersChanged -= OnDampeners;
         }
 
         /// <summary>Remake: a boost shook off missiles homing on the player (any shooter, Gun): "Missiles evaded!" in green, at
@@ -580,6 +599,28 @@ namespace GoF2Remake.UI
                 Hint(drilling ? T("hudMiningStop", "STOP MINING") : T("hudMiningAbort", "ABORT"), GameControls.FirePrimary, GameControls.Action);
                 return;
             }
+            if (FlightStyles.Current == FlightStyles.Free)
+            {
+                // Free flight (EVERSPACE 2's layout, ShipController.FreeFlightActive): the held movement axes, the held boost.
+                if (!pad) Hint(T("hudAim", "AIM"), InputGlyph.Key(T("hudMouse", "MOUSE")));
+                Hint(pad ? T("hudAim", "AIM") : T("hudSteer", "STEER"), GameControls.Steer);
+                Hint(T("hudThrust", "THRUST"), GameControls.Thrust);
+                Hint(T("hudStrafe", "STRAFE"), GameControls.StrafeAxis);
+                Hint(T("hudHover", "UP / DOWN"), GameControls.Hover);
+                Hint(T("hudRoll", "ROLL"), GameControls.Roll);
+                Hint(T("hudBoost", "BOOST") + " (" + T("hudHold", "HOLD") + ")", GameControls.Boost);
+                Hint(T("hudDampeners", "DAMPENERS"), GameControls.Dampeners);
+                Hint(fire, GameControls.FirePrimary);
+                Hint(T("hudMissile", "MISSILE"), GameControls.FireSecondary);
+                if (weapons != null && weapons.CanCycleSecondary) Hint(T("hudSwitchSecondary", "SWITCH"), GameControls.SwitchSecondary);
+                Hint(T("hudFreeLook", "FREE LOOK"), GameControls.FreeLookHold);
+                if (FirstAuto() != null) Hint(Localization.Get(37).ToUpperInvariant(), GameControls.AutoTurret);
+                if (HasManualTurret()) Hint(T("hudTurretView", "TURRET VIEW"), GameControls.Camera);
+                Hint(Localization.Get(571).ToUpperInvariant(), GameControls.AutopilotMenu);
+                if (nav != null && nav.MenuEntries(true).Count > 0) Hint(T("hudActions", "ACTIONS"), GameControls.ActionsMenu);
+                Hint(T("hudMenu", "MENU"), menuKey);
+                return;
+            }
             // The PC version's defaults (Galaxy on Fire 2 Full HD), or the player's own bindings.
             Hint(T("hudSteer", "STEER"), GameControls.Steer);
             Hint(throttle, GameControls.Throttle);
@@ -663,6 +704,7 @@ namespace GoF2Remake.UI
                 safeArea.Add(mouseReticle);
             }
             if (mouseReticle == null) return;
+            UpdateStickRing(on && ship.Model.FreeFlight, !ship.MouseInDeadzone);
             // Only once the mouse steers away from the centre (beyond ~4 % of the half screen height and the dead zone).
             bool show = on && !ship.MouseInDeadzone && ship.MouseOffset.magnitude > Screen.height * 0.02f;
             mouseReticle.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
@@ -674,9 +716,61 @@ namespace GoF2Remake.UI
             mouseReticle.style.top = p.y - parent.y;
         }
 
+        VisualElement stickRing;
+        /// <summary>The reach circle's fade (0 hidden .. 1 shown).</summary>
+        float stickRingShown;
+        const float StickRingFadeInMs = 150f, StickRingFadeOutMs = 400f;
+
+        /// <summary>Free flight's mouse: a faint circle round the centre, the virtual joystick's reach
+        /// (ShipController.StickRadius); it fades in only while the aim dot is outside the dead zone ('steering') and out
+        /// again when the mouse is centred (always shown it looked like a second radar ellipse).</summary>
+        void UpdateStickRing(bool mode, bool steering)
+        {
+            float target = mode && steering ? 1f : 0f;
+            float ms = Time.unscaledDeltaTime * 1000f;
+            stickRingShown = Mathf.MoveTowards(stickRingShown, target, ms / (target > stickRingShown ? StickRingFadeInMs : StickRingFadeOutMs));
+            if (!mode) stickRingShown = 0f;
+            bool show = stickRingShown > 0f;
+            if (stickRing != null && stickRing.parent == null) stickRing = null;   // a UI reload rebuilt the tree
+            if (stickRing == null && safeArea != null)
+            {
+                stickRing = new VisualElement { pickingMode = PickingMode.Ignore };
+                stickRing.AddToClassList("mouse-stick");
+                safeArea.Insert(0, stickRing);
+            }
+            if (stickRing == null) return;
+            stickRing.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+            stickRing.style.opacity = stickRingShown;
+            if (!show || root.panel == null) return;
+            var c = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            var p0 = RuntimePanelUtils.ScreenToPanel(root.panel, c);
+            var p1 = RuntimePanelUtils.ScreenToPanel(root.panel, c + new Vector2(Screen.height * ShipController.StickRadius, 0f));
+            float r = Mathf.Abs(p1.x - p0.x);
+            var parent = stickRing.parent.worldBound;
+            stickRing.style.left = p0.x - parent.x - r;
+            stickRing.style.top = p0.y - parent.y - r;
+            stickRing.style.width = 2f * r;
+            stickRing.style.height = 2f * r;
+            stickRing.style.borderTopLeftRadius = stickRing.style.borderTopRightRadius =
+                stickRing.style.borderBottomLeftRadius = stickRing.style.borderBottomRightRadius = r;
+        }
+
         void Update()
         {
             if (root == null) return;
+            // Remake: the Mod Builder's work in space (Stations, Weapon fx): its own screen instead of the HUD.
+            if (Modding.ModBuilder.InSpace)
+            {
+                if (builderSpace == null)
+                {
+                    level ??= FindAnyObjectByType<SpaceLevel>();
+                    if (level == null || level.Player == null) return;
+                    foreach (var child in root.Children()) child.style.display = DisplayStyle.None;
+                    builderSpace = new ModBuilderSpaceView(level, root, PlayButton);
+                }
+                builderSpace.Update();
+                return;
+            }
             missileWarning?.Hide();   // shown again below while missiles fly at the player and the HUD shows
             // The pause menu pauses the voice too: the shared voice source ignores the listener pause (it has to play while
             // a conversation pauses the game), so the radio's line kept talking over the menu. Multiplayer doesn't pause.
@@ -828,14 +922,12 @@ namespace GoF2Remake.UI
                     freelance.RewardMessage += OnMiningMessage;
                 }
                 if (weapons != null) weapons.Hit += () => hitFlashMs = 200f;
-                // #48: the turret aimed in the turret view too (the crosshair sits on its gun then); not the auto turrets'
-                // own shots while the player flies.
+                // #48 and a player's report: the turrets' hits too, aimed in the turret view or firing by themselves: Level::createGun makes
+                // every player gun a player gun (setPlayerGun, the turret items' case 0x23 too), and Gun::calcCharacterCollision
+                // sets Level+0x30 for any player gun's hit on a ship.
                 if (level.Turrets != null)
                     foreach (var tr in level.Turrets)
-                    {
-                        var turretRef = tr;
-                        if (turretRef != null) turretRef.Hit += () => { if (turretRef.InTurretView) hitFlashMs = 200f; };
-                    }
+                        if (tr != null) tr.Hit += () => hitFlashMs = 200f;
                 if (level.Turret != null) level.Turret.Message += OnMiningMessage;   // HUD event 0x20 / 0x21 (auto fire on / off)
                 if (health != null) health.Message += OnMiningMessage;             // injector / gamma messages
                 if (level.Cloak != null) level.Cloak.Message += OnMiningMessage;   // cells paid, "Cloak ready", 583
@@ -961,7 +1053,7 @@ namespace GoF2Remake.UI
             missileWarning?.Update(level.Player != null ? level.Player.transform : null, Camera.main,
                                    !cinematic && level.LaunchCameraOver && health != null && !health.Dead,
                                    level.Player != null && level.Player.Model != null && level.Player.Model.HasBooster, Time.deltaTime * 1000f);
-            cooldownView?.Update(level.Database, level.Player, level.Cloak, !cinematic && level.LaunchCameraOver && InputMode.Current != InputKind.Touch);
+            cooldownView?.Update(level.Database, level.Player, level.Cloak, level.Extender, !cinematic && level.LaunchCameraOver && InputMode.Current != InputKind.Touch);
             // The Ultrascan's class-A letters: Radar::draw too, so not during the launch camera or a cinematic. The range is the
             // level's asteroid field (Level+0xc4), not the autopilot's "Asteroid field" entry: the Void's crystal field has none
             // (players' report: no letters there).
@@ -1317,7 +1409,7 @@ namespace GoF2Remake.UI
                 gameOverText.text = Localization.Extra("hardcoreDead", "Hardcore: your pilot is lost and this game's saves are deleted. Tap to return to the main menu.");
                 return;
             }
-            if (Modding.ModBuilder.TestFlying)   // a Mod Builder test flight: back to the builder's hangar
+            if (Modding.ModBuilder.TestFlying || Modding.ModBuilder.PlayTesting)   // a Mod Builder test flight / play test: back to the builder
             {
                 gameOverText.text = Localization.Extra("mbTestDead", "Tap to return to the Mod Builder.");
                 return;
@@ -1352,12 +1444,15 @@ namespace GoF2Remake.UI
             gameOverMs = -1f;
             if (hardcoreDead) { BackToMenu(); return; }   // hardcore: nothing to load
             if (Modding.ModBuilder.TestFlying) { Modding.ModBuilder.EndTestFlight(false); return; }
-            // Multiplayer: back in this orbit's station (a faction member: the faction's home, NetFactions), repaired (docking
-            // repairs), everything else kept.
+            if (Modding.ModBuilder.PlayTesting) { ModBuilderPlay.End(); return; }
+            // Multiplayer: back at the station last docked at (like single player's auto-save), repaired (docking repairs),
+            // everything else kept. Not the faction's home any more: dying was a free trip home.
             if (GoF2Remake.Multiplayer.NetGame.Active)
             {
-                int home = GoF2Remake.Multiplayer.NetFactionsClient.Home;
-                if (home >= 0 && home < GoF2Remake.Multiplayer.NetGame.Db.Stations.Count) Session.StationIndex = home;
+                int docked = Session.LastDockedStation;
+                // A defender destroyed in their station's siege fight respawns there (NetFactions).
+                bool defending = GoF2Remake.Multiplayer.NetFactionsClient.DefendsSiegeHere(Session.StationIndex);
+                if (!defending && docked >= 0 && docked < GoF2Remake.Multiplayer.NetGame.Db.Stations.Count) Session.StationIndex = docked;
                 Session.DockedFromSpace = false;
                 SceneManager.LoadScene("Station");
                 return;
@@ -1461,6 +1556,10 @@ namespace GoF2Remake.UI
                 runtimePanel.match = 1f;
             }
             root.EnableInClassList("layout-phone", phone);
+            root.EnableInClassList("ui-large", UiScale.Large(h, phone ? 900f : 1080f));   // a small high-density screen: bigger lists
+            RadarScale = phone ? 900f / 1080f : 1f;
+            var radar = root.Q("radarEllipse");   // a 0 x 0 box at the centre: scaled around it
+            if (radar != null) radar.style.scale = new Scale(new Vector3(RadarScale, RadarScale, 1f));
             ApplySafeArea(w, h, offscreen);
         }
 

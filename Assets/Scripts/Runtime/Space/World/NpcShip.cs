@@ -66,12 +66,15 @@ namespace GoF2Remake.World
         public bool IsFixed => Spec.fixedObject != null;
         /// <summary>A capital ship's turret (PlayerTurret).</summary>
         public bool IsTurret => Spec.turretAssembly != null;
-        TurretAim turretAim;
-        Transform turretBarrel;
-        Target turretTarget, turretIgnored;
+        /// <summary>Remake: the turret items on its turret mounts (SpawnSpec.turretItems, Database.NpcTurrets), null = none.</summary>
+        NpcMountedTurrets mounted;
+        public NpcMountedTurrets MountedTurrets => mounted;
+        /// <summary>A turret object's aim, gun and shots (TurretCore) and its pick (TurretTargeting.Rule.Timed).</summary>
+        TurretCore turretCore;
+        TurretTargeting turretPicking;
         bool turretTargetFixed;   // the target is a turret: aimed at where it is, no lead
-        float turretPickMs;
-        const float TurretRangeUnits = 50000f, TurretLeadUnits = 1500f, TurretPickMs = 3000f, TurretDeathMs = 4500f;
+        AudioClip turretShot;     // a turret item's own shot sound (SpawnSpec.turretItem), null = the race's
+        const float TurretRangeUnits = 50000f, TurretDeathMs = 4500f;
         public Target Target { get; private set; }
         public Hitpoints Hp => Target.hitpoints;
         public State Current { get; private set; } = State.Fly;
@@ -267,6 +270,11 @@ namespace GoF2Remake.World
         /// <summary>PlayerFixedObject::getDockingType (ObjectDocking.DropOff / Pickup / Hackable, 0 = not dockable); level
         /// scripts change it.</summary>
         public int DockingType { get; set; }
+        /// <summary>Offered as a docking target now (Navigation's landmark, no ship marker or lock): any docking type, but a
+        /// capital ship's resupply deck only while it is open (CapitalShips.DeckOpen). Remake: closed (hostile, in a fleet
+        /// battle, coasting after one) the carrier and the Vossk battleship are ships to mark, lock and scan; before, the
+        /// docking type kept them off the radar for good (a player's report 2026-10-16).</summary>
+        public bool OffersDocking => DockingType > 0 && (DockingType != ObjectDocking.Resupply || CapitalShips.DeckOpen(this));
         public int SpacePointSet => Spec.spacePoints;
         /// <summary>Level::getDockingTarget's index (the hacking game's dock index).</summary>
         public int DockIndex { get; set; } = -1;
@@ -382,7 +390,9 @@ namespace GoF2Remake.World
             Target.customDeath = true;
             Target.mineProof = spec.fixedObject == "station_pirates";   // KIPlayer+0x3d
             Target.plateNameOnly = spec.nameText == 1611 || spec.nameText == 1663;
-            Target.plateWanted = spec.wantedIndex >= 0;
+            // Radar::drawCurrentLock compares the name with 0x64b "Hijacker" / 0x67f "Informer" (and the Wanted flag): those are
+            // red (a player's report: only the Most Wanted criminals were).
+            Target.plateRed = spec.wantedIndex >= 0 || spec.nameText == 1611 || spec.nameText == 1663;
             Target.radius = (spec.hitRadius > 0f ? spec.hitRadius : NpcTables.HitRadiusUnits) * M;
             Target.hitpoints = new Hitpoints(spec.hitpoints > 0 ? spec.hitpoints : NpcTables.Hull(kind, spec.ship));
             Target.hitpoints.SetEmp(spec.empPoints > 0 ? spec.empPoints : NpcTables.Emp(kind), NpcTables.EmpRecoveryMs(kind));   // also with a hull override
@@ -446,13 +456,23 @@ namespace GoF2Remake.World
             engine.loop = true;
             engine.clip = GoF2Remake.Modding.ModSounds.Get(assets == null || spec.fixedObject != null || spec.turretAssembly != null || spec.ship == 14 ? null
                         : CombatAssets.Pick(spec.freighter ? assets.freighterEngines : assets.enemyEngines));
-            EngineVoices.Register(engine, spec.freighter ? 47 : 46, (spec.freighter ? 0.195f : 0.0759f) * Sfx.EventGain);   // event volumes 47 / 46
+            float engineVolume = (spec.freighter ? 0.195f : 0.0759f) * Sfx.EventGain;   // event volumes 47 / 46
+            // Remake mods: a mod ship's own engine loop (ModShipSounds), at its volume near top speed.
+            if (engine.clip != null && !spec.freighter && GoF2Remake.Modding.ModShipSounds.EngineClip(spec.ship, 0.8f, out float ownVolume) is AudioClip ownEngine)
+            {
+                engine.clip = ownEngine;
+                engineVolume = ownVolume;
+            }
+            EngineVoices.Register(engine, spec.freighter ? 47 : 46, engineVolume);
             if (engine.clip != null) engine.Play();
 
             if (spec.startsDead) SetDead();
             if ((spec.race == Standing.Specter || spec.ship == 49) && spec.fixedObject == null && modelGo != null) cloak = new NpcCloak(model);
             // Level::assignGuns: a Most Wanted criminal fires its own weapon at x4.
             if (spec.gunItem >= 0 && gun != null) SetGun(spec.gunItem, spec.gunFactor);
+            // Remake (generic turrets): turret items on its turret mounts, its own or its type's (a mod's "npcTurrets").
+            if (spec.turretAssembly == null && spec.fixedObject == null && modelGo != null)
+                mounted = NpcMountedTurrets.Build(this, db, spec.ship, spec.turretItems ?? db.NpcTurretsOf(spec.ship), model, fxRoot, GunHit);
             if (spec.secondaryItem >= 0 && gun != null) SetSecondaryGun(spec.secondaryItem, spec.secondaryFactor);
         }
 
@@ -518,18 +538,35 @@ namespace GoF2Remake.World
             ? new List<ItemStack>() : NpcTables.RollLoot(db, Spec.freighter);
 
         // ---- turrets (PlayerTurret::handleTurret / pickEnemy / handleRotation) ---------------------------------------
+        // The aim, shots and pick are the shared turret's (Flight.TurretCore, TurretTargeting.Rule.Timed); this object keeps
+        // its own Target, hull, death and the host rules.
 
         void SetupTurret()
         {
             Target.radius = 1000f * M;   // the normal +-1000 cube (Player radius 1000), no collision volume
-            Transform pivot = model != null ? model.Find("pivot") : null;
-            if (pivot != null) foreach (Transform c in pivot) if (c.name.Contains("_gun")) turretBarrel = c;
-            if (pivot != null && turretBarrel != null)
-                turretAim = new TurretAim(pivot, turretBarrel)
-                {
-                    // Pitch counter -600 .. +100 ms at 2 pi / 4096 rad per ms: about 52.7 deg up, 8.8 deg down.
-                    pitchMax = 600f * TurretAim.RadPerMs, pitchMin = -100f * TurretAim.RadPerMs,
-                };
+            // Remake: a turret object built from a turret item (SpawnSpec.turretItem: its *_ship_mounted model, which
+            // Traffic.Create loaded) aims and fires like that item on a ship (its rates, pitch range and gun).
+            var turretItem = Spec.turretItem >= 0 ? db.Item(Spec.turretItem) : null;
+            var turretFx = turretItem != null ? WeaponFx.Load(turretItem.index) : null;
+            if (turretItem != null && turretFx != null && turretFx.turretMounted != null && modelGo != null)
+            {
+                turretCore = TurretCore.ForItemModel(turretItem, turretFx, modelGo, fxRootRef, name, transform.forward);
+                MakeTurretPicking();
+                if (turretCore.Gun == null) return;
+                gun = turretCore.Gun;
+                rig = turretCore.Rig;
+                gun.owner = Target;
+                gun.damage *= Spec.gunFactor;   // gunFactor: the remake's CapitalShips
+                gun.Hit += OnGunHit;
+                turretShot = turretFx.shot != null ? turretFx.Shot : null;
+                return;
+            }
+            Transform pivot = null, barrel = null;
+            if (model != null) TurretCore.FindNodes(model, out pivot, out barrel);
+            // Pitch counter -600 .. +100 ms at 2 pi / 4096 rad per ms: about 52.7 deg up, 8.8 deg down.
+            turretCore = TurretCore.Wrap(model, pivot, barrel, pivot != null && barrel != null ? TurretCore.StaticAim(pivot, barrel) : null,
+                                         TurretCore.ShotFrom.AheadOfBarrel);
+            MakeTurretPicking();
             gunBase = (int)(NpcTables.GunDamage(Spec, false, true, out gunSpeed) * Spec.gunFactor);   // gunFactor: the remake's CapitalShips
             // Level::assignGuns: a sentry gun object (0x49c0 / 0x49c1 / 0x49c2 = sn_sentry_gun_001..003) fires its item's
             // shot (211 / 212 / 213: attr 9 damage, 11 reload, 12 lifetime, 13 speed); at 0x9e (Harval's, always enemy)
@@ -547,8 +584,9 @@ namespace GoF2Remake.World
                 }
                 int look = sentry == 1 ? 2 : sentry == 2 ? 20 : 14;   // Gun::setIndex 2 / 0x14 / 0xe
                 gun = new Gun(db.Item(look) ?? sentryItem, (int)dmg, sentryItem.Attr(11, 430), NpcTables.GunPool, sentryItem.Attr(12, 1000), speedU) { owner = Target };
-                rig = new GunRig(gun, WeaponFx.Load(look), fxRootRef, turretBarrel, 2);
+                rig = new GunRig(gun, WeaponFx.Load(look), fxRootRef, turretCore.GunNode, 2);
                 gun.Hit += OnGunHit;
+                turretCore.SetGun(gun, rig);
                 return;
             }
             var item = db.Item(Spec.race == 1 ? 15 : 20);
@@ -557,36 +595,53 @@ namespace GoF2Remake.World
                 // Remake (CapitalShips): an enhanced turret's shots fly 3600 ms (57 600 units), past its 50 000-unit reach.
                 gun = new Gun(item, gunBase, NpcTables.GunReloadMs, NpcTables.GunPool,
                                   Spec.capitalEnhanced ? World.CapitalShips.TurretLifetimeMs : NpcTables.GunLifetimeMs, gunSpeed) { owner = Target };
-                rig = new GunRig(gun, WeaponFx.Load(item.index), fxRootRef, turretBarrel, 2);
+                rig = new GunRig(gun, WeaponFx.Load(item.index), fxRootRef, turretCore.GunNode, 2);
                 gun.Hit += OnGunHit;
+                turretCore.SetGun(gun, rig);
             }
+        }
+
+        /// <summary>pickEnemy 0x182e90: the nearest (Euclidean) active target within 50000 that is hostile to this turret's race;
+        /// the player only when the turret is hostile to it; the last unreachable one only when nothing else is there.</summary>
+        void MakeTurretPicking()
+        {
+            turretPicking = new TurretTargeting(TurretTargeting.Rule.Timed, TurretRangeUnits)
+            {
+                Candidate = e => Valid(e) && !e.cloaked   // PlayerTurret::handleTurret: no aiming at a cloaked target
+                    && (PlayerOwned ? !e.isPlayer && e.isShip && e.hostileToPlayer
+                        : e.isPlayer ? Target.hostileToPlayer : e.isShip && e.race >= 0 && Standing.RacesHostile(e.race, Race)),
+                Measure = (e, from, bestD) =>
+                {
+                    float d = (TurretAimPoint(e, from) - from).magnitude;
+                    // Remake (CapitalShips): a turret hunter takes an enemy capital ship's turret in reach before its hull (the
+                    // hull's nearest point is always nearer, so no turret was ever shot at in a fleet battle).
+                    if (d < bestD && Spec.turretHunter && !e.isPlayer && (e.boxes == null || e.boxes.Length == 0) && IsTurretTarget(e)) d *= 0.3f;
+                    return d;
+                },
+            };
         }
 
         void UpdateTurret(float dtMs)
         {
-            if (turretAim == null || gun == null) return;
-            turretPickMs += dtMs;
-            if (turretPickMs > TurretPickMs)
-            {
-                turretPickMs = 0f;
-                turretTarget = PickTurretTarget();
-                turretTargetFixed = turretTarget != null && IsTurretTarget(turretTarget);
-            }
-            if (turretTarget == null || turretTarget.cloaked) return;   // handleTurret: no turning toward a cloaked target
-            var at = Spec.capitalEnhanced && turretTarget.boxes != null && turretTarget.boxes.Length > 0 ? TurretAimPoint(turretTarget, turretBarrel.position)
-                   : turretTargetFixed ? turretTarget.transform.position
-                   : turretTarget.transform.position + turretTarget.transform.forward * TurretLeadUnits * M;
-            bool aligned = turretAim.Step(at, dtMs);
-            if (turretAim.LimitHit) { turretIgnored = turretTarget; turretPickMs += dtMs; return; }   // out of reach: dropped
+            if (turretCore == null || !turretCore.Valid || gun == null) return;
+            var target = turretPicking.Update(dtMs, enemies, transform.position);
+            if (turretPicking.JustPicked) turretTargetFixed = target != null && IsTurretTarget(target);
+            if (target == null || target.cloaked) return;   // handleTurret: no turning toward a cloaked target
+            var at = Spec.capitalEnhanced && target.boxes != null && target.boxes.Length > 0 ? TurretAimPoint(target, turretCore.GunPosition)
+                   : turretTargetFixed ? target.transform.position
+                   : TurretTargeting.LeadPoint(target);
+            bool aligned = turretCore.StepToward(at, dtMs);
+            if (turretCore.Aim.LimitHit) { turretPicking.LimitHit(dtMs); return; }   // out of reach: dropped at the next pick
             if (!aligned || !shootingEnabled) return;
-            // Bullets from the barrel frame, the usual 100 ahead in the scaled frame (about 600 units).
-            int b = gun.TryFire(turretBarrel.position + turretBarrel.forward * 600f * M, Quaternion.LookRotation(turretBarrel.forward, turretBarrel.up), false);
-            if (b >= 0)
-            {
-                rig.OnShot();
-                Sfx.PlayAt(assets != null && assets.shots != null && assets.shots.Length > 0 ? assets.shots[Race == 1 ? 1 : 0] : null, transform.position, 0.6f);
-            }
+            // Bullets from the barrel frame, the usual 100 ahead in the scaled frame (about 600 units); a turret item's from
+            // its gun like on a ship.
+            if (turretCore.Fire() >= 0)
+                Sfx.PlayAt(turretShot != null ? turretShot
+                           : assets != null && assets.shots != null && assets.shots.Length > 0 ? assets.shots[Race == 1 ? 1 : 0] : null, transform.position, 0.6f);
         }
+
+        /// <summary>A turret object's homing target: a turret item firing missiles homes on what it aims at.</summary>
+        Target TurretHoming => turretPicking != null && turretPicking.Current is Target t && t.Alive && !t.cloaked ? t : null;
 
         /// <summary>Remake debug (PlayerHull): one of the turrets on the player's own hull.</summary>
         public bool PlayerOwned { get; private set; }
@@ -597,34 +652,10 @@ namespace GoF2Remake.World
         {
             PlayerOwned = true;
             alwaysFriend = true;
-            turretTarget = null;
+            turretPicking?.Clear();
             if (gun == null) return;
             var before = gun.Ignores;
             gun.Ignores = t => (t != null && t.isPlayer) || (before != null && before(t));
-        }
-
-        /// <summary>pickEnemy 0x182e90: the nearest (Euclidean) active target within 50000 that is hostile to this turret's race;
-        /// the player only when the turret is hostile to it; the last unreachable one only when nothing else is there.</summary>
-        Target PickTurretTarget()
-        {
-            Target best = null, ignored = null;
-            float bestD = TurretRangeUnits * M;
-            foreach (var e in enemies)
-            {
-                if (!Valid(e) || e.cloaked) continue;   // PlayerTurret::handleTurret: no aiming at a cloaked target
-                bool candidate = PlayerOwned ? !e.isPlayer && e.isShip && e.hostileToPlayer
-                               : e.isPlayer ? Target.hostileToPlayer : e.isShip && e.race >= 0 && Standing.RacesHostile(e.race, Race);
-                if (!candidate) continue;
-                float d = (TurretAimPoint(e, transform.position) - transform.position).magnitude;
-                // Remake (CapitalShips): a turret hunter takes an enemy capital ship's turret in reach before its hull (the
-                // hull's nearest point is always nearer, so no turret was ever shot at in a fleet battle).
-                if (d < bestD && Spec.turretHunter && !e.isPlayer && (e.boxes == null || e.boxes.Length == 0) && IsTurretTarget(e)) d *= 0.3f;
-                if (d >= bestD) continue;
-                if (e == turretIgnored) { ignored = e; continue; }
-                bestD = d;
-                best = e;
-            }
-            return best ?? ignored;
         }
 
         static bool IsTurretTarget(Target t)
@@ -654,6 +685,7 @@ namespace GoF2Remake.World
             rig?.HideAll();
             empRig?.HideAll();
             secondRig?.HideAll();
+            mounted?.HideAll();
             smoking = false;
             smoke?.Clear(); sparks?.Clear(); burn?.SetBurning(false);
             if (wreck != null) Destroy(wreck);
@@ -705,7 +737,7 @@ namespace GoF2Remake.World
             SyncTurret();
             if (gun != null)
             {
-                gun.Update(dtMs, HitTargets, HomingTarget);
+                gun.Update(dtMs, HitTargets, IsTurret ? TurretHoming : HomingTarget);
                 rig.UpdateVisuals(dtMs, Camera.main, transform.forward);
             }
             if (secondGun != null)
@@ -720,6 +752,9 @@ namespace GoF2Remake.World
                 empGun.Update(dtMs, HitTargets, null);
                 empRig.UpdateVisuals(dtMs, Camera.main, transform.forward);
             }
+            // Remake: turret items on its turret mounts (NpcMountedTurrets) aim and fire while it flies, awake and armed.
+            mounted?.Update(dtMs, enemies, HitTargets, Current == State.Fly && !Asleep && !inactive && !Hidden && !parked && !frozen
+                                                     && shootingEnabled && !Hp.empDisabled && Target.Alive);
             if (Current == State.Dead) { UpdateDead(dtMs); return; }
             if (Current == State.Dying) { UpdateSmoke(); UpdateDying(dtMs); return; }
             UpdateRelations();
@@ -981,8 +1016,9 @@ namespace GoF2Remake.World
             rig?.HideAll();
             if (gun != null) gun.Hit -= OnGunHit;
             gun = MakeGun(item, gunBase * damageFactor);
-            rig = new GunRig(gun, WeaponFx.Load(item.index), fxRootRef, IsTurret ? turretBarrel : null, 2);
+            rig = new GunRig(gun, WeaponFx.Load(item.index), fxRootRef, IsTurret ? turretCore?.GunNode : null, 2);
             gun.Hit += OnGunHit;
+            turretCore?.SetGun(gun, rig);
         }
 
         /// <summary>Level::assignGuns' second slot: a Wanted flying ship's G'liissk, Harval's Shesha (index 157 / 158).</summary>
@@ -1772,6 +1808,9 @@ namespace GoF2Remake.World
         void ShowWreckAtEnd()
         {
             Target.invulnerable = true;
+            // setHitpoints(1) keeps the maximum: the lock plate reads 0 % like the original's (it read 100 %).
+            Hp.vulnerable = false;
+            SetHull(1, false);
             var prefab = WreckPrefab(assets, Spec.ship, Race);
             if (prefab == null) return;   // keeps the intact hull
             var w = Instantiate(prefab, transform, false);
@@ -1792,6 +1831,9 @@ namespace GoF2Remake.World
         /// <summary>NpcShip.ModelPath of a ship shown as a freighter wreck held at its end (setDeadButSelectable): the prefix
         /// and the CombatAssets.wrecks index; NetProxy shows the same wreck.</summary>
         public const string WreckModelPrefix = "wreck:";
+        /// <summary>ModelPath of a turret object built from a turret item (SpawnSpec.turretItem): "turret:" + the item, whose
+        /// turret model the multiplayer copies load (NetProxy).</summary>
+        public const string TurretModelPrefix = "turret:";
 
         void UpdateDying(float dtMs)
         {

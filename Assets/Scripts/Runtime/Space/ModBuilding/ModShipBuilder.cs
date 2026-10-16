@@ -8,6 +8,9 @@
 //     sprite (mat_34813, centre uv (0.46, 0.947)); no exhaust mounts = no flame (ShipExhaust uses the same mounts); a
 //     mount's glowSize makes it an ellipse with its own flame length, a glowColor / the ship's engineGlowColor tints it
 //     (engineGlowTint: the sprite in white, the colour in the vertex colours);
+//     with "flame" materials (EngineFlame, the model's own flame geometry) the glow part stays, empty; with "engineFx"
+//     (Galaxy on Fire 3's flare, cone and trails, EngineFx) it stays without discs and carries those;
+//   - the manoeuvring jets at the slotType-4 mounts (LateralThrusters), under the engine glow part;
 //   - each "throttleGlow" / "extraGlows" entry: the hull triangles under the lit part of its mask, pushed 'offset' out,
 //     additive, driven by ThrottleGlow (with its trails), plus an empty engine_state player part;
 //   - no NPC engine parts; one LOD level culled at 80000 units like the generic ships.
@@ -29,8 +32,10 @@ namespace GoF2Remake.Modding
         const float ReferenceFov = 60f;
         const float GlowMaskThreshold = 0.08f;
 
-        /// <summary>The template for 'c' around the instantiated glTF scene 'model' (re-parented as the hull).</summary>
-        public static GameObject Build(CustomShipData c, ModInfo mod, GameObject model)
+        /// <summary>The template for 'c' around the instantiated glTF scene 'model' (re-parented as the hull). A kit ship's
+        /// build (ModShipKits) passes the kit's 'kitScale' (Unity metres per model unit: every build of the kit the same size,
+        /// not stretched to modelLength) and 'kitYaw', and 'hasFlames' when the kit's materials make engine flames.</summary>
+        public static GameObject Build(CustomShipData c, ModInfo mod, GameObject model, float kitScale = 0f, float kitYaw = 0f, bool hasFlames = false)
         {
             var root = new GameObject(c.assembly);
             var asm = root.AddComponent<AssembledObject>();
@@ -41,7 +46,7 @@ namespace GoF2Remake.Modding
             model.name = "hull";
             model.transform.SetParent(root.transform, false);
             model.transform.localPosition = Vector3.zero;
-            model.transform.localRotation = Quaternion.Euler(c.modelPitch, c.modelYaw, c.modelRoll);
+            model.transform.localRotation = kitScale > 0f ? Quaternion.Euler(0f, kitYaw, 0f) : Quaternion.Euler(c.modelPitch, c.modelYaw, c.modelRoll);
             FlattenSkinned(model);
             var renderers = model.GetComponentsInChildren<Renderer>(true);
             var specs = c.materials ?? new List<CustomShipMaterial>();
@@ -54,19 +59,35 @@ namespace GoF2Remake.Modding
                     var assigned = r.sharedMaterials;
                     int count = Mathf.Max(1, mesh != null ? mesh.subMeshCount : assigned.Length);
                     if (assigned.Length != count) System.Array.Resize(ref assigned, count);
-                    for (int s = 0; s < count; s++) { var m = MaterialFor(specs, mats, r.name, s); if (m != null) assigned[s] = m; }
+                    for (int s = 0; s < count; s++) { var m = MaterialFor(specs, mats, r.name, s, assigned[s] != null ? assigned[s].name : null); if (m != null) assigned[s] = m; }
                     r.sharedMaterials = assigned;
                 }
             foreach (var r in renderers) { r.shadowCastingMode = ShadowCastingMode.On; r.receiveShadows = true; }
-            float length = BoundsIn(root.transform, renderers).size.z;
-            if (length > 0f) model.transform.localScale *= c.modelLength * M / length;
-            // modelOffset: the sized hull moved in the ship's frame (game units, x mirrored like the mounts, MountToLocal).
-            if (c.modelOffset != null && c.modelOffset.Length >= 3)
-                model.transform.localPosition = new Vector3(-c.modelOffset[0], c.modelOffset[1], c.modelOffset[2]) * M;
+            // "engine" materials glow only while the engines run (a parked ship's nozzles dark; EngineMaterialGlow).
+            DamageEmbers.Add(root, specs.Select((sp, i) => sp != null && (!string.IsNullOrEmpty(sp.damageEmission) || !string.IsNullOrEmpty(sp.damageDetail)) && mats[i] != null ? mats[i].name : null).Where(n => n != null));
+            EngineMaterialGlow.Add(root, specs.Select((sp, i) => sp != null && sp.engine && mats[i] != null ? mats[i].name : null).Where(n => n != null),
+                specs.Select((sp, i) => sp != null && sp.boost && mats[i] != null ? mats[i].name : null).Where(n => n != null),
+                specs.Select((sp, i) => (sp, i)).Where(x => x.sp != null && x.sp.engine && x.sp.engineIdle > 0f && mats[x.i] != null)
+                     .GroupBy(x => mats[x.i].name).ToDictionary(g => g.Key, g => g.First().sp.engineIdle));
+            bool flames = specs.Any(sp => sp != null && sp.flame) || hasFlames;
+            if (flames) EngineFlame.Add(root);
+            if (kitScale > 0f) model.transform.localScale = Vector3.one * kitScale;
+            else
+            {
+                float length = BoundsIn(root.transform, renderers).size.z;
+                if (length > 0f) model.transform.localScale *= c.modelLength * M / length;
+                // modelOffset: the sized hull moved in the ship's frame (game units, x mirrored like the mounts, MountToLocal).
+                if (c.modelOffset != null && c.modelOffset.Length >= 3)
+                    model.transform.localPosition = new Vector3(-c.modelOffset[0], c.modelOffset[1], c.modelOffset[2]) * M;
+            }
 
             var parts = new List<GameObject>();
-            var glow = BuildEngineGlow(c);
+            // A ship with its own engine flames ("flame" materials) keeps the glow part (it marks the engines on / off for
+            // the flames, the exhaust particles and the "engine" materials) without its glow discs.
+            // Galaxy on Fire 3's engine effect (engineFx) replaces the discs too, drawn under the same part (EngineFx).
+            var glow = BuildEngineGlow(c, !flames && c.engineFx == null);
             if (glow != null) parts.Add(glow);
+            if (glow != null && c.engineFx != null) EngineFx.Add(root, glow, c, mod);
             var glowSpecs = new List<CustomThrottleGlow> { c.throttleGlow };
             if (c.extraGlows != null) glowSpecs.AddRange(c.extraGlows);
             GameObject engineState = null;
@@ -79,6 +100,8 @@ namespace GoF2Remake.Modding
                 tg.GetComponent<ThrottleGlow>().engineState = engineState;
             }
             foreach (var p in parts) p.transform.SetParent(root.transform, false);
+            // Manoeuvring jets (slotType 4: EVERSPACE 2's lateral thrusters), under the engine glow part so they go with it.
+            LateralThrusters.Add(root, glow != null ? glow.transform : null, c.mounts);
             asm.playerVariantParts = parts.ToArray();
             asm.npcVariantParts = new GameObject[0];
             asm.conditionalParts = new GameObject[0];
@@ -114,6 +137,25 @@ namespace GoF2Remake.Modding
             }
         }
 
+        /// <summary>A kit's "materials" onto a part's renderers (ModShipKits; the same rules as a ship's).</summary>
+        internal static void ApplyMaterials(ModInfo mod, List<CustomShipMaterial> specs, Renderer[] renderers, string label)
+        {
+            if (specs == null || specs.Count == 0) return;
+            var mats = new Material[specs.Count];
+            // Named by the entry's 'material' filter when it has one, so a kit's colour targets find it again (ModShipKits).
+            for (int i = 0; i < specs.Count; i++)
+                mats[i] = ModMaterials.FromSpec(mod, specs[i], !string.IsNullOrEmpty(specs[i].material) ? specs[i].material : $"{label} {specs[i].mesh}{specs[i].submesh}");
+            foreach (var r in renderers)
+            {
+                var mesh = MeshOf(r);
+                var assigned = r.sharedMaterials;
+                int count = Mathf.Max(1, mesh != null ? mesh.subMeshCount : assigned.Length);
+                if (assigned.Length != count) System.Array.Resize(ref assigned, count);
+                for (int sm = 0; sm < count; sm++) { var m = MaterialFor(specs, mats, r.name, sm, assigned[sm] != null ? assigned[sm].name : null); if (m != null) assigned[sm] = m; }
+                r.sharedMaterials = assigned;
+            }
+        }
+
         internal static Mesh MeshOf(Renderer r) => r is SkinnedMeshRenderer s ? s.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
 
         internal static Bounds BoundsIn(Transform root, Renderer[] renderers)
@@ -137,14 +179,17 @@ namespace GoF2Remake.Modding
 
         /// <summary>The entry for a renderer's submesh: one naming that submesh first, else the first for every submesh
         /// (submesh -1); its 'mesh' must be part of the renderer's name (empty = any). Null = keep the model's own.</summary>
-        internal static Material MaterialFor(List<CustomShipMaterial> specs, Material[] mats, string rendererName, int submesh)
+        internal static Material MaterialFor(List<CustomShipMaterial> specs, Material[] mats, string rendererName, int submesh, string currentMaterial = null)
         {
             string n = rendererName.ToLowerInvariant();
+            string cur = (currentMaterial ?? "").ToLowerInvariant();
             int any = -1;
             for (int i = 0; i < specs.Count; i++)
             {
                 var e = specs[i];
                 if (!string.IsNullOrEmpty(e.mesh) && !n.Contains(e.mesh.ToLowerInvariant())) continue;
+                // 'material': only where the model's own material has that name (a kit's parts name theirs, e.g. EVERSPACE 2's).
+                if (!string.IsNullOrEmpty(e.material) && !cur.Contains(e.material.ToLowerInvariant())) continue;
                 if (e.submesh == submesh) return mats[i];
                 if (e.submesh < 0 && any < 0) any = i;
             }
@@ -155,11 +200,12 @@ namespace GoF2Remake.Modding
         /// glowSize (half width, half height, flame length in game units) makes it an ellipse with its own length, its
         /// glowColor (else the ship's engineGlowColor) tints it: then the whole glow uses engineGlowTint (the white sprite)
         /// with vertex colours, white-hot at the centre, the colour at the rim and the ring; uncoloured mounts stay white.</summary>
-        static GameObject BuildEngineGlow(CustomShipData c)
+        static GameObject BuildEngineGlow(CustomShipData c, bool discs = true)
         {
             var exhausts = c.mounts?.Where(m => m.slotType == 3).ToList();
             var assets = ModAssets.Get();
             if (exhausts == null || exhausts.Count == 0 || assets?.engineGlow == null) return null;
+            if (!discs) return new GameObject("engine_glow");
             Color? ColourOf(WeaponMount m)
             {
                 var g = m.glowColor != null && m.glowColor.Length >= 3 ? m.glowColor
@@ -298,6 +344,7 @@ namespace GoF2Remake.Modding
             g.idle = tg.idle;
             g.full = tg.full;
             g.boost = tg.boost;
+            g.off = tg.off;
             if (tg.trailWidth > 0f && tg.trailCount > 0)
             {
                 // trailCount trails across the glow's width on its rear edge, sized by an ellipse (sqrt(1 - t^2), at least 0.15).

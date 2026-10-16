@@ -115,7 +115,7 @@ namespace GoF2Remake.Flight
         /// <summary>Tons cut since the beam started, by item (the "12t Gold" message when it stops).</summary>
         readonly Dictionary<int, int> beamCut = new Dictionary<int, int>();
         Target beamTarget;
-        const float BeamDefaultRangeUnits = 24000f;   // WeaponSystem.BeamObjectCubeUnits
+        public const float BeamDefaultRangeUnits = 24000f;   // WeaponSystem.BeamObjectCubeUnits
 
         /// <summary>Set by SpaceLevel: station / planet locks and the autopilot come first (Radar::draw order).</summary>
         [NonSerialized] public Navigation navigation;
@@ -255,7 +255,7 @@ namespace GoF2Remake.Flight
                 {
                     Locked = Candidate;
                     LockFrame = 23;
-                    if (!wasLocked) Play(sounds?.targetLock);
+                    if (!wasLocked && (navigation == null || !navigation.RadarOff)) Play(sounds?.targetLock);   // no beep in a cutscene
                 }
             }
             else Locked = null;

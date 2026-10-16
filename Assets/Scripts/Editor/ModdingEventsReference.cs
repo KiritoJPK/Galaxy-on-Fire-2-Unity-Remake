@@ -17,6 +17,7 @@ using System.Text;
 
 namespace GoF2Remake.EditorTools
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // classes: made again by every run
     public static class ModdingEventsReference
     {
         const string NodesSource = "Assets/Scripts/Editor/Events/EventGraphNodes.cs";

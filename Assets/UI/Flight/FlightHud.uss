@@ -322,6 +322,22 @@
     color: rgba(216, 236, 247, 0.8);
 }
 
+/* Multiplayer: a neighbouring station the player's faction holds, an orb on its planet (NavigationView); red while it is
+   besieged (declared or running). */
+.nav-faction {
+    width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    background-color: rgb(120, 230, 140);
+    border-width: 2px;
+    border-color: rgba(200, 255, 210, 0.9);
+}
+
+.nav-faction--siege {
+    background-color: rgb(255, 102, 85);
+    border-color: rgba(255, 200, 190, 0.9);
+}
+
 /* Autopilot + fast-forward buttons on their pill (left side, touch only; Globals::setCoordsSteer, moved below the
    speed readout). */
 .nav-buttons {
@@ -474,8 +490,8 @@
     top: 160px;
 }
 
-/* Remake: the booster's and the cloak's recharge for keys / controllers (CooldownView): their shop icons (180 x 88),
-   darkened from the top while recharging, a short flash when ready. Touch shows them on its own buttons. */
+/* Remake: the booster's, the cloak's and the time extender's recharge for keys / controllers (CooldownView): their shop icons (180 x 88),
+   lit left to right as they recharge (see-through until ready), a short flash when ready. Touch shows them on its own buttons. */
 .cooldowns {
     flex-direction: row;
     margin-top: 6px;
@@ -499,20 +515,25 @@
 }
 
 .cooldown--waiting {
-    opacity: 0.55;
     border-left-color: var(--gof-text-dim);
+}
+
+.cooldown--running {
+    border-left-color: rgb(110, 220, 255);
 }
 
 .cooldown--flash {
     background-color: rgba(255, 190, 90, 0.5);
 }
 
+/* Over the part not yet recharged (the right): the icon shows through faintly there. */
 .cooldown-shade {
     position: absolute;
-    left: 0;
     top: 0;
+    bottom: 0;
     right: 0;
-    background-color: rgba(0, 0, 0, 0.6);
+    width: 0;
+    background-color: rgba(4, 10, 18, 0.72);
 }
 
 /* ---- keyboard / controller hints -------------------------------------------------------- */
@@ -947,6 +968,37 @@
     max-width: 96%;
 }
 
+/* Its rows scroll when the screen is short: as tall as the rows (PauseMenu.BuildDebug sets the height), shrunk to fit
+   the panel's 86 % of the screen. */
+.debug-scroll {
+    flex-shrink: 1;
+    min-height: 140px;
+    margin-bottom: 10px;
+}
+
+/* A small high-density screen (UiScale, the root's ui-large: a phone, the Retroid Pocket G2): the pause menu and its
+   Debug page fill the screen with bigger text and rows. */
+.ui-large .pause-panel {
+    width: 80%;
+    max-height: 94%;
+}
+
+.ui-large .pause-panel--wide {
+    width: 96%;
+}
+
+.ui-large .pause-option,
+.ui-large .pause-option Label,
+.ui-large .pause-text,
+.ui-large .pause-cargo-name,
+.ui-large .pause-cargo-amount {
+    font-size: 28px;
+}
+
+.ui-large .pause-option {
+    padding: 12px 20px;
+}
+
 .debug-action.autopilot-menu-item--selected .option-button {
     background-color: var(--gof-amber);
     color: #0B1016;
@@ -1147,6 +1199,14 @@
     margin-top: -4px;
     border-radius: 4px;
     background-color: rgba(120, 220, 255, 0.6);
+}
+
+/* Remake, free flight (FlightStyles.Free): the mouse's virtual joystick reach, a faint circle round the centre. */
+.mouse-stick {
+    display: none;
+    position: absolute;
+    border-width: 1px;
+    border-color: rgba(120, 220, 255, 0.18);
 }
 
 /* ---- remake: incoming missiles (MissileWarningView): the pulsing banner with the boost hint, a red diamond on each

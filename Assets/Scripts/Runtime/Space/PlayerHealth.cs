@@ -86,7 +86,7 @@ namespace GoF2Remake.Flight
             sfx.playOnAwake = false;
             sfx.spatialBlend = 0f;
 
-            int hull = (db.Ship(Session.ShipIndex)?.armor ?? 100) + 40 * Session.ModLevel(0);   // Ship::getMaxHP: +40 per mod 0
+            int hull = Modding.ModShipKits.Armor(db.Ship(Session.ShipIndex), 100) + 40 * Session.ModLevel(0);   // Ship::getMaxHP: +40 per mod 0
             var shieldItem = Shop.FirstMounted(db, 9);
             var armorItem = Shop.FirstMounted(db, 10);
             var repair = Shop.FirstMounted(db, 15);
@@ -132,7 +132,7 @@ namespace GoF2Remake.Flight
             float hullShare = Hp.maxHull > 0 ? (float)Hp.hull / Hp.maxHull : 1f;
             float shieldShare = Hp.maxShield > 0 ? Hp.shield / Hp.maxShield : 1f;
             float armorShare = Hp.maxArmor > 0 ? (float)Hp.armor / Hp.maxArmor : 1f;
-            int hull = (db.Ship(Session.ShipIndex)?.armor ?? 100) + 40 * Session.ModLevel(0);
+            int hull = Modding.ModShipKits.Armor(db.Ship(Session.ShipIndex), 100) + 40 * Session.ModLevel(0);
             var shieldItem = Shop.FirstMounted(db, 9);
             var armorItem = Shop.FirstMounted(db, 10);
             var repair = Shop.FirstMounted(db, 15);

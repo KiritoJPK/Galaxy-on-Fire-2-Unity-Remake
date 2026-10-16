@@ -36,12 +36,18 @@ namespace GoF2Remake.Multiplayer
         readonly Transform muzzleParent;
         readonly System.Func<Target> owner;
         readonly System.Func<Target, bool> ignores;
+        readonly System.Func<Color?> weaponColor;
+        readonly System.Func<int> ship;   // the shooter's ship (a kit's hardpoint sounds, ModShipSounds), null = none
 
         /// <param name="muzzleParent">The shooter's model (muzzle flashes), null = none (NPC guns draw none either).</param>
         /// <param name="owner">The shooter's own Target here (its shots pass through it).</param>
         /// <param name="ignores">What the shooter's shots pass through here (its squadmates), null = nothing.</param>
-        public NetShotMirror(Transform muzzleParent, System.Func<Target> owner = null, System.Func<Target, bool> ignores = null)
+        /// <param name="weaponColor">The shooter's weapon colour (their build's, Flight.WeaponTint), null = none.</param>
+        public NetShotMirror(Transform muzzleParent, System.Func<Target> owner = null, System.Func<Target, bool> ignores = null,
+                             System.Func<Color?> weaponColor = null, System.Func<int> ship = null)
         {
+            this.ship = ship;
+            this.weaponColor = weaponColor;
             this.muzzleParent = muzzleParent;
             this.owner = owner;
             this.ignores = ignores;
@@ -58,12 +64,13 @@ namespace GoF2Remake.Multiplayer
         {
             Refresh();
             if (fxRoot == null) { fxRoot = new GameObject("NetShots").transform; rootGeneration++; generation = rootGeneration; }
-            if (mirrors.TryGetValue(item, out var m)) return m;
             var data = Database.Shared.Item(item);
+            if (mirrors.TryGetValue(item, out var m)) { m.rig.Tint(WeaponTint.For(data, weaponColor?.Invoke())); return m; }   // a changed colour
             if (data == null) return null;
             var gun = new Gun(data, Vector3.zero, false) { Ignores = ignores };
             var fx = WeaponFx.Load(item);
             m = new Mirror { gun = gun, fx = fx, rig = new GunRig(gun, fx, fxRoot, muzzleParent, 2) };
+            m.rig.Tint(WeaponTint.For(data, weaponColor?.Invoke()));   // their weapon colour
             m.rig.EnableTrails();   // another player's rockets trail smoke like one's own
             var rig = m.rig;
             gun.Hit += (i, t, point) => rig.ShowImpact(point);   // the impact only: no damage handler
@@ -81,7 +88,7 @@ namespace GoF2Remake.Multiplayer
             if (m.gun.isBeam)
             {
                 m.gun.AutoAim = () => m.target != null && m.target.Alive ? m.target : null;
-                m.gun.reloadAcc = m.gun.reloadMs + 1f;
+                m.gun.reloadAcc = m.gun.WaitMs + 1f;
                 if (m.gun.TryFire(position, Quaternion.LookRotation(velocity, up), false) < 0) return;
             }
             else if (!m.gun.Inject(position, velocity, up, lifetimeMs)) return;
@@ -92,6 +99,13 @@ namespace GoF2Remake.Multiplayer
             {
                 if (soundItem < 0) soundItem = item;
                 if (item != soundItem) return;
+            }
+            // Remake mods: the shooter's kit hardpoint sound (ModShipSounds; a looping one keeps the weapon's own here).
+            var ownSound = ship != null ? Modding.ModShipSounds.Weapon(ship(), Database.Load().Item(item)) : null;
+            if (ownSound?.shot is Modding.ModShipSounds.Sound own && ownSound.loop == null)
+            {
+                if (own.Clip is AudioClip ownClip) ShotVoices.PlayAt(ownClip, position, own.vol0 * 0.8f / 0.7f);
+                return;
             }
             var clip = m.fx != null ? m.fx.Shot : null;
             if (clip != null) ShotVoices.PlayAt(clip, position, 0.8f);

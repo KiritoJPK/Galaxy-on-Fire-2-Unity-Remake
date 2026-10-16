@@ -1,6 +1,6 @@
 // VrPad.cs
 // Remake VR (a headset): the two VR controllers as one virtual gamepad, so every game control, its rebinding and the menus'
-// controller navigation work unchanged (GameControls' Gamepad bindings, InputMode Gamepad, the Xbox glyphs); and the
+// controller navigation work unchanged (GameControls' Gamepad bindings, InputMode Gamepad, the Xbox glyphs on Auto); and the
 // right controller's laser as a virtual mouse for the floating UI screens (VrRig places it where the laser hits).
 // Gamepad mapping (OpenXR's common controller names, so Touch / Index / Vive / WMR all map):
 //   left stick         left thumbstick (Vive: trackpad)      right stick        right thumbstick

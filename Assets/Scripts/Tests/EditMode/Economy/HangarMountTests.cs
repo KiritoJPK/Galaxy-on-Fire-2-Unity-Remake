@@ -260,5 +260,46 @@ namespace GoF2Remake.Tests
                 Assert.AreEqual(1, Shop.CargoOf(94));
             }
         }
+
+        // ---- "Mount it now?" after a blueprint run (remake, a player's suggestion) ------------------------------------
+        // HangarWindow.Finish asks only when Hangar.OffersMountAfterBuild: the product went to the hold at its production
+        // station and has a free slot (no swap, no commodity, not merged into a mounted stack).
+
+        [Test]
+        public void AFinishedProductWithAFreeSlotIsOffered()
+        {
+            Assert.IsTrue(Blueprints.Produce(Db, 90, 70));   // Gunant's Drill: no drill mounted, 5 equipment slots free
+            var h = Dis();
+            Assert.IsTrue(h.OffersMountAfterBuild(90));
+            Assert.IsTrue(h.Mount(90));
+            Assert.AreEqual(1, Mounted(90));
+            Assert.AreEqual(0, h.CargoOf(90));
+        }
+
+        [Test]
+        public void NoOfferWithoutAFreeSlot()
+        {
+            Assert.IsTrue(Blueprints.Produce(Db, 11, 70));   // a primary: both of the Phantom's primary slots are taken
+            Assert.IsFalse(Dis().OffersMountAfterBuild(11));
+            Assert.AreEqual(1, Shop.CargoOf(11), "it stays in the hold");
+        }
+
+        [Test]
+        public void NoOfferWhenItWouldSwap()
+        {
+            Assert.IsTrue(Blueprints.Produce(Db, 54, 70));   // a shield, and the Phantom already has one (287's swap)
+            Assert.AreEqual(Hangar.Result.Swap, Dis().CanMount(54, out _));
+            Assert.IsFalse(Dis().OffersMountAfterBuild(54));
+        }
+
+        [Test]
+        public void NoOfferForASecondaryThatJoinedItsMountedStack()
+        {
+            Session.Equipment.RemoveAll(e => e.item == 36);
+            Session.Equipment.Add(new ItemStack(37, 2));
+            Assert.IsTrue(Blueprints.Produce(Db, 37, 70));
+            Assert.AreEqual(12, AmountMounted(37));
+            Assert.IsFalse(Dis().OffersMountAfterBuild(37), "nothing of it left in the hold");
+        }
     }
 }

@@ -142,18 +142,36 @@ namespace GoF2Remake.World
                       // Ship 13 is the Vossk freighter whatever the race (Globals::getShipGroup; its boxes too): step 40's
                       // Errkt flies it as race 0 until it appears (createShip(0, 1, 0xd)) and showed the Terran model.
                       : spec.freighter ? db.AssemblyByName(NpcTables.FreighterAssembly(spec.ship == 13 ? 1 : spec.race))
-                                       : ShipAssembly(spec.ship, spec.race);
+                                       : Modding.ModTraffic.Assembly(spec.ship) ?? ShipAssembly(spec.ship, spec.race);   // remake mods: a kit ship's random build
             var prefab = AssembledObject.LoadPrefab(entry);
+            // Remake: a turret object built from a turret item shows the item's turret (a mod's own model too).
+            var itemTurret = spec.turretAssembly != null && spec.turretItem >= 0 ? WeaponFx.Load(spec.turretItem)?.turretMounted : null;
+            if (itemTurret != null) prefab = itemTurret;
             var go = new GameObject($"NPC {spec.group} {spec.race}/{spec.ship}");
             go.transform.SetParent(transform, false);
             var ship = go.AddComponent<NpcShip>();
             Ships.Add(ship);
-            ship.ModelPath = AssembledObject.PrefabPath(entry);   // multiplayer: the clients' proxies load the same prefab
+            // Multiplayer: the clients' proxies load the same prefab (an item's turret by its item, NetProxy).
+            ship.ModelPath = itemTurret != null ? NpcShip.TurretModelPrefix + spec.turretItem : AssembledObject.PrefabPath(entry);
             ship.Setup(this, db, spec, prefab, fxRoot);
-            if (spec.turretAssembly == null && spec.fixedObject == null && !spec.freighter && (spec.ship == 45 || spec.ship == 51))
+            // Remake (generic turrets): turret items on its turret mount (SpawnSpec.turretItems, a mod's "npcTurrets") take the
+            // fighter turret's place, which sits on that mount.
+            if (spec.turretAssembly == null && spec.fixedObject == null && !spec.freighter && FighterTurretAssembly(spec.ship) != null
+                && ship.MountedTurrets == null)
                 AttachFighterTurret(ship);
             if (spec.capital != 0 && spec.capitalEnhanced) CapitalShip.Attach(ship, this, db);   // remake option (CapitalShips)
             return ship;
+        }
+
+        /// <summary>The fighter turret's assembly on ships 45 / 51 (Level::createFighterTurrets), null for the others.</summary>
+        public static string FighterTurretAssembly(int ship) => ship == 45 || ship == 51 ? "turret_002_static" : null;
+
+        /// <summary>Where the fighter turret of ship 45 / 51 sits in the ship's frame (Unity metres): the game's ship-relative
+        /// (0, 172.25, -460.7) / (0, 470, -83) as (-x, y, z) x 0.05.</summary>
+        public static Vector3 FighterTurretLocal(int ship)
+        {
+            var off = ship == 45 ? new Vector3(0f, 172.25f, -460.7f) : new Vector3(0f, 470f, -83f);
+            return new Vector3(-off.x, off.y, off.z) * M;
         }
 
         /// <summary>Level::createFighterTurrets 0xcb200: ship 45 (Qyrr Myfft's) and 51 (Hans') carry an invulnerable turret
@@ -169,9 +187,8 @@ namespace GoF2Remake.World
                 alwaysEnemy = host.Spec.alwaysEnemy, alwaysFriend = host.Spec.alwaysFriend, position = host.Spec.position,
             };
             var t = Create(spec);
-            var off = myfft ? new Vector3(0f, 172.25f, -460.7f) : new Vector3(0f, 470f, -83f);
             t.transform.SetParent(host.transform, false);
-            t.transform.localPosition = new Vector3(-off.x, off.y, off.z) * M;   // ship-relative offsets: (-x, y, z) x 0.05
+            t.transform.localPosition = FighterTurretLocal(host.Spec.ship);
             t.transform.localRotation = Quaternion.identity;
             t.Target.invulnerable = true;
             // Remake: no hit cube of its own (the +-1000 turret cube would soak up the shots at its host) and no lock.
@@ -239,7 +256,9 @@ namespace GoF2Remake.World
                 s.enemies.Clear();
                 if (Player != null && s.Race != playerExemptRace) s.enemies.Add(Player);
                 if (freeFlight && s.Race == Standing.Specter) continue;
-                foreach (var o in Ships) if (o != s && o.Race != s.Race) s.enemies.Add(o.Target);
+                // Remake (a player's report): a wreck held at its end (deadButSelectable: the Supernova's hidden-blueprint freighters, mods'
+                // derelicts) is nobody's target; the Terran one at Wah'norr drew the orbit's Vossk onto it (invulnerable decor).
+                foreach (var o in Ships) if (o != s && o.Race != s.Race && !o.Spec.deadButSelectable) s.enemies.Add(o.Target);
             }
         }
 
@@ -653,7 +672,9 @@ namespace GoF2Remake.World
                 // spy's fails it too; the remake's default stops counting once the spy is dead (Settings.InformerOriginalRule).
                 bool killed = Session.InformerKilled, failed = Session.InformerFailed;
                 if (ship.Spec.nameText == 1663) { if (!Session.InformerFailed) Session.InformerKilled = true; }
-                else if (!Session.InformerFailed && (!Session.InformerKilled || Settings.InformerOriginalRule))
+                // Remake (a player's report): the pirate events' ships never count (the original's Informer orbit has none; TrafficPlan
+                // skips them there, but a multiplayer orbit another player built may hold them).
+                else if (ship.Spec.pirateEvent == 0 && !Session.InformerFailed && (!Session.InformerKilled || Settings.InformerOriginalRule))
                 {
                     Session.InformerFailed = true;
                     Session.InformerKilled = false;
@@ -770,6 +791,7 @@ namespace GoF2Remake.World
                             ship.Spec.race, Crate.LookJunk);
                 return;
             }
+            if (ship != null && ship.Spec.eventWreck) { ship.DockingType = 0; return; }   // an event's wreck: its "on hacked" does the rest
             int k = ship != null ? ship.Spec.hiddenBlueprint : -1;
             if (k < 0 || k >= TrafficPlan.HiddenBlueprints.Length || (Session.HiddenBlueprintsFound & (1 << k)) != 0) return;
             Session.HiddenBlueprintsFound |= 1 << k;
@@ -856,6 +878,14 @@ namespace GoF2Remake.World
         {
             var w = WantedOf(ship);
             if (w == null) return;
+            // Player::damage calls Level::almostKillWanted before its death branch: a storyline criminal killed from above a
+            // third of its hull in one blow (or one frame) still wins step 128 / 130. UpdateWanted only sees living ships, so
+            // such a kill left the step waiting for a dead criminal (a player's report).
+            if (WantedBoard.IsStoryline(w.index) && !wantedSurrendered)
+            {
+                wantedSurrendered = true;
+                WantedBoard.OnSurrender(db, w.index, StationIndex);
+            }
             int reward = WantedBoard.OnKilled(db, w.index);
             if (reward > 0) BountyCollected?.Invoke(reward);
             WantedLine(3151 + UnityEngine.Random.Range(0, 5), -1, w);   // Level::killWanted: "a job well done"

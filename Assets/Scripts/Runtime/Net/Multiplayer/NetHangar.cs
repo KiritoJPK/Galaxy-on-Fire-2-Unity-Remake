@@ -27,7 +27,45 @@ namespace GoF2Remake.Multiplayer
         {
             public NetPlayer.Place place;
             public int station, ship;
+            public string build;
         }
+
+        /// <summary>The height (game units, like StationTables.ShipY) a guest's customizable ship floats at in their build
+        /// with their weapons and turret (ModHardpoints.HangarHeight), NaN = the ship's usual one.</summary>
+        public static float GuestShipY(ulong clientId, int ship)
+        {
+            foreach (var p in NetPlayer.All)
+                if (p != null && p.OwnerClientId == clientId && p.ShipIndex == ship && p.ShownBuild is Modding.ModShipKits.Build b)
+                {
+                    var equipment = NetPlayer.WeaponStacks(NetGame.Db, p.Weapons);
+                    equipment.AddRange(NetPlayer.TurretStacks(NetPlayer.PackTurrets(p.TurretItems)));
+                    return Modding.ModHardpoints.HangarHeight(NetGame.Db, ship, Modding.ModShipKits.VariantAssembly(ship, b).name, equipment, b) ?? float.NaN;
+                }
+            return float.NaN;
+        }
+
+        /// <summary>The model a guest's ship shows: their build of a customizable ship (ModShipKits.VariantAssembly), null =
+        /// the ship's usual one (StationLevel.SpawnShip, through HangarTraffic.SpawningGuest).</summary>
+        public static AssemblyData GuestAssembly(ulong clientId, int ship)
+        {
+            foreach (var p in NetPlayer.All)
+                if (p != null && p.OwnerClientId == clientId && p.ShipIndex == ship && p.ShownBuild is Modding.ModShipKits.Build b)
+                    return Modding.ModShipKits.VariantAssembly(ship, b);
+            return null;
+        }
+
+        /// <summary>A guest's build of their ship (its exhaust style, ModExhausts), null = none.</summary>
+        public static Modding.ModShipKits.Build GuestBuild(ulong clientId, int ship)
+        {
+            foreach (var p in NetPlayer.All)
+                if (p != null && p.OwnerClientId == clientId && p.ShipIndex == ship) return p.ShownBuild;
+            return null;
+        }
+
+        bool modelsChanged;   // the mods' ship models were (re)built: guests in a build whose parts were loading are parked again
+        void OnModels() => modelsChanged = true;
+        void OnEnable() => Modding.ModShips.ModelsChanged += OnModels;
+        void OnDisable() => Modding.ModShips.ModelsChanged -= OnModels;
 
         StationLevel level;
         readonly Dictionary<ulong, Seen> seen = new Dictionary<ulong, Seen>();
@@ -145,18 +183,23 @@ namespace GoF2Remake.Multiplayer
 
         float snapshotAskMs;
 
-        // The turret each guest's ship shows (rebuilt with another ship or turret).
-        readonly Dictionary<ulong, (GameObject ship, int item, GameObject turret)> turrets = new Dictionary<ulong, (GameObject, int, GameObject)>();
+        // The turret and (a kit ship's) weapon models each guest's ship shows (rebuilt with another ship, turret or weapons).
+        readonly Dictionary<ulong, (GameObject ship, int item, string weapons, GameObject turret, GameObject models)> turrets =
+            new Dictionary<ulong, (GameObject, int, string, GameObject, GameObject)>();
 
         void ShowTurret(ulong id, GameObject shipGo, NetPlayer p)
         {
             turrets.TryGetValue(id, out var t);
             int want = shipGo != null ? NetPlayer.PackTurrets(p.TurretItems) : -1;   // both turrets in one key
-            if (t.ship == shipGo && t.item == want && (want < 0 || t.turret != null)) return;
+            string weapons = shipGo != null ? p.Weapons : "";
+            if (t.ship == shipGo && t.item == want && t.weapons == weapons && (want < 0 || t.turret != null)) return;
             if (t.turret != null) Destroy(t.turret);
+            if (t.models != null) Destroy(t.models);
             var turret = shipGo != null && want >= 0
-                ? GoF2Remake.Flight.PlayerTurret.BuildStatic(NetGame.Db, p.ShipIndex, NetPlayer.TurretStacks(want), shipGo.transform) : null;
-            turrets[id] = (shipGo, want, turret);
+                ? GoF2Remake.Flight.PlayerTurret.BuildStatic(NetGame.Db, p.ShipIndex, NetPlayer.TurretStacks(want), shipGo.transform, p.ShownBuild) : null;
+            var models = shipGo != null
+                ? Modding.ModHardpoints.AttachWeapons(NetGame.Db, p.ShipIndex, NetPlayer.WeaponStacks(NetGame.Db, weapons), shipGo.transform, p.ShownBuild) : null;
+            turrets[id] = (shipGo, want, weapons, turret, models);
         }
 
         void Update()
@@ -175,7 +218,9 @@ namespace GoF2Remake.Multiplayer
                 bool dockedHere = p.InHangar && p.Station == here;
                 if (dockedHere)
                 {
-                    if (known && before.ship != p.ShipIndex && traffic.HasGuest((long)id)) traffic.GuestLeaves((long)id, false);   // another ship
+                    // Another ship, another build (customized while docked), or that build's parts just loaded: parked again.
+                    bool rebuilt = known && (before.ship != p.ShipIndex || before.build != p.BuildText || (modelsChanged && p.BuildText.Length > 0));
+                    if (rebuilt && traffic.HasGuest((long)id)) traffic.GuestLeaves((long)id, false);
                     if (p.Where == NetPlayer.Place.Hangar && !traffic.HasGuest((long)id))
                     {
                         // Flies in only when seen docking from this orbit (not on this player's own arrival).
@@ -196,7 +241,9 @@ namespace GoF2Remake.Multiplayer
                 before.place = p.Where;
                 before.station = p.Station;
                 before.ship = p.ShipIndex;
+                before.build = p.BuildText;
             }
+            modelsChanged = false;
             // Players who left the session.
             gone.Clear();
             foreach (var id in seen.Keys) if (!present.Contains(id)) gone.Add(id);

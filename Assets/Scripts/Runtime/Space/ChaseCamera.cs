@@ -6,7 +6,11 @@
 //    look-at point. Fixed 0.006 / 0.005 (TargetFollowCamera::resetShipHandling) except with the mouse cursor (PlayerEgo
 //    ::update, Globals::mouseCursorActivated), where they depend on handling h (setShipHandling):
 //      position  0.01h * 0.011 + 0.001        look-at  (1 - 0.01h) * 0.015 + 0.003
-//    The exact damping curve (aproximateCooefficients..., a polynomial in dt) is approximated with exponentials.
+//    The damping curve (aproximateCooefficientsForAproximationOfDampingFunktion: per coefficient x, a factor
+//    k(dt) = c0 / dt + c1 + c2 dt + c3 dt^2 + c4 dt^3, the c's fitted polynomials in x) is 1 - e^(-x dt / 2) within 2 % for
+//    dt up to 50 ms (Ease; ChaseCameraTests checks it against the polynomial). #114: the remake used 1 - e^(-x dt), a camera
+//    that caught up twice as fast: the crosshair stayed near the middle while pitching and the ship near the centre in a
+//    turn, where the original's swing well out to the side.
 //  * The camera looks at a point, not along a rotation: +0x14, eased toward the ship's matrix x the target offset (+0x2c),
 //    and MatrixGetLookAt(position, that point, the ship's up) from where the camera really is. translateNoUpdate moves
 //    both. The dodge (PlayerEgo::updateManeuver) shifts the target offset sideways by -3 x the yaw rate: with the look
@@ -23,6 +27,10 @@ namespace GoF2Remake.Flight
 {
     public class ChaseCamera : MonoBehaviour
     {
+        /// <summary>TargetFollowCamera::update's damping for coefficient 'x' over a frame of 'dtMs': the share of the way to the
+        /// goal (the original's fitted polynomial is 1 - e^(-x dt / 2) within 2 % up to 50 ms frames; frame-rate independent).</summary>
+        public static float Ease(float x, float dtMs) => 1f - Mathf.Exp(-0.5f * x * dtMs);
+
         public ShipController target;
 
         [Header("Placement (meters, ship local space)")]
@@ -154,7 +162,7 @@ namespace GoF2Remake.Flight
                 targetSlide = Vector3.zero;
                 lookShift = new Vector3(3f * dodgeLookScale * model.YawRate * target.metersPerUnit, 0f, 0f);
             }
-            slide = Vector3.Lerp(slide, targetSlide, 1f - Mathf.Exp(-posK * dtMs));
+            slide = Vector3.Lerp(slide, targetSlide, Ease(posK, dtMs));
 
             Vector3 desiredPos = ship.TransformPoint(offset + slide);
             Vector3 desiredLook = ship.TransformPoint(lookOffset + lookShift);
@@ -166,8 +174,8 @@ namespace GoF2Remake.Flight
                 lookValid = true;
             }
 
-            transform.position = Vector3.Lerp(transform.position, desiredPos, 1f - Mathf.Exp(-posK * dtMs));
-            lookPoint = Vector3.Lerp(lookPoint, desiredLook, 1f - Mathf.Exp(-rotK * dtMs));
+            transform.position = Vector3.Lerp(transform.position, desiredPos, Ease(posK, dtMs));
+            lookPoint = Vector3.Lerp(lookPoint, desiredLook, Ease(rotK, dtMs));
             // ... and translateNoUpdate(-0.9 x the slide) every frame, the position and the look-at point alike: the camera
             // takes back most of the sideways move, so the ship slides across the view and the camera turns after it.
             var noUpdate = -dodgeLag * target.ManeuverSlide + target.StrafeSlide;   // handleShip: the strafe too

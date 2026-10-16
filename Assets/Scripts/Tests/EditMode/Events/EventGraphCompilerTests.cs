@@ -43,6 +43,23 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void AWreckSpawnAndItsHackedTrigger()
+        {
+            // Spawn "wreck": a freighter race (Vossk = 2 in EventRace), no count or behaviour; On Wreck Hacked = "on hacked".
+            var g = U.WithStart();
+            U.Node(g, "s", "EventSpawnNode", ("Players", "@a"), ("Ship", "wreck"), ("Race", "2"), ("Count", "3"), ("Behaviour", "0"),
+                   ("Name", "Hulk"), ("At", "0 0 20000"));
+            U.Wire(g, "start", "Next", "s", "In");
+            U.Node(g, "on", "EventOnNode", ("Trigger", ((int)EventTrigger.WreckHacked).ToString()));
+            U.Node(g, "w", "EventWaitNode", ("Seconds", "1"));
+            U.Wire(g, "on", "Do", "w", "In");
+            var lines = CompileLines(g, out var problems);
+            Assert.IsEmpty(U.Errors(problems), U.Describe(problems));
+            CollectionAssert.Contains(lines, "spawn @a wreck vossk named Hulk at 0 0 20000");
+            CollectionAssert.Contains(lines, "on hacked");
+        }
+
+        [Test]
         public void AWaitFollowsStart()
         {
             var g = U.WithStart();

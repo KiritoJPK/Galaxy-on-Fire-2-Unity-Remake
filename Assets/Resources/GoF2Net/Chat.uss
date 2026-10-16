@@ -1,29 +1,33 @@
-/* Remake: the lines (full width, no gaps), the tab and the input row are solid: the chat is drawn over the flight HUD's
-   key hints on the left and covers them while it shows (at even 95 % the bright hint text showed through). */
+/* Remake: the lines (full width, no gaps) on a slightly see-through dark band (players' wish: not pure black); the tab and
+   the input row stay solid. Over the flight HUD's key hints a hint can faintly show through. */
 
+/* Placed and sized relative to the HUD (percentages), with a floor so a narrow window keeps a usable line. */
 .chat {
     position: absolute;
-    left: 24px;
+    left: 1.5%;
     top: 36%;
-    width: 560px;
+    width: 30%;
+    min-width: 440px;
+    max-width: 760px;
 }
 
-/* the small Chat button: tapped on a phone, B (the chat key) still opens it too */
+/* the Chat button, the size of the station's Menu / Multiplayer buttons (.station-menu-button): tapped on a phone, B (the
+   chat key) still opens it too */
 .chat-tab {
     align-self: flex-start;
-    min-height: 36px;
-    min-width: 88px;
-    padding: 4px 14px;
-    margin: 0 0 6px 0;
-    font-size: 15px;
-    letter-spacing: 1px;
+    min-height: 50px;
+    min-width: 120px;
+    padding: 12px 22px;
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    letter-spacing: 3px;
     -unity-font-style: bold;
     -unity-text-align: middle-center;
     color: rgb(216, 236, 247);
-    background-color: rgba(4, 8, 14, 0.85);
-    border-width: 1px;
+    background-color: rgba(4, 10, 18, 0.85);
+    border-width: 2px;
     border-color: rgba(143, 216, 255, 0.5);
-    border-radius: 3px;
+    border-radius: 4px;
 }
 
 .chat-tab:hover {
@@ -35,7 +39,7 @@
     background-color: rgba(143, 216, 255, 0.3);
 }
 
-.chat--open .chat-tab {
+.chat-tab--open {
     border-color: rgb(143, 216, 255);
 }
 
@@ -46,7 +50,7 @@
     font-size: 17px;
     color: rgb(230, 240, 246);
     white-space: normal;
-    background-color: rgb(4, 8, 14);
+    background-color: rgba(4, 8, 14, 0.72);
     border-radius: 2px;
 }
 
@@ -126,11 +130,12 @@
    landscape; at 36 % the input row ended up under it). The Chat tab gives its room to the lines (the row's close button
    closes), and the "/" suggestions stay short so they never push the line down under the keyboard. */
 .chat--phone.chat--open {
-    top: 8px;
-    width: 760px;
+    top: 2%;
+    width: 70%;
+    max-width: none;
 }
 
-.chat--phone.chat--open .chat-tab {
+.chat-tab--phone-open {
     display: none;
 }
 
@@ -197,4 +202,63 @@
     left: auto;
     right: 24px;
     top: 9%;
+}
+
+/* Large (UiScale.Large: a small high-density screen such as a 5.5" handheld): everything about 1.5x, the buttons
+   finger-sized (about 6 mm on the Retroid Pocket G2). */
+.chat--large {
+    width: 46%;
+    max-width: none;
+}
+
+.chat-tab.chat-tab--large {
+    min-height: 72px;
+    min-width: 150px;
+    padding: 8px 24px;
+    margin-bottom: 8px;
+    font-size: 24px;
+}
+
+.chat--large .chat-line {
+    padding: 5px 12px;
+    font-size: 25px;
+}
+
+.chat--large .chat-input-row {
+    min-height: 76px;
+    margin-top: 8px;
+}
+
+.chat--large .chat-channel {
+    min-width: 140px;
+    min-height: 76px;
+    padding: 8px 16px;
+    font-size: 22px;
+}
+
+.chat--large .chat-send {
+    min-width: 140px;
+}
+
+.chat--large .chat-close {
+    min-width: 84px;
+    font-size: 34px;
+}
+
+.chat--large .chat-field .unity-base-text-field__input {
+    padding: 10px 14px;
+    font-size: 26px;
+}
+
+.chat--large .chat-suggest-row {
+    padding: 8px 14px;
+    font-size: 23px;
+}
+
+.chat--large.chat--phone .chat-suggest {
+    max-height: 200px;
+}
+
+.chat--large .chat-suggest-hint {
+    font-size: 18px;
 }

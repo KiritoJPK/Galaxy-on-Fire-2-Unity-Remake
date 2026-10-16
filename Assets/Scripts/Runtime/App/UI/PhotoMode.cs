@@ -308,12 +308,27 @@ namespace GoF2Remake.UI
                 return true;
             }
             catch (Exception e) { Debug.LogWarning("PhotoMode: MediaStore " + e.Message); }
-            string dir = Path.Combine(GoF2Remake.GamePaths.Data, "Screenshots");
-#else
-            string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Galaxy on Fire 2");
+#elif !UNITY_WSA || UNITY_EDITOR
+            // UWP / Xbox (UNITY_WSA) has no writable Pictures folder without the Pictures library capability: straight to the
+            // app's own folder below.
+            string pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            if (!string.IsNullOrEmpty(pictures))
+            {
+                try
+                {
+                    string preferred = Path.Combine(pictures, "Galaxy on Fire 2");
+                    Directory.CreateDirectory(preferred);
+                    File.WriteAllBytes(Path.Combine(preferred, name), png);
+                    return true;
+                }
+                catch (Exception e) { Debug.LogWarning("PhotoMode: Pictures " + e.Message); }
+            }
 #endif
+            // The fallback: <persistentDataPath>/Screenshots (Android without MediaStore, UWP, an unwritable Pictures folder).
+            string dir = Path.Combine(GoF2Remake.GamePaths.Data, "Screenshots");
             Directory.CreateDirectory(dir);
             File.WriteAllBytes(Path.Combine(dir, name), png);
+            Debug.Log("PhotoMode: saved to " + dir);
             return true;
         }
     }

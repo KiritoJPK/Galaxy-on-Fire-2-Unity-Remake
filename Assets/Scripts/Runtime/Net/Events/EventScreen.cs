@@ -18,6 +18,10 @@
 // The mission card (ShowMissionCard): when a squadmate takes a bar mission (a freelance one, NetMissions.Receive, or an event
 // graph's, EventMissions), the others see which: a box in the upper middle with "NEW SQUAD MISSION", the mission's name,
 // who took it, the client's face and the details (target, reward); 9 s (a click / tap closes it), with the message sound.
+// The server's message of the day (ShowMotd, NetMotd): a window in the middle with the server's name and its text in a
+// monospace font (JetBrains Mono, OFL, Resources/GoF2Fonts: ASCII art lines up), every space kept, no rich text, the font
+// size chosen so the longest line fits (14..22), scrolling when long; OK, a tap on it, Enter / Space / Esc or a
+// controller's A / B / Menu closes it. While it shows the other input rests (MotdOpen, like a question).
 
 using GoF2Remake.Data;
 using GoF2Remake.UI;
@@ -65,6 +69,15 @@ namespace GoF2Remake.Events
         float cardStart = -1f;
         (string header, string title, string by, string details, int[] face, int speaker, string character)? pendingCard;
         const float CardSeconds = 9f;
+        VisualElement motdBox;
+        ScrollView motdScroll;
+        Label motdTitle, motdText;
+        Button motdOk;
+        (string title, string text, System.Action closed)? pendingMotd;
+        System.Action motdClosed;
+        bool motdOpen;
+        int motdOpenedFrame;
+        static FontDefinition? monoFont;
 
         static readonly string[] PadLabels = { "A", "B", "X", "Y" };
 
@@ -87,13 +100,36 @@ namespace GoF2Remake.Events
         }
 
         /// <summary>An event's question is waiting for this player's answer: their other input rests meanwhile.</summary>
-        public static bool QuestionOpen => instance != null && instance.questionId != 0 && EventHost.ScreensActive;
+        public static bool QuestionOpen => instance != null && ((instance.questionId != 0 && EventHost.ScreensActive) || instance.motdOpen);
+
+        /// <summary>The server's message of the day is showing (QuestionOpen includes it: the other input rests).</summary>
+        public static bool MotdOpen => instance != null && instance.motdOpen;
+
+        /// <summary>The server's message of the day ('closed' when the player closes it).</summary>
+        public static void ShowMotd(string title, string text, System.Action closed)
+        {
+            var s = Get();
+            if (s == null || string.IsNullOrEmpty(text)) return;
+            s.pendingMotd = (title ?? "", text, closed);
+            PlaySound((int)EventSound.Message);
+        }
+
+        /// <summary>JetBrains Mono as a dynamic font asset (made once): the MOTD's monospace font; null = not in the build.</summary>
+        static FontDefinition? MonoFont()
+        {
+            if (monoFont.HasValue) return monoFont;
+            var font = Resources.Load<Font>("GoF2Fonts/JetBrainsMono-Regular");
+            var asset = font != null ? UnityEngine.TextCore.Text.FontAsset.CreateFontAsset(font) : null;
+            if (asset == null) return null;
+            monoFont = FontDefinition.FromSDFFont(asset);
+            return monoFont;
+        }
 
         /// <summary>The scene's own music volume factor: 0 while an event's track plays (faded over a second).</summary>
         public static float SceneMusic => instance == null ? 1f : 1f - instance.musicFade;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { instance = null; dialogs.Clear(); }
+        static void ResetStatics() { instance = null; dialogs.Clear(); monoFont = null; }
 
         /// <summary>A conversation from the server: shown in this scene's dialogue window once nothing else is open there;
         /// 'closed' runs when it closes (a reward page's payout).</summary>
@@ -495,7 +531,108 @@ namespace GoF2Remake.Events
             c.paddingTop = 12; c.paddingRight = 20; c.paddingBottom = 16; c.paddingLeft = 196;
             questionBox.Add(answerRow);
             questionBox.style.display = DisplayStyle.None;
+            BuildMotd(root);
             pending = true;
+        }
+
+        /// <summary>The MOTD window: centred, the question's panel look with a cyan top edge; the title, the text in a scroll
+        /// view (both directions: a wide drawing scrolls sideways rather than wrapping), OK.</summary>
+        void BuildMotd(VisualElement root)
+        {
+            motdBox = new VisualElement { pickingMode = PickingMode.Position };
+            var m = motdBox.style;
+            m.position = Position.Absolute;
+            m.left = Length.Percent(50);
+            m.top = Length.Percent(50);
+            m.translate = new Translate(Length.Percent(-50), Length.Percent(-50));
+            m.width = 1240;   // fixed: a horizontal scroll view gives no width of its own to shrink to
+            m.maxWidth = Length.Percent(92);
+            m.maxHeight = Length.Percent(88);
+            m.backgroundColor = Panel;
+            m.borderTopWidth = 3;
+            m.borderBottomWidth = m.borderLeftWidth = m.borderRightWidth = 1;
+            m.borderTopColor = Cyan;
+            m.borderBottomColor = m.borderLeftColor = m.borderRightColor = Line;
+            m.paddingTop = 14; m.paddingBottom = 16; m.paddingLeft = m.paddingRight = 22;
+            root.Add(motdBox);
+            motdTitle = Text(motdBox, 26, Color.white, 3);
+            motdTitle.AddToClassList("gof-semibold");
+            motdTitle.style.textShadow = new TextShadow();
+            motdTitle.style.marginBottom = 10;
+            motdScroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
+            motdScroll.AddManipulator(new DragScroll(motdScroll));
+            motdScroll.style.flexShrink = 1;
+            motdScroll.style.backgroundColor = new Color(0f, 0f, 0f, 0.35f);
+            motdScroll.style.paddingTop = motdScroll.style.paddingBottom = 10;
+            motdScroll.style.paddingLeft = motdScroll.style.paddingRight = 14;
+            motdBox.Add(motdScroll);
+            motdText = new Label { pickingMode = PickingMode.Ignore, enableRichText = false };
+            motdText.parseEscapeSequences = false;
+            motdText.style.whiteSpace = WhiteSpace.Pre;
+            motdText.style.color = TextColour;
+            motdText.style.unityTextAlign = TextAnchor.UpperLeft;
+            var mono = MonoFont();
+            if (mono.HasValue) motdText.style.unityFontDefinition = mono.Value;
+            motdScroll.Add(motdText);
+            motdOk = new Button(CloseMotd) { text = "OK" };
+            var b = motdOk.style;
+            b.alignSelf = Align.Center;
+            b.marginTop = 14;
+            b.minWidth = 180;
+            b.minHeight = 56;
+            b.fontSize = 22;
+            b.letterSpacing = 2;
+            b.unityTextAlign = TextAnchor.MiddleCenter;   // centred in the button (the theme's buttons align left)
+            b.paddingLeft = b.paddingRight = 24;
+            b.paddingTop = b.paddingBottom = 0;
+            b.color = new Color(4f / 255f, 10f / 255f, 18f / 255f);
+            b.backgroundColor = Amber;
+            b.borderTopWidth = b.borderBottomWidth = b.borderLeftWidth = b.borderRightWidth = 0;
+            motdOk.AddToClassList("gof-semibold");
+            motdBox.Add(motdOk);
+            motdBox.style.display = DisplayStyle.None;
+            motdOpen = false;
+        }
+
+        void CloseMotd()
+        {
+            if (!motdOpen) return;
+            motdOpen = false;
+            motdBox.style.display = DisplayStyle.None;
+            var closed = motdClosed;
+            motdClosed = null;
+            PlaySound((int)EventSound.Click);
+            closed?.Invoke();
+        }
+
+        void UpdateMotd()
+        {
+            if (motdBox == null) return;
+            if (pendingMotd.HasValue && !motdOpen)
+            {
+                var (t, text, closed) = pendingMotd.Value;
+                pendingMotd = null;
+                motdTitle.text = t.ToUpperInvariant();
+                motdText.text = text;
+                // The longest line fits the window's width (JetBrains Mono: 0.6 em a character), 14..22.
+                int cols = 1;
+                foreach (var line in text.Split('\n')) cols = Mathf.Max(cols, line.Length);
+                motdText.style.fontSize = Mathf.Clamp(Mathf.Floor(1150f / (cols * 0.6f)), 14f, 22f);
+                motdScroll.scrollOffset = Vector2.zero;
+                motdClosed = closed;
+                motdOpen = true;
+                motdOpenedFrame = Time.frameCount;
+                motdBox.style.display = DisplayStyle.Flex;
+                motdBox.BringToFront();
+            }
+            if (!motdOpen) return;
+            if (!GoF2Remake.Multiplayer.NetGame.Active) { motdOpen = false; motdClosed = null; motdBox.style.display = DisplayStyle.None; return; }
+            if (Time.frameCount - motdOpenedFrame < 2) return;   // not closed by the key that asked for it (/motd's Enter)
+            var kb = Keyboard.current;
+            var pad = Gamepad.current;
+            bool key = kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame || kb.escapeKey.wasPressedThisFrame);
+            bool button = pad != null && (pad.buttonSouth.wasPressedThisFrame || pad.buttonEast.wasPressedThisFrame || pad.startButton.wasPressedThisFrame);
+            if (key || button) CloseMotd();
         }
 
         /// <summary>The question's speaker: a story character (id >= 0, a name = renamed), a generated face (-1, its
@@ -749,6 +886,7 @@ namespace GoF2Remake.Events
             UpdateMusic();
             UpdateQuestion(now);
             UpdateCard(now);
+            UpdateMotd();
             if (!EventHost.ScreensActive && scoreText.Length > 0) { scoreText = ""; scorePending = true; }
             UpdateScoreboard();
             // The title: fade in, hold, fade out.

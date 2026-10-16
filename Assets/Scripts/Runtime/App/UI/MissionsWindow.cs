@@ -62,7 +62,7 @@ namespace GoF2Remake.UI
             freelanceScroll = Scroll("freelanceScroll");
             close = Bind("missionsClose", Close);
             storyMap = Bind("storyMap", () => ShowOnMap(storyMapTarget, storyMap));
-            freelanceMap = Bind("freelanceMap", () => ShowOnMap(Freelance.Active ? Freelance.Mission.target : GoF2Remake.Events.EventRunner.LocalMissionTarget, freelanceMap));
+            freelanceMap = Bind("freelanceMap", () => ShowOnMap(Freelance.Active ? Freelance.MapStation : GoF2Remake.Events.EventRunner.LocalMissionTarget, freelanceMap));
             discard = Bind("freelanceDiscard", AskDiscard);
             root.Q<Label>("missionsTitle").text = T(129).ToUpperInvariant();
             root.Q<Label>("storyHeading").text = T(555).ToUpperInvariant();

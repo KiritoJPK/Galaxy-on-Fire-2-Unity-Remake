@@ -212,28 +212,31 @@
 
 /* ---- debug panel (remake-only testing tools, F10 / five taps on the version text) ------- */
 
+/* Sized to the screen (88 % of its height), the mission list and the cheats filling it and scrolling (fixed pixel heights
+   overflowed short screens and wasted tall ones). */
 .debug-panel {
-    max-width: 1400px;
+    max-width: 1500px;
+    height: 88%;
     max-height: 88%;
 }
 
 .debug-columns {
     flex-direction: row;
+    flex-grow: 1;
     flex-shrink: 1;
     min-height: 0;
 }
 
 .debug-column--missions {
-    width: 62%;
+    width: 60%;
     flex-shrink: 0;
     margin-right: 3%;
 }
 
 .debug-column--cheats {
-    width: 35%;
+    width: 37%;
     flex-grow: 0;
     flex-shrink: 0;
-    justify-content: flex-start;
 }
 
 .debug-column--cheats .option-item {
@@ -247,7 +250,7 @@
 
 .debug-heading {
     margin-bottom: 8px;
-    font-size: 18px;
+    font-size: 20px;
     letter-spacing: 4px;
     color: var(--gof-cyan);
 }
@@ -257,8 +260,8 @@
 }
 
 .debug-filter .unity-base-text-field__input {
-    padding: 8px 12px;
-    font-size: 18px;
+    padding: 10px 14px;
+    font-size: 20px;
     color: var(--gof-text);
     background-color: rgba(0, 0, 0, 0.35);
     border-width: 1px;
@@ -271,12 +274,14 @@
 }
 
 .debug-mission-list {
-    height: 540px;
+    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 120px;
 }
 
 .debug-mission-section {
     margin: 12px 0 4px 0;
-    font-size: 15px;
+    font-size: 17px;
     letter-spacing: 3px;
     color: var(--gof-amber);
 }
@@ -285,7 +290,7 @@
     flex-direction: column;
     align-items: stretch;
     margin: 0;
-    padding: 7px 12px;
+    padding: 9px 14px;
     background-color: rgba(0, 0, 0, 0);
     border-width: 0;
     border-left-width: 3px;
@@ -306,14 +311,14 @@
 }
 
 .debug-mission-index {
-    min-width: 46px;
-    font-size: 17px;
+    min-width: 54px;
+    font-size: 20px;
     color: var(--gof-amber);
 }
 
 .debug-mission-title {
     flex-shrink: 1;
-    font-size: 17px;
+    font-size: 20px;
     color: var(--gof-text);
     white-space: nowrap;
     overflow: hidden;
@@ -325,13 +330,13 @@
     padding-left: 12px;
     flex-shrink: 0;
     white-space: nowrap;
-    font-size: 14px;
+    font-size: 16px;
     color: var(--gof-text-dim);
 }
 
 .debug-mission-summary {
-    margin-left: 46px;
-    font-size: 14px;
+    margin-left: 54px;
+    font-size: 16px;
     color: var(--gof-text-dim);
     white-space: nowrap;
     overflow: hidden;
@@ -622,7 +627,8 @@
     border-color: rgba(255, 110, 90, 1);
 }
 
-/* The controller's X on the Turn on / off button (MainMenu toggles the selected mod with it); only with a controller. */
+/* The controller's X / square on the Turn on / off button (MainMenu toggles the selected mod with it); only with a
+   controller. A PadGlyph (InputGlyph.Pad): the main menu doesn't load GoF2InputGlyphs.uss, so both styles are here. */
 .mods-pad-x {
     display: none;
     position: absolute;
@@ -637,6 +643,12 @@
     color: #0B1016;
     background-color: #3F8FE8;
     -unity-text-align: middle-center;
+}
+
+.mods-pad-x.pad-face--ps {
+    background-color: rgb(16, 21, 28);
+    border-width: 2px;
+    border-color: rgba(216, 236, 247, 0.55);
 }
 
 .input-gamepad .mods-pad-x {
@@ -737,6 +749,7 @@
     flex-direction: row;
 }
 
+.mb-field-pair > .mb-field-box--first,   /* USS has no :first-child */
 .mb-field-box--wide {
     margin-right: 14px;
     flex-grow: 3;
@@ -1102,7 +1115,7 @@
     font-size: 13px;
 }
 
-.mp-switch-grid .mp-debug-segments .choice-segment--last {
+.mp-switch-grid .mp-debug-segments .choice-segment--last {   /* ChoiceRow marks it (Unity 7 has no :last-child) */
     margin-right: 0;
 }
 
@@ -1384,13 +1397,55 @@
 
 .debug-note {
     margin-top: 10px;
-    font-size: 15px;
+    font-size: 17px;
     color: var(--gof-text-dim);
     white-space: normal;
 }
 
-.layout-phone .debug-mission-list {
-    height: 420px;
+/* A small high-density screen (UiScale, the root's ui-large: a phone, the Retroid Pocket G2): the Debug panel fills the
+   screen and its text and rows grow about 1.35x. */
+.ui-large .debug-panel {
+    max-width: none;
+    height: 94%;
+    max-height: 94%;
+}
+
+.ui-large .debug-heading,
+.ui-large .debug-filter .unity-base-text-field__input,
+.ui-large .debug-mission-index,
+.ui-large .debug-mission-title {
+    font-size: 27px;
+}
+
+.ui-large .debug-mission {
+    padding: 14px 16px;
+}
+
+.ui-large .debug-mission-index {
+    min-width: 70px;
+}
+
+.ui-large .debug-mission-section {
+    font-size: 22px;
+}
+
+.ui-large .debug-mission-station,
+.ui-large .debug-mission-summary,
+.ui-large .debug-note {
+    font-size: 21px;
+}
+
+.ui-large .debug-mission-summary {
+    margin-left: 70px;
+}
+
+.ui-large .debug-column--cheats .option-row,
+.ui-large .debug-column--cheats .unity-base-field__label {
+    font-size: 25px;
+}
+
+.ui-large .debug-column--cheats .option-row {
+    min-height: 64px;
 }
 
 /* ---- campaign cards ----------------------------------------------------------------- */

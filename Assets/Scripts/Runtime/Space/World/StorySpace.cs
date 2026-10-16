@@ -226,7 +226,13 @@ namespace GoF2Remake.World
             else if (n == 120) { Session.StationIndex = 126; level.Dock(); }      // back at Bak S'ondorr
             else if (n == 126) level.TravelTo(120);                               // Harval and the refugees at Katashun
             else if (n == 134) { Session.StationIndex = 112; level.Dock(); }      // docked at Var Lupra
-            else if (n == 144) level.TravelTo(112);                               // the array firing cutscene
+            else if (n == 144)
+            {
+                // MGame::successCheck: 143 won in space at Var Lupra (0x70) sets Level::initStreamOutPositionAfterCutscene;
+                // MGame::OnTouchEnd reloads the orbit for the 0x90 cutscene with initStreamOutPosition 0.
+                Session.StreamOutAfterCutscene = Session.StationIndex == 112;
+                level.TravelTo(112, false);                                       // the array firing cutscene
+            }
             else if (n == 155) level.TravelTo(Session.VoidReturnStation >= 0 ? Session.VoidReturnStation : 98);   // out of the Void
             else if (n == 161) level.TravelTo(93);                                // "Meanwhile on Maissa..."
             else if (n == 162) { Session.StationIndex = 93; level.Dock(); }       // the end: docked at Maissa

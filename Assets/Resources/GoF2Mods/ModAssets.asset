@@ -1,3 +1,4 @@
+%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
@@ -23,3 +24,6 @@ MonoBehaviour:
   fxAdditive: {fileID: 2100000, guid: 3a415f5608dda9e43ab90ac04a20faac, type: 2}
   fxAlpha: {fileID: 2100000, guid: 8a65392e41da3774cb30a68b139f249e, type: 2}
   metallicRoughness: {fileID: 2100000, guid: a95747947b864bd4aaf651d15a705f62, type: 2}
+  engineFlame: {fileID: 2100000, guid: 63bae1d8e788890eeb7334d717fec200, type: 2}
+  hologram: {fileID: 2100000, guid: ca75aa8b594b832f7ae07a4fd48829c6, type: 2}
+  nozzleShimmer: {fileID: 2100000, guid: 507e9ed552b99259fa2de9e05d834d14, type: 2}

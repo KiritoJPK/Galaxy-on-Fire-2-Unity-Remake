@@ -24,7 +24,11 @@ namespace GoF2Remake.UI
         }
         /// <summary>The ship's shop icon; a mod's ship its own ("icon" in ships.json), else the Phantom's.</summary>
         public static Texture2D ShipIcon(int ship) =>
-            Modding.ModContent.IsModShip(ship) ? Modding.ModShips.Icon(ship) ?? Icon("ship_010") : Icon($"ship_{ship:000}");
+            Modding.ModContent.IsModShip(ship) ? Modding.ModShips.Icon(ship) ?? ModelShipIcon(ship) ?? Icon("ship_010") : Icon($"ship_{ship:000}");
+
+        /// <summary>A mod ship on one of the game's ship models (Modding.GameModels) without an icon of its own: that ship's.</summary>
+        static Texture2D ModelShipIcon(int ship) =>
+            CustomShips.Get(ship) is CustomShipData c && c.gameModelShip >= 0 ? Icon($"ship_{c.gameModelShip:000}") : null;
 
         /// <summary>The icon of a hull with no shop image of its own (the Debug Ships tab's freighters and capital ships, by
         /// World.PlayerHull's key; "GoF2 > Build > Hull Icons"), null without one.</summary>
@@ -61,6 +65,7 @@ namespace GoF2Remake.UI
             var rows = new List<(string, string)>();
             string T(int id) => Localization.Get(id);
             string YesNo(int v) => T(v != 0 ? 134 : 135);
+            string Signed(int v) => v < 0 ? v.ToString() : "+" + v;   // a weapon mod's factor: +20 or -10
             bool beam = it.index >= 9 && it.index <= 11 || it.index == 228;
             for (int n = 0; n < it.attrKeys.Length; n++)
             {
@@ -113,8 +118,8 @@ namespace GoF2Remake.UI
                     case 48: rows.Add((T(145), $"{v} t")); break;
                     case 35: case 41: case 42: rows.Add((T(157), $"{v} ms")); break;
                     case 38: rows.Add((T(150), v.ToString())); break;
-                    case 39: rows.Add((T(147), $"+{v} %")); break;
-                    case 40: rows.Add((T(146), $"+{v} %")); break;
+                    case 39: rows.Add((T(147), Signed(v) + " %")); break;   // #105: a negative factor read "+-10 %"
+                    case 40: rows.Add((T(146), Signed(v) + " %")); break;
                     case 44: case 47: case 51: case 53: rows.Add((T(151), $"{v} m")); break;
                     case 49: rows.Add((T(156), $"{v * 50} km/h")); break;
                     case 50: rows.Add((T(139), $"{v} %")); break;
@@ -123,6 +128,10 @@ namespace GoF2Remake.UI
                     case 59: rows.Add((T(163), $"{v} t")); break;
                 }
             }
+            // Remake: a weapon's damage to shields (Flight.Gun.ShieldFactor: the Disruptor's 200 %, a mod's shieldDamage).
+            float shieldFactor = Flight.Gun.ShieldFactor(it);
+            if ((it.TypeId == 0 || it.TypeId == 2) && Mathf.Abs(shieldFactor - 1f) > 0.001f)
+                rows.Add((Localization.Extra("statShieldDamage", "Damage to shields"), $"{Mathf.RoundToInt(shieldFactor * 100f)} %"));
             return rows;
         }
 
@@ -144,6 +153,8 @@ namespace GoF2Remake.UI
             ShipData current, IEnumerable<int> currentMods)
         {
             string T(int id) => Localization.Get(id);
+            s = Modding.ModShipKits.Effective(s);   // a customizable ship: as its build makes it
+            current = Modding.ModShipKits.Effective(current);
             int Lv(int mod) => Session.ModLevel(mods, mod);
             int CurLv(int mod) => Session.ModLevel(currentMods, mod);
             string Plus(int mod) => Lv(mod) > 0 ? " (+)" : "";

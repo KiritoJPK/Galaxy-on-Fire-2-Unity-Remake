@@ -78,7 +78,11 @@ namespace GoF2Remake.Data
                 return AgentGenerator.Round50(reward * AgentGenerator.MissionBonus(clientRace));
             }
         }
-        public int Total => reward + CurrentBonus;
+        /// <summary>Remake (a player's report): the bonus promised when the mission was taken (Freelance.Accept); the original pays the
+        /// bonus its chat set (SpaceLounge's Mission::setBonus, kept on the accepted mission and saved), not one recomputed
+        /// with the standing at the payout. -1 = an offer not taken yet, or a mission from an older save (recomputed then).</summary>
+        public int promisedBonus = -1;
+        public int Total => reward + (promisedBonus >= 0 ? promisedBonus : CurrentBonus);
     }
 
     [Serializable]

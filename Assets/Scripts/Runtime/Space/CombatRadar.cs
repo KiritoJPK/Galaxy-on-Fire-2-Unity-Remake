@@ -27,6 +27,12 @@
 //               beam lets go when the ship dies (TractorBeam: !Player::isActive)
 //   auto modes  Radar::Radar from the beam's attr 23: 1 (AB-3 Kingfisher) the first crate on screen is salvaged at once, 2
 //               (AB-4 Octopus) any crate, even off screen and on the autopilot; only dead cargo (crates), never ships
+//   remake      (for mods) a tractor beam with attr 122 "tractorTargets" N >= 2 also pulls up to N - 1 more crates by itself,
+//               the nearest within attr 123 "tractorRange" (default 30000 units, 1.5 km), on screen or not, each on a beam
+//               of its own (like the transfusion beams' attr 55 slots): no salvage lock, no scanner needed, and the lock stays
+//               free for ships (the manual salvage, a steal or an auto mode still has the first beam; with none running the
+//               extra beams take all N). Not in the turret view; a mission container only while the hold has room. The
+//               beam's look is its item's look (a mod's tractor beam draws its base's beam).
 //   readout     a scanner with attr 31 = 1 (Ecoscan / Proscan / Ultrascan, Radar+0x1a5): a new ship lock within 24000 units
 //               per axis shows the ship's first cargo entry like a pickup ("<n>t <item>", Hud::catchCargo), or "Nothing to
 //               salvage." (542, HUD event 0x16) when it has no cargo list; nothing when every entry is empty. Remake: the
@@ -42,6 +48,9 @@ namespace GoF2Remake.Flight
     public class CombatRadar : MonoBehaviour
     {
         const float M = 0.05f, CrosshairDistanceMeters = 22000f * M, PullSpeed = 10f, CaptureUnits = 400f, SalvageRingDelay = 500f;
+        /// <summary>Remake-only tractor beam attributes (Modding.ItemStats "tractorTargets" / "tractorRange").</summary>
+        public const int TractorTargetsAttr = 122, TractorRangeAttr = 123, MaxTractorTargets = 8;
+        public const float DefaultTractorRangeUnits = 30000f;
 
         public bool HasScanner { get; private set; }
         /// <summary>The lock candidate: a Target (ship) or null.</summary>
@@ -76,7 +85,15 @@ namespace GoF2Remake.Flight
         Crate refusedCrate;
         NpcShip refusedSteal;
         Transform beam;
+        GameObject beamPrefab;
         float beamLength = M;
+        // Remake (tractorTargets): the crates the extra beams pull, each with its own beam.
+        sealed class Pull { public Crate crate; public Transform beam; }
+        readonly System.Collections.Generic.List<Pull> extra = new System.Collections.Generic.List<Pull>();
+        int tractorTargets = 1;
+        float tractorRangeUnits = DefaultTractorRangeUnits;
+        /// <summary>The crates the extra beams pull now (tractorTargets).</summary>
+        public int ExtraPulls => extra.Count;
 
         /// <summary>The orbit's gas clouds (SpaceLevel; null without): the spectral filters' lock and markers.</summary>
         [System.NonSerialized] public GasCloudField Clouds;
@@ -109,32 +126,50 @@ namespace GoF2Remake.Flight
             CloudRadar = filter != null && filter.Attr(57) == 1;
             CloudOffScreen = filter != null && filter.Attr(58) == 1;
             var tractor = Shop.FirstMounted(db, 13);
-            if (tractor != null) { tractorItem = tractor.index; tractorLockMs = tractor.Attr(24); tractorMode = tractor.Attr(23); }
+            if (tractor != null)
+            {
+                tractorItem = tractor.index;
+                tractorLockMs = tractor.Attr(24);
+                tractorMode = tractor.Attr(23);
+                tractorTargets = TractorTargets(tractor);
+                tractorRangeUnits = tractor.Attr(TractorRangeAttr, (int)DefaultTractorRangeUnits);
+            }
             sfx = gameObject.AddComponent<AudioSource>();
             sfx.playOnAwake = false;
             beamLoop = gameObject.AddComponent<AudioSource>();
             beamLoop.playOnAwake = false;
             beamLoop.loop = true;
             beamLoop.clip = GoF2Remake.Modding.ModSounds.Get(assets != null ? assets.tractorLoop : null);
-            var beamPrefab = assets != null && tractorItem >= 0 ? assets.Tractor(tractorItem) : null;
-            if (beamPrefab != null)
+            beamPrefab = assets != null && tractor != null ? assets.Tractor(tractor.Look) : null;   // a mod's beam: its base's look
+            beam = MakeBeam();
+            if (beam != null)
             {
-                var go = Instantiate(beamPrefab);
-                go.name = "Tractor beam";
-                GunRig.StripForFx(go);
-                GunRig.EnableFades(go);   // its keys pulse the width 1..1.5 and the `extra` opacity 25..50 %
                 // The mesh is +-250 units wide and 1 unit (0.05 m) long.
                 beamLength = 0f;
-                foreach (var mf in go.GetComponentsInChildren<MeshFilter>()) if (mf.sharedMesh != null) beamLength = Mathf.Max(beamLength, mf.sharedMesh.bounds.size.z);
+                foreach (var mf in beam.GetComponentsInChildren<MeshFilter>()) if (mf.sharedMesh != null) beamLength = Mathf.Max(beamLength, mf.sharedMesh.bounds.size.z);
                 if (beamLength <= 0f) beamLength = M;
-                beam = go.transform;
-                go.SetActive(false);
             }
+        }
+
+        /// <summary>The tractor beam's crate count (attr 122, 1..MaxTractorTargets; 1 = the original's one beam).</summary>
+        public static int TractorTargets(ItemData tractor) =>
+            tractor == null ? 0 : Mathf.Clamp(tractor.Attr(TractorTargetsAttr, 1), 1, MaxTractorTargets);
+
+        Transform MakeBeam()
+        {
+            if (beamPrefab == null) return null;
+            var go = Instantiate(beamPrefab);
+            go.name = "Tractor beam";
+            GunRig.StripForFx(go);
+            GunRig.EnableFades(go);   // its keys pulse the width 1..1.5 and the `extra` opacity 25..50 %
+            go.SetActive(false);
+            return go.transform;
         }
 
         void OnDestroy()
         {
             if (beam != null) Destroy(beam.gameObject);
+            for (int i = extra.Count - 1; i >= 0; i--) ReleaseExtra(i);
         }
 
         void Update()
@@ -150,7 +185,10 @@ namespace GoF2Remake.Flight
             bool turretView = weapons != null && weapons.TurretView;
             if (turretView && Salvaging != null) { Salvaging.pulled = false; Salvaging = null; }
             UpdateSalvage(dtMs);
-            if (!HasScanner || health == null || health.Dead || nav == null || nav.Paused || nav.MenuOpen || turretView) { Candidate = null; CrateCandidate = null; StealCandidate = null; LockFrame = -1; UpdateCloudLock(-1, 0f); Publish(); return; }
+            UpdateExtraBeams(dtMs, !turretView && health != null && !health.Dead && nav != null && !nav.Jumping,
+                             nav != null && !nav.Paused && !nav.MenuOpen && !nav.RadarOff);
+            // MGame::OnRender2D: no Radar::draw in a cutscene or the fly-in, so no ship / crate / cloud lock (nor its sound).
+            if (!HasScanner || health == null || health.Dead || nav == null || nav.Paused || nav.MenuOpen || turretView || nav.RadarOff) { Candidate = null; CrateCandidate = null; StealCandidate = null; LockFrame = -1; UpdateCloudLock(-1, 0f); Publish(); return; }
             // Radar+0x1ab (AB-4): any crate, wherever it is, even on the autopilot.
             if (tractorMode == 2 && Salvaging == null && !nav.Jumping) AutoSalvage(Camera.main, false);
 
@@ -205,7 +243,7 @@ namespace GoF2Remake.Flight
                             }
                             // KIPlayer untargetable (a Rhino's / Myfft's turret, Level::createFighterTurrets): no lock; it was
                             // locked, dropped and locked again every frame, so the Rhino under it couldn't be scanned.
-                            if (s.Gone || !s.Target.Alive || s.Hidden || s.RadarHidden || s.DockingType > 0 || s.Asleep || s.Target.untargetable) continue;
+                            if (s.Gone || !s.Target.Alive || s.Hidden || s.RadarHidden || s.OffersDocking || s.Asleep || s.Target.untargetable) continue;
                             if (!InBox(cam, c, box, s.transform.position, out float d)) continue;
                             // KIPlayer+0x20: a disabled ship with cargo is salvage (it wins over the ship locks).
                             if (s.Hp.empDisabled && s.HasCargo) { if (d < stealD && (Salvaging == null || Salvaging.stolenFrom != s)) { stealD = d; bestSteal = s; } }
@@ -229,7 +267,7 @@ namespace GoF2Remake.Flight
                     {
                         bestD = float.MaxValue;
                         foreach (var cr in Crate.All)
-                            if (cr != Salvaging && !cr.claimedByOther && InBox(cam, c, box, cr.transform.position, out float d) && d < bestD) { bestD = d; bestCrate = cr; }
+                            if (cr != Salvaging && !cr.pulled && !cr.claimedByOther && InBox(cam, c, box, cr.transform.position, out float d) && d < bestD) { bestD = d; bestCrate = cr; }
                         if (bestCrate != null) best = null;
                     }
                     // Radar::draw 0x1570ec, a spectral filter with attr 57: a live gas cloud in the box is a lock candidate
@@ -334,9 +372,85 @@ namespace GoF2Remake.Flight
         void StartSalvage(Crate crate)
         {
             crate.PullStarted?.Invoke();   // multiplayer: the claim
+            if (crate.pulled) ReleaseExtra(extra.FindIndex(p => p.crate == crate));   // an extra beam had it: the lock's beam takes over
             Salvaging = crate;
             Salvaging.pulled = true;
             if (beamLoop.clip != null && !beamLoop.isPlaying) beamLoop.Play();
+        }
+
+        /// <summary>Remake (tractorTargets): the extra beams. Each pulls its crate in like the main beam and captures it; free
+        /// beams take the nearest crates within reach ('pick': not paused, in a menu or a cutscene). 'keep' false (the turret
+        /// view, death, a jump) lets them all go.</summary>
+        void UpdateExtraBeams(float dtMs, bool keep, bool pick)
+        {
+            for (int i = extra.Count - 1; i >= 0; i--)
+            {
+                var p = extra[i];
+                var c = p.crate;
+                if (!keep || c == null || c.claimedByOther || c == Salvaging || !c.pulled) { ReleaseExtra(i); continue; }
+                if (!PullIn(c, p.beam, dtMs) || c.captureBlocked) continue;
+                extra.RemoveAt(i);
+                if (p.beam != null) Destroy(p.beam.gameObject);
+                Capture(c);
+            }
+            if (keep && pick && tractorItem >= 0 && tractorTargets > 1)
+            {
+                int free = tractorTargets - (Salvaging != null ? 1 : 0) - extra.Count;
+                bool room = free > 0 && Shop.FreeCargo(db) > 0;
+                float reach2 = tractorRangeUnits * M * tractorRangeUnits * M;
+                while (free-- > 0)
+                {
+                    Crate pickCrate = null;
+                    float best = reach2;
+                    foreach (var cr in Crate.All)
+                    {
+                        if (cr == null || cr.pulled || cr == Salvaging || cr.stolenFrom != null || cr.claimedByOther || !cr.HasLoot) continue;
+                        if (cr.missionCrate && !room) continue;   // it would only come back: the hold has no room for it
+                        float d = (cr.transform.position - transform.position).sqrMagnitude;
+                        if (d < best) { best = d; pickCrate = cr; }
+                    }
+                    if (pickCrate == null) break;
+                    pickCrate.PullStarted?.Invoke();   // multiplayer: the claim
+                    pickCrate.pulled = true;
+                    extra.Add(new Pull { crate = pickCrate, beam = MakeBeam() });
+                }
+            }
+            UpdateBeamLoop();
+        }
+
+        void ReleaseExtra(int i)
+        {
+            if (i < 0 || i >= extra.Count) return;
+            var p = extra[i];
+            extra.RemoveAt(i);
+            if (p.crate != null && p.crate != Salvaging) p.crate.pulled = false;
+            if (p.beam != null) Destroy(p.beam.gameObject);
+        }
+
+        void UpdateBeamLoop()
+        {
+            bool on = Salvaging != null || extra.Count > 0;
+            if (on && beamLoop.clip != null && !beamLoop.isPlaying) beamLoop.Play();
+            else if (!on && beamLoop.isPlaying) beamLoop.Stop();
+        }
+
+        /// <summary>TractorBeam::update's pull: the crate toward the ship at 10 u/ms, the beam from the ship to it; true once it
+        /// is within the capture distance (400 units).</summary>
+        bool PullIn(Crate crate, Transform beamTransform, float dtMs)
+        {
+            var to = transform.position - crate.transform.position;
+            float dist = to.magnitude;
+            if (dist / M < CaptureUnits) return true;
+            crate.transform.position += to / dist * Mathf.Min(dist, PullSpeed * dtMs * M);
+            if (beamTransform != null)
+            {
+                beamTransform.gameObject.SetActive(true);
+                beamTransform.position = transform.position;
+                beamTransform.rotation = Quaternion.LookRotation(-to, transform.up);
+                // TractorBeam::update 0x17c16c: setScaling(beam, 0.5, 0.5, distance): 250 units wide, exactly as long as the distance.
+                beamTransform.localScale = new Vector3(0.5f, 0.5f, dist / beamLength);
+            }
+            return false;
         }
 
         /// <summary>Radar::draw's auto modes: the nearest crate on screen (mode 1) or anywhere (mode 2) is locked at once.</summary>
@@ -380,7 +494,7 @@ namespace GoF2Remake.Flight
             if (Salvaging == null)
             {
                 if (beam != null && beam.gameObject.activeSelf) beam.gameObject.SetActive(false);
-                if (beamLoop.isPlaying) beamLoop.Stop();
+                if (beamLoop.isPlaying && extra.Count == 0) beamLoop.Stop();
                 return;
             }
             // TractorBeam::update lets go when the ship is gone (Player::isActive); a dying one keeps its crate coming, which
@@ -393,18 +507,7 @@ namespace GoF2Remake.Flight
             }
             // Multiplayer: another player got it first (NetCrate's claim).
             if (Salvaging.claimedByOther) { Salvaging.pulled = false; Salvaging = null; return; }
-            var to = transform.position - Salvaging.transform.position;
-            float dist = to.magnitude;
-            if (dist / M < CaptureUnits) { if (!Salvaging.captureBlocked) Capture(Salvaging); return; }   // blocked: waits for the claim
-            Salvaging.transform.position += to / dist * Mathf.Min(dist, PullSpeed * dtMs * M);
-            if (beam != null)
-            {
-                beam.gameObject.SetActive(true);
-                beam.position = transform.position;
-                beam.rotation = Quaternion.LookRotation(-to, transform.up);
-                // TractorBeam::update 0x17c16c: setScaling(beam, 0.5, 0.5, distance): 250 units wide, exactly as long as the distance.
-                beam.localScale = new Vector3(0.5f, 0.5f, dist / beamLength);
-            }
+            if (PullIn(Salvaging, beam, dtMs) && !Salvaging.captureBlocked) Capture(Salvaging);   // blocked: waits for the claim
         }
 
         /// <summary>KIPlayer::captureCrate 0xb2a00: the crate is gone once captured (KIPlayer+0x74 = 0) and a dead ship leaves no
@@ -414,8 +517,8 @@ namespace GoF2Remake.Flight
         /// stays for another try. Missiles of a mounted launcher's type reload it (Item::changeAmount), the rest is cargo.</summary>
         void Capture(Crate crate)
         {
-            Salvaging = null;
-            if (beamLoop.isPlaying) beamLoop.Stop();
+            if (crate == Salvaging) Salvaging = null;
+            UpdateBeamLoop();
             if (assets != null && assets.tractorClose != null) sfx.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(assets.tractorClose), Settings.SfxVolume);
             var entry = crate.loot.Find(s => s.amount > 0);
             if (entry == null) { Destroy(crate.gameObject); return; }

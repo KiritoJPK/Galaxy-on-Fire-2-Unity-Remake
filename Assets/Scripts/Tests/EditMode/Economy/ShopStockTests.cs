@@ -137,6 +137,29 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void AModItemsAlwaysSoldAtStationStocksItWhateverItsKind()
+        {
+            // Remake mods: "alwaysSoldAt" beats the special stations' one-kind filters (a mod's shields and cloaks at Var
+            // Destro were never sold); the original's own attr-61 items keep them.
+            Session.CampaignMission = 100;
+            var db = Database.Load();   // a copy to change: Db is the shared read-only one
+            var shield = db.Item(50);   // Targe Shield: equipment, not sold at Var Destro (105) or Valkyrie (101)
+            var goods = db.Item(22);    // a commodity: not sold at Quineros (107)
+            foreach (var (it, station) in new[] { (shield, 105), (shield, 101), (goods, 107), (shield, 106) })
+            {
+                it.modded = true;
+                int at = System.Array.IndexOf(it.attrKeys, 61);
+                if (at >= 0) it.attrValues[at] = station;
+                else { it.attrKeys = it.attrKeys.Append(61).ToArray(); it.attrValues = it.attrValues.Append(station).ToArray(); }
+                for (int r = 0; r < 5; r++)
+                    Assert.IsTrue(Shop.GenerateItems(db, station).Exists(s => s.item == it.index), $"item {it.index} at {station}");
+                it.modded = false;
+                for (int r = 0; r < 5; r++)
+                    Assert.IsFalse(Shop.GenerateItems(db, station).Exists(s => s.item == it.index), $"original item {it.index} at {station}");
+            }
+        }
+
+        [Test]
         public void SaoPerulaSellsOnlyItsGoodsAndTheSpecialties()
         {
             Session.CampaignMission = 100;
@@ -378,6 +401,23 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(3, Session.RecentStations.Count);
             Assert.AreEqual(new[] { 15, 41, 86 }, Session.RecentStations.Select(s => s.station).ToArray());
             Assert.AreNotSame(a, Shop.EnterStation(Db, 70), "fell off the stack: generated afresh");
+        }
+
+        [Test]
+        public void ArrivingInOrbitsPushesTheStackLikeDocking()
+        {
+            // Status::departStation runs on every orbit arrival: flying through 3 other orbits without docking makes the
+            // station's stock afresh (Katashán's empty dealer stayed until the player had docked at 3 other stations).
+            var a = Shop.EnterStation(Db, 120);
+            Shop.ArriveInOrbit(Db, 120);
+            Assert.AreSame(a, Shop.EnterStation(Db, 120), "already on the stack: kept");
+            Shop.ArriveInOrbit(Db, 15);
+            Shop.ArriveInOrbit(Db, 41);
+            Shop.ArriveInOrbit(Db, 15);   // a revisit doesn't reorder
+            Assert.AreEqual(new[] { 120, 15, 41 }, Session.RecentStations.Select(s => s.station).ToArray());
+            Shop.ArriveInOrbit(Db, 86);
+            Assert.AreEqual(new[] { 15, 41, 86 }, Session.RecentStations.Select(s => s.station).ToArray());
+            Assert.AreNotSame(a, Shop.EnterStation(Db, 120), "fell off the stack: generated afresh");
         }
 
         [Test]

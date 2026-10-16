@@ -182,14 +182,18 @@ namespace GoF2Remake.Flight
                 if (t.kind != Kind.DockingTarget) continue;
                 var s = t.dockingShip;
                 t.name = s != null ? s.Target.displayName ?? "" : "";
-                t.hidden = s == null || s.Gone || !s.Target.Alive || s.DockingType <= 0 || s.RadarHidden || s.Hidden || s.Inactive
-                           || (s.DockingType == ObjectDocking.Resupply && (s.Target.hostileToPlayer || CapitalShips.InBattle(s)));   // a hostile or fighting carrier (CapitalShips)
+                // a hostile or fighting carrier is a ship then (NpcShip.OffersDocking, CapitalShips.DeckOpen)
+                t.hidden = s == null || s.Gone || !s.Target.Alive || !s.OffersDocking || s.RadarHidden || s.Hidden || s.Inactive;
                 if (t.hidden && (Locked == t || Candidate == t)) { Locked = Candidate = null; LockTimer = 0f; }
             }
         }
 
         /// <summary>Set by the level: planet jumps and the Khador Drive are refused (story, campaign_flow.md 7).</summary>
         public Func<bool> JumpsBlocked;
+        /// <summary>Set by the level: a level's cutscene or the launch / arrival fly-in runs. MGame::OnRender2D skips
+        /// Radar::draw then, so no lock completes and no lock sound plays (a player's report: the lock beep in step 160's cutscene).</summary>
+        public Func<bool> RadarHidden;
+        public bool RadarOff => RadarHidden != null && RadarHidden();
         /// <summary>Set by the level: a story rule refuses the jump to this station itself (index 24: Sahi needs a scanner and a
         /// tractor beam, 532) and shows why; true = refused.</summary>
         public Func<int, bool> PlanetJumpRefused;
@@ -547,7 +551,7 @@ namespace GoF2Remake.Flight
             if (Candidate == null) { Locked = null; wasLocked = false; return; }
             LockTimer += dtMs;
             Locked = LockTimer > LockTimeMs ? Candidate : null;   // strict >, no -200 ms here
-            if (Locked != null && !wasLocked) Play(sounds?.targetLock);
+            if (Locked != null && !wasLocked && !RadarOff) Play(sounds?.targetLock);
             wasLocked = Locked != null;
             // The autopilot flying to a programmed station's planet jumps as soon as that planet is locked.
             if (Locked != null && Locked == AutopilotTarget && Locked.kind == Kind.Planet)

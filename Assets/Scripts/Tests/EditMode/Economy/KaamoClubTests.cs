@@ -187,16 +187,37 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
-        public void StackedModsUpToLevelTen()
+        public void StackedModsUpToTheDefaultLevel()
         {
             using (new SettingsScope<bool>(() => Settings.KaamoStacking, v => Settings.KaamoStacking = v))
+            using (new SettingsScope<int>(() => Settings.KaamoMaxLevel, v => Settings.KaamoMaxLevel = v))
             {
                 Settings.KaamoStacking = true;
+                Settings.KaamoMaxLevel = SessionRules.DefaultKaamoLevel;
                 for (int i = 0; i < 14; i++) Session.AddShipMod(2);
                 Assert.AreEqual(Session.MaxModLevel, Session.ModLevel(2));
-                Assert.AreEqual(10, Session.MaxModLevel);
-                Assert.AreEqual(10, Session.ModLevel(Session.ShipMods, 2));
+                Assert.AreEqual(5, Session.MaxModLevel, "the default limit");
+                Assert.AreEqual(5, Session.ModLevel(Session.ShipMods, 2));
                 Assert.AreEqual(0, Session.ModLevel(null, 2));
+            }
+        }
+
+        [Test]
+        public void TheUpgradeLimitIsTheSetting()
+        {
+            using (new SettingsScope<bool>(() => Settings.KaamoStacking, v => Settings.KaamoStacking = v))
+            using (new SettingsScope<int>(() => Settings.KaamoMaxLevel, v => Settings.KaamoMaxLevel = v))
+            {
+                Settings.KaamoStacking = true;
+                Settings.KaamoMaxLevel = 3;
+                for (int i = 0; i < 6; i++) Session.AddShipMod(1);
+                Assert.AreEqual(3, Session.ModLevel(1));
+                Settings.KaamoMaxLevel = 5;
+                Session.AddShipMod(1);
+                Assert.AreEqual(4, Session.ModLevel(1), "a raised limit sells the next level");
+                Settings.KaamoMaxLevel = 2;
+                Session.AddShipMod(1);
+                Assert.AreEqual(4, Session.ModLevel(1), "levels above a lowered limit stay, none is added");
             }
         }
 

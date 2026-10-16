@@ -40,11 +40,11 @@ namespace GoF2Remake.Vr
         {
             rig = owner;
             panels = screenPanels;
-            frame = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            frame = VrPanels.FromTemplate("VrFrame", "Universal Render Pipeline/Lit");
             frame.SetColor("_BaseColor", new Color(0.11f, 0.12f, 0.14f));
             frame.SetFloat("_Metallic", 0.65f);
             frame.SetFloat("_Smoothness", 0.45f);
-            glass = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            glass = VrPanels.FromTemplate("VrGlass", "Universal Render Pipeline/Unlit");
             glass.SetColor("_BaseColor", new Color(0.015f, 0.03f, 0.045f));
             Build();
             gameObject.AddComponent<VrControls>().Init(rig, frame);   // the grabbable stick and throttle (an option)

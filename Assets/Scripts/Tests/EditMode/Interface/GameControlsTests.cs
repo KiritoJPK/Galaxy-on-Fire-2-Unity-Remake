@@ -9,12 +9,13 @@
 // fire, D-pad right / up / down switch secondary / camera / auto turret, X action, View autopilot menu, D-pad left
 // actions menu, RS / LS press cloak / time extender, RS left / right dodge; the drill: arrows, W A S D second, LS). The
 // overrides are kept in PlayerPrefs "controls_bindings" as { version 2, bindings [action, index, path] } (an empty path
-// unbinds); every other version is ignored. Short names: the Xbox labels (CLAUDE.md "Input modes": always Xbox labels).
+// unbinds); every other version is ignored. Short names: the Xbox labels (pinned; PadGlyphStyleTests has the PlayStation ones).
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using GoF2Remake.Flight;
+using GoF2Remake.Data;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -31,6 +32,10 @@ namespace GoF2Remake.Tests
         {
             prefs = new DataUiTestKit.PrefsSnapshot();
             english = new DataUiTestKit.TextLanguage("en");
+            // The GoF2 key layout: a player who chose free flight in Options has its own layout (GameControls.ApplyStyle).
+            Settings.FlightStyle = FlightStyles.Original;
+            Settings.PadGlyphs = Settings.PadGlyphsXbox;   // the Xbox names, whatever controller the player last used
+            GameControls.ApplyStyle();
             GameControls.ResetToDefaults();
         }
 
@@ -39,6 +44,7 @@ namespace GoF2Remake.Tests
         {
             english?.Dispose();
             prefs?.Dispose();
+            GameControls.ApplyStyle();   // the player's own layout again (the option is back from the snapshot)
         }
 
         static readonly string[] RowIds =
@@ -47,12 +53,13 @@ namespace GoF2Remake.Tests
             "firePrimary", "fireSecondary", "switchSecondary", "camera", "autoTurret", "action", "autopilotMenu", "actionsMenu",
             "fastForward", "wingmen", "khadorDrive", "cloak", "timeExtender", "mouseSteering", "chat", "chatSend", "chatChannel",
             "screenshot", "multiplayerWindow", "distressCall",
+            "thrust", "strafe", "hover", "dampeners", "freeLookHold",   // free flight (PR #87)
         };
 
         [Test]
-        public void ThereAreThirtyOneFlightRows()
+        public void ThereAreThirtySixFlightRows()
         {
-            Assert.AreEqual(31, GameControls.Rows.Count);
+            Assert.AreEqual(36, GameControls.Rows.Count);
             CollectionAssert.AreEqual(RowIds, GameControls.Rows.Select(r => r.id).ToArray(), "in the options' order (the overrides are kept by action name)");
             foreach (var r in GameControls.Rows)
             {

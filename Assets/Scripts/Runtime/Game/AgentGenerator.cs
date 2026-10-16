@@ -159,7 +159,37 @@ namespace GoF2Remake.Data
             }
             AddCustomShipSellers(db, station, agents);
             AddModBlueprintSellers(db, station, agents);
+            AddStoryBlueprintSellers(db, station, agents);
             return agents;
+        }
+
+        /// <summary>Remake (players' report): the blueprints only the campaign unlocks (Blueprints.UnlockFromStory: steps 34,
+        /// 72, 104, 141) can't be had in free play, which runs no story steps (multiplayer's finished world, old free-play
+        /// saves). There a visitor in a Loma lounge (system 25, the black market) sells it, at 1.5x the product's highest price,
+        /// until it is known: (product, station): Var Destro (105), Sao Perula (106), Quineros (107).</summary>
+        static readonly (int product, int station)[] StoryBlueprints = { (85, 105), (183, 105), (206, 107), (210, 107) };
+
+        static void AddStoryBlueprintSellers(Database db, int station, List<Agent> agents)
+        {
+            if (!Session.FreePlay || station == 108 || station == 101 || Shop.InSupernovaSystem(SystemOf(db, station), station)) return;
+            int systemRace = Sys(db, SystemOf(db, station))?.raceId ?? -1;
+            foreach (var (product, at) in StoryBlueprints)
+            {
+                if (at != station || Blueprints.IsUnlocked(product) || db.Item(product) == null) continue;
+                if (agents.Exists(a => a.offer == AgentOffer.SellBlueprint && a.sellBlueprint == product)) continue;
+                int race = systemRace >= 0 && systemRace <= 3 ? systemRace : 0;
+                bool male = race == 0 ? R(100) < 60 : true;
+                var seller = new Agent
+                {
+                    name = RandomName(race, male), race = race, male = male, station = station, offer = AgentOffer.SellBlueprint,
+                    portrait = CreatePortrait(male, race), sellBlueprint = product,
+                    sellPrice = Round50(Math.Max(1000, db.Item(product).maxPrice) * 1.5f),
+                };
+                int i = agents.FindLastIndex(x => !x.IsStory && x.offer != AgentOffer.Diplomat && x.offer != AgentOffer.Wingmen
+                                                  && x.offer != AgentOffer.SellShip && x.offer != AgentOffer.SellBlueprint);
+                if (agents.Count >= 5 && i >= 0) agents[i] = seller;
+                else if (agents.Count < 5) agents.Add(seller);
+            }
         }
 
         /// <summary>Remake: a mod ship's lounge seller (ships.json "lounge", AgentOffer.SellShip). A visitor of the

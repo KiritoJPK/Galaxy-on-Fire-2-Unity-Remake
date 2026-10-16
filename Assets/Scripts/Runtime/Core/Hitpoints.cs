@@ -48,11 +48,20 @@ namespace GoF2Remake.Flight
             empRecoveryMs = recoveryMs;
         }
 
-        /// <summary>Player::damage: returns true when this hit killed it.</summary>
-        public bool Damage(int dmg)
+        /// <summary>Player::damage: returns true when this hit killed it. Remake: 'shieldFactor' scales what the hit does to
+        /// the shield (a weapon's shieldDamage, the Disruptor's x2: Flight.Gun.ShieldFactor); the part the shield doesn't
+        /// absorb goes on to the armor and hull at its plain value.</summary>
+        public bool Damage(int dmg, float shieldFactor = 1f)
         {
             if (!vulnerable || hull <= 0 || dmg <= 0) return false;
-            int s = (int)shield - dmg;
+            int s;
+            if (shieldFactor != 1f && shieldFactor > 0f && shield > 0f)
+            {
+                int onShield = (int)(dmg * shieldFactor);
+                if (onShield <= (int)shield) s = (int)shield - onShield;
+                else s = -(dmg - (int)((int)shield / shieldFactor));   // the plain damage the shield didn't stop
+            }
+            else s = (int)shield - dmg;
             if (s >= 0) { shield = s; shieldHit = true; }
             else
             {

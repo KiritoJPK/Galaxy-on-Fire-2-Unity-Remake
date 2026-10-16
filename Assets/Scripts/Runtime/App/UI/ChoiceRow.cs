@@ -77,6 +77,7 @@ namespace GoF2Remake.UI
                     int pick = i;
                     var b = new Button { focusable = false };
                     b.AddToClassList("choice-segment");
+                    if (i == texts.Length - 1) b.AddToClassList("choice-segment--last");   // USS has no :last-child in Unity 7
                     b.AddToClassList("gof-semibold");
                     b.clicked += () => Pick(pick);
                     segments.Add(b);

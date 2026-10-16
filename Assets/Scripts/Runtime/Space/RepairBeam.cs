@@ -129,10 +129,15 @@ namespace GoF2Remake.Flight
                 float amount = dtMs * (transfusion ? 0.01f : 0.03f) * rate;
                 if (transfusion)
                 {
-                    acc[i] += amount;
-                    while (acc[i] >= 1f && s.Target.Alive) { acc[i] -= 1f; s.Target.Damage(1f, false); }
+                    // RepairBeam::update 0xb41c4: it drains and refills only while the shield isn't full (getShieldDamageRate
+                    // < 100); with a full shield the beam stays drawn on its target until the next pick but does nothing (it
+                    // kept draining the target's hull).
                     if (playerHp != null && playerHp.shield < playerHp.maxShield)
+                    {
+                        acc[i] += amount;
+                        while (acc[i] >= 1f && s.Target.Alive) { acc[i] -= 1f; s.Target.Damage(1f, false); }
                         playerHp.shield = Mathf.Min(playerHp.maxShield, playerHp.shield + amount);
+                    }
                 }
                 else
                 {

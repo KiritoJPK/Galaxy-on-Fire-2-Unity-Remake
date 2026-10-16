@@ -77,6 +77,9 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<int> eventFlags = new NetworkVariable<int>(0, Read, Owner);   // an event's batch tag << 1 | spawned as an enemy (EventRunner)
         readonly NetworkVariable<ulong> killer = new NetworkVariable<ulong>(ulong.MaxValue, Read, Owner);   // the player who destroyed it (EventRunner' kills)
         readonly NetworkVariable<ulong> creator = new NetworkVariable<ulong>(ulong.MaxValue);  // server-written at spawn: whose ship
+        // Remake (generic turrets): the turret items on its turret mounts, "ship:item,item" (NpcMountedTurrets.Pack), shown
+        // still on the copy (TurretCore.DisplayAll, like another player's turret).
+        readonly NetworkVariable<FixedString64Bytes> turrets = new NetworkVariable<FixedString64Bytes>(default, Read, Owner);
 
         readonly NetSmoothing smoothing = new NetSmoothing();
         NpcShip ship;
@@ -199,6 +202,11 @@ namespace GoF2Remake.Multiplayer
                 var m = ship.Model;
                 model.Value = ship.ModelPath ?? "";
                 scale.Value = m.lossyScale;
+                if (ship.MountedTurrets != null)
+                {
+                    var packed = NpcMountedTurrets.Pack(ship.Spec.ship, ship.MountedTurrets.Items);
+                    if (packed.Length <= 60) turrets.Value = packed;
+                }
                 position.Value = m.position;
                 rotation.Value = m.rotation;
                 label.Value = ship.Target != null && !string.IsNullOrEmpty(ship.Target.displayName) ? ship.Target.displayName : "";
@@ -245,7 +253,7 @@ namespace GoF2Remake.Multiplayer
             target.isShip = true;
             target.customDeath = true;
             target.maxHp = 100f;
-            target.RemoteDamage = (amount, hitVector, byNpc) => DamageUpRpc(amount, hitVector, byNpc);
+            target.RemoteDamage = (amount, hitVector, byNpc, _) => DamageUpRpc(amount, hitVector, byNpc);   // NPCs have no shield
             target.RemoteEmp = emp => EmpUpRpc(emp);
             // Space junk is lockable after the ships and a far dot, like the owner's own junk (Target.RadarObjects).
             if (IsJunk) { Target.RadarObjects.Add(target); target.plateNameOnly = target.plateNoIcon = true; }
@@ -453,6 +461,12 @@ namespace GoF2Remake.Multiplayer
                 var assets = CombatAssets.Load();
                 prefab = assets != null && assets.junk != null && junkKind.Value < assets.junk.Length ? assets.junk[junkKind.Value] : null;
             }
+            else if (path.StartsWith(NpcShip.TurretModelPrefix))
+            {
+                // A turret object built from a turret item (SpawnSpec.turretItem): the item's turret model, still.
+                prefab = int.TryParse(path.Substring(NpcShip.TurretModelPrefix.Length), out int ti) && ti >= 0 && ti < NetGame.Db.Items.Count
+                    ? WeaponFx.Load(ti)?.turretMounted : null;
+            }
             else if (path.StartsWith(NpcShip.WreckModelPrefix))
             {
                 // A freighter wreck held at its end (NpcShip.ShowWreckAtEnd: the Supernova wrecks with a hidden blueprint).
@@ -467,6 +481,7 @@ namespace GoF2Remake.Multiplayer
             else prefab = path.StartsWith(AssembledObject.ResourcesFolder + "/") ? Resources.Load<GameObject>(path) : null;
             visual = prefab != null ? Instantiate(prefab, transform, false) : new GameObject("(no model)");
             if (wreck >= 0) PartAnimation.HoldAllAtEnd(visual);
+            if (path.StartsWith(NpcShip.TurretModelPrefix)) GunRig.StripForFx(visual);
             visual.transform.SetParent(transform, false);
             var s = scale.Value;   // finite and within reason (the battleship is 2x, a capital ship more), else as modelled
             bool sane = NetGuard.Finite(s) && Mathf.Abs(s.x) <= 100f && Mathf.Abs(s.y) <= 100f && Mathf.Abs(s.z) <= 100f;
@@ -475,6 +490,9 @@ namespace GoF2Remake.Multiplayer
             asm?.SetPlayerVariant((GoF2Remake.Data.Settings.NpcPlayerEngines || !asm.HasNpcExhaust) && asm.playerVariantParts != null && asm.playerVariantParts.Length > 0
                                   && asm.playerVariantParts[0] != null);
             name = $"NetProxy {model.Value}";
+            // Its turret items, still on their mounts (the owner's game aims and fires them; the shots are mirrored).
+            if (NpcMountedTurrets.Unpack(turrets.Value.ToString(), out int turretShip, out var turretItems))
+                TurretCore.DisplayAll(NetGame.Db, turretShip, turretItems, visual.transform);
             visual.SetActive(shown);
             if (target != null) HullCollision.Attach(visual, target, null);   // shots hit its real shape
             if (prefab != null && junkKind.Value < 0 && wreck < 0) { cloakLook?.Dispose(); cloakLook = new World.NpcCloak(visual.transform); }
@@ -523,7 +541,9 @@ namespace GoF2Remake.Multiplayer
             target.untargetable = hidden.Value || life.Value != Flying || cloaked >= 25f;
             // A mission ship's name only for the mission's team (its owner and their squad).
             bool team = !missionShip.Value || NetSquad.SameClient(OwnerClientId, NetPlayer.Local);
-            target.displayName = IsJunk ? Target.JunkName : label.Value.Length > 0 && team ? label.Value.ToString() : null;
+            // The owner's game writes the label (a wingman's name comes from its save): no rich-text tags reach the others'
+            // lock plates (<size>, <color> to impersonate staff or cover the HUD).
+            target.displayName = IsJunk ? Target.JunkName : label.Value.Length > 0 && team ? NetNews.Safe(label.Value.ToString()) : null;
             if (life.Value != shownLife)
             {
                 // NpcShip.UpdateDying's end: the explosion (with its sound); a fighter's model goes with it.

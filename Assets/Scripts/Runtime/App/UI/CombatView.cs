@@ -25,7 +25,9 @@ namespace GoF2Remake.UI
     public class CombatView
     {
         const float M = 0.05f, NearUnits = 24000f;
-        const float EllipseX = 657f, EllipseY = 491f;
+        // Radar::elipsoidIntersect's ellipse, image 0x4c7's size (remake: x FlightHud.RadarScale, smaller in the phone layout).
+        static float EllipseX => 657f * FlightHud.RadarScale;
+        static float EllipseY => 491f * FlightHud.RadarScale;
 
         class Marker
         {
@@ -176,7 +178,7 @@ namespace GoF2Remake.UI
                             if (Settings.DyingCargoMarkers) DrawCrate(Get(s), s.transform.position, s.Race == Standing.Void, cam, origin, centre);
                             continue;
                         }
-                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.DockingType > 0 || s.Target.untargetable) continue;
+                        if (s.Gone || !s.Target.Alive || s.Hidden || s.Asleep || s.RadarHidden || s.OffersDocking || s.Target.untargetable) continue;
                         int f = s.Target.hostileToPlayer ? 0 : s.Target.friendToPlayer ? 1 : 2;
                         DrawShip(Get(s), s.transform.position, f, s.Target.HullFraction, radar.Locked == s.Target, cam, origin, centre);
                         DrawEmp(Get(s), s.Hp != null ? s.Hp.EmpFraction : 1f);
@@ -210,8 +212,8 @@ namespace GoF2Remake.UI
                 if (plateFree && locked != null)
                 {
                     lockPlate.EnableInClassList("lock-plate--shown", true);
-                    // Radar::drawCurrentLock 0x158548: "<name or race> NN%"; the Hijacker / the Informer their name alone; a Most
-                    // Wanted criminal in its own colour.
+                    // Radar::drawCurrentLock 0x158548: "<name or race> NN%"; the Hijacker / the Informer their name alone; they and
+                    // a Most Wanted criminal in red.
                     // Built again only when something on it changed (every frame allocated the text and the icon's name), or
                     // when the mining / navigation view wrote its own text on the shared plate meanwhile (an asteroid's ore or a
                     // planet's name stayed on the ship's plate).
@@ -224,7 +226,7 @@ namespace GoF2Remake.UI
                         plateText = lockOre.text;
                         plateIcon = !locked.plateNoIcon && (locked.race >= 0 && locked.race <= 3 || locked.race == 8 || locked.race == 9) ? Tex($"race_{locked.race}") : null;
                     }
-                    lockOre.EnableInClassList("lock-ore--wanted", locked.plateWanted);
+                    lockOre.EnableInClassList("lock-ore--wanted", locked.plateRed);
                     lockClass.style.display = plateIcon != null ? DisplayStyle.Flex : DisplayStyle.None;
                     Image(lockClass, plateIcon);
                 }
@@ -315,6 +317,9 @@ namespace GoF2Remake.UI
                 Place(m.fill, p.x - 58f, p.y + 65f);
                 m.fill.style.width = Mathf.Clamp01(hull) * 110f;
                 if (locked) { Image(m.bracket, t.bracket); Place(m.bracket, p.x - 40.5f, p.y - 40.5f); }
+                // Remake: the locked ship's bar on top of the others. 158's sentry guns appear at Harval's position (full hull);
+                // with Harval EMP'd and still, a later marker's bar covered his, which looked frozen.
+                if (locked && layer.IndexOf(m.bracket) != layer.childCount - 1) { m.bar.BringToFront(); m.fill.BringToFront(); m.bracket.BringToFront(); }
             }
             else
             {

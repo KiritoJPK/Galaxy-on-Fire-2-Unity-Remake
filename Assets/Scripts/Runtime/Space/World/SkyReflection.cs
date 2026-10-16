@@ -13,6 +13,7 @@ using UnityEngine.Rendering;
 
 namespace GoF2Remake.World
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // black: a DontSave cubemap kept for the run, made again when gone
     public static class SkyReflection
     {
         /// <summary>The ambient light from RenderSettings.skybox (call after changing it).</summary>

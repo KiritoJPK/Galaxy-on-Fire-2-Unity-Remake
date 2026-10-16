@@ -62,6 +62,12 @@ namespace GoF2Remake.Events
                     var data = Data(reference);
                     if (data == null) continue;
                     var node = new EventGraphData.Node { id = Guid(Get(data, "m_Guid")), graph = gid };
+                    var at = Get(data, "m_Position");
+                    if (at != null)
+                    {
+                        float.TryParse(Str(Get(at, "x")), NumberStyles.Float, CultureInfo.InvariantCulture, out node.x);
+                        float.TryParse(Str(Get(at, "y")), NumberStyles.Float, CultureInfo.InvariantCulture, out node.y);
+                    }
                     if (cls == "VariableNodeModelImp")
                     {
                         var decl = Data(Get(data, "m_DeclarationModel"));

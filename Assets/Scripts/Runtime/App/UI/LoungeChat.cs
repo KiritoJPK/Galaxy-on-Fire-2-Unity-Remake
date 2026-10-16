@@ -160,7 +160,7 @@ namespace GoF2Remake.Data
                     case AgentOffer.SmallTalk: return false;
                     case AgentOffer.Diplomat: return Standing.IsEnemy(a.race);
                     case AgentOffer.Mission: case AgentOffer.Purchase: return a.HasMission;
-                    case AgentOffer.SellMod: return ModForSale(a.sellMod);   // installed on this hull: 858 (unless upgrades stack)
+                    case AgentOffer.SellMod: return ModForSale(a.sellMod);   // at its cap on this hull: 858
                     case AgentOffer.EventMission: return EventMissions.OfferOf(a) != null;
                     default: return true;
                 }

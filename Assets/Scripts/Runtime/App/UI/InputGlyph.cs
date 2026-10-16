@@ -1,16 +1,22 @@
 // InputGlyph.cs
-// Small UI Toolkit elements that show an input: a keyboard keycap or an Xbox-style controller button (the game
-// always uses Xbox labels, whatever pad is connected). Styled by UI/GoF2InputGlyphs.uss (.keycap, .pad-*).
+// Small UI Toolkit elements that show an input: a keyboard keycap or a controller button in the Xbox or the PlayStation
+// style (InputMode.Style: the controller last used, or Options > Controls "Controller button icons"). A controller glyph
+// (PadGlyph) redraws itself when the style changes, so glyphs built once (dialogue buttons, Launch) follow it too.
+// Styled by UI/GoF2InputGlyphs.uss (.keycap, .pad-*; the PlayStation face buttons .pad-face--ps, their symbols drawn).
 
 using System.Collections.Generic;
 using GoF2Remake.Data;
 using GoF2Remake.Flight;
+using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 
 namespace GoF2Remake.UI
 {
-    public enum PadButton { A, B, X, Y, LeftStick, RightStick, DPad, LeftTrigger, RightTrigger, LeftBumper, RightBumper, Menu, View }
+    /// <summary>A controller button by its place, named as on an Xbox pad (south = A ...); PadGlyph shows it in the
+    /// current style. The stick presses are their own (Xbox LS / RS, PlayStation L3 / R3).</summary>
+    public enum PadButton { A, B, X, Y, LeftStick, RightStick, DPad, LeftTrigger, RightTrigger, LeftBumper, RightBumper, Menu, View,
+        LeftStickPress, RightStickPress, Touchpad }
 
     public static class InputGlyph
     {
@@ -31,22 +37,8 @@ namespace GoF2Remake.UI
             return l;
         }
 
-        public static VisualElement Pad(PadButton button) => button switch
-        {
-            PadButton.A => Face("A", "pad-face--a"),
-            PadButton.B => Face("B", "pad-face--b"),
-            PadButton.X => Face("X", "pad-face--x"),
-            PadButton.Y => Face("Y", "pad-face--y"),
-            PadButton.LeftStick => Text("LS", "pad-stick"),
-            PadButton.RightStick => Text("RS", "pad-stick"),
-            PadButton.DPad => Text("D-PAD", "pad-menu"),
-            PadButton.LeftTrigger => Text("LT", "pad-trigger"),
-            PadButton.RightTrigger => Text("RT", "pad-trigger"),
-            PadButton.LeftBumper => Text("LB", "pad-bumper"),
-            PadButton.RightBumper => Text("RB", "pad-bumper"),
-            PadButton.View => Text("VIEW", "pad-menu"),
-            _ => Text("MENU", "pad-menu"),
-        };
+        /// <summary>A controller button in the current style (and again whenever it changes).</summary>
+        public static VisualElement Pad(PadButton button) => new PadGlyph(button);
 
         /// <summary>What an action is bound to right now (GameControls, rebindable) for this input kind: the keyboard's first
         /// slot (the second too with 'both', or when the first is unbound), a composite part by part; the controller's slot.
@@ -70,24 +62,18 @@ namespace GoF2Remake.UI
         static void AddPath(List<VisualElement> list, string path, bool pad)
         {
             if (string.IsNullOrEmpty(path)) return;
-            string name = GameControls.ShortName(path);
-            if (!pad) { list.Add(Key(name, name.Length > 3)); return; }
-            list.Add(name switch
+            if (!pad) { string name = GameControls.ShortName(path); list.Add(Key(name, name.Length > 3)); return; }
+            PadButton? button = GameControls.PadControl(path) switch
             {
-                "A" => Pad(PadButton.A), "B" => Pad(PadButton.B), "X" => Pad(PadButton.X), "Y" => Pad(PadButton.Y),
-                "LT" => Pad(PadButton.LeftTrigger), "RT" => Pad(PadButton.RightTrigger),
-                "LB" => Pad(PadButton.LeftBumper), "RB" => Pad(PadButton.RightBumper),
-                "LS" => Pad(PadButton.LeftStick), "RS" => Pad(PadButton.RightStick),
-                "MENU" => Pad(PadButton.Menu), "VIEW" => Pad(PadButton.View),
-                _ => Text(name, name.StartsWith("D-PAD") ? "pad-menu" : "pad-stick"),
-            });
-        }
-
-        static VisualElement Face(string letter, string colour)
-        {
-            var l = Text(letter, "pad-face");
-            l.AddToClassList(colour);
-            return l;
+                "buttonsouth" => PadButton.A, "buttoneast" => PadButton.B, "buttonwest" => PadButton.X, "buttonnorth" => PadButton.Y,
+                "lefttrigger" => PadButton.LeftTrigger, "righttrigger" => PadButton.RightTrigger,
+                "leftshoulder" => PadButton.LeftBumper, "rightshoulder" => PadButton.RightBumper,
+                "leftstick" => PadButton.LeftStick, "rightstick" => PadButton.RightStick,
+                "leftstickpress" => PadButton.LeftStickPress, "rightstickpress" => PadButton.RightStickPress,
+                "start" => PadButton.Menu, "select" => PadButton.View, "dpad" => PadButton.DPad, "touchpadbutton" => PadButton.Touchpad,
+                _ => null,
+            };
+            list.Add(button.HasValue ? new PadGlyph(button.Value) : new PadGlyph(path));   // a stick or D-pad direction: its name
         }
 
         /// <summary>Glyphs before a button's text: the text moves into a child Label (a Button measures its own text only
@@ -115,6 +101,132 @@ namespace GoF2Remake.UI
             l.AddToClassList(cls);
             l.AddToClassList("gof-semibold");
             return l;
+        }
+    }
+
+    /// <summary>A controller button glyph that follows InputMode.Style: Xbox's coloured A / B / X / Y and grey LB / RT /
+    /// MENU..., or PlayStation's dark face buttons with their drawn symbols (cross blue, circle red, square pink, triangle
+    /// green; the UI font has no ✕) and L1 / R2 / OPTIONS... Classes the owner adds stay; only its own (.pad-*) are swapped.</summary>
+    public class PadGlyph : Label
+    {
+        public enum Shape { None, Cross, Circle, Square, Triangle }
+
+        static readonly Color CrossColour = new Color32(0x7C, 0xA8, 0xF2, 0xFF);
+        static readonly Color CircleColour = new Color32(0xFF, 0x5E, 0x66, 0xFF);
+        static readonly Color SquareColour = new Color32(0xEA, 0x8F, 0xD0, 0xFF);
+        static readonly Color TriangleColour = new Color32(0x3F, 0xD2, 0xA4, 0xFF);
+
+        readonly PadButton? button;
+        readonly string path;   // a binding the button list doesn't name (a stick or D-pad direction)
+        readonly List<string> own = new List<string>();
+
+        /// <summary>The PlayStation face symbol drawn (None: the glyph is text).</summary>
+        public Shape Symbol { get; private set; }
+
+        /// <summary>The style it shows now.</summary>
+        public PadStyle Style { get; private set; }
+
+        public PadGlyph(PadButton button) { this.button = button; Init(); }
+        public PadGlyph(string path) { this.path = path; Init(); }
+
+        void Init()
+        {
+            pickingMode = PickingMode.Ignore;
+            AddToClassList("gof-semibold");
+            generateVisualContent += DrawSymbol;
+            RegisterCallback<AttachToPanelEvent>(_ => { InputMode.StyleChanged -= Apply; InputMode.StyleChanged += Apply; Apply(); });
+            RegisterCallback<DetachFromPanelEvent>(_ => InputMode.StyleChanged -= Apply);
+            Apply();
+        }
+
+        /// <summary>Shows the current style (InputMode.Style).</summary>
+        public void Apply() => Apply(InputMode.Style);
+
+        public void Apply(PadStyle style)
+        {
+            Style = style;
+            foreach (var c in own) RemoveFromClassList(c);
+            own.Clear();
+            Symbol = Shape.None;
+            bool ps = style == PadStyle.PlayStation;
+            if (!button.HasValue)
+            {
+                string xbox = GameControls.ShortName(path, PadStyle.Xbox);
+                Set(GameControls.ShortName(path, style), xbox.StartsWith("D-PAD") ? "pad-menu" : "pad-stick");
+            }
+            else switch (button.Value)
+            {
+                case PadButton.A: Face("A", "pad-face--a", Shape.Cross, ps); break;
+                case PadButton.B: Face("B", "pad-face--b", Shape.Circle, ps); break;
+                case PadButton.X: Face("X", "pad-face--x", Shape.Square, ps); break;
+                case PadButton.Y: Face("Y", "pad-face--y", Shape.Triangle, ps); break;
+                case PadButton.LeftStick: Set(ps ? "L" : "LS", "pad-stick"); break;
+                case PadButton.RightStick: Set(ps ? "R" : "RS", "pad-stick"); break;
+                case PadButton.LeftStickPress: Set(ps ? "L3" : "LS", "pad-stick"); break;
+                case PadButton.RightStickPress: Set(ps ? "R3" : "RS", "pad-stick"); break;
+                case PadButton.DPad: Set("D-PAD", "pad-menu"); break;
+                case PadButton.LeftTrigger: Set(ps ? "L2" : "LT", "pad-trigger"); break;
+                case PadButton.RightTrigger: Set(ps ? "R2" : "RT", "pad-trigger"); break;
+                case PadButton.LeftBumper: Set(ps ? "L1" : "LB", "pad-bumper"); break;
+                case PadButton.RightBumper: Set(ps ? "R1" : "RB", "pad-bumper"); break;
+                case PadButton.View: Set(ps ? (InputMode.DualShock4 ? "SHARE" : "CREATE") : "VIEW", "pad-menu"); break;
+                case PadButton.Touchpad: Set("TOUCHPAD", "pad-menu"); break;
+                default: Set(ps ? "OPTIONS" : "MENU", "pad-menu"); break;
+            }
+            MarkDirtyRepaint();
+        }
+
+        void Face(string letter, string xboxClass, Shape shape, bool ps)
+        {
+            if (!ps) { Set(letter, "pad-face", xboxClass); return; }
+            Symbol = shape;
+            Set("", "pad-face", "pad-face--ps", "pad-face--" + shape.ToString().ToLowerInvariant());
+        }
+
+        void Set(string text, params string[] classes)
+        {
+            this.text = text;
+            foreach (var c in classes) { AddToClassList(c); own.Add(c); }
+        }
+
+        void DrawSymbol(MeshGenerationContext ctx)
+        {
+            if (Symbol == Shape.None) return;
+            var r = contentRect;
+            float size = Mathf.Min(r.width, r.height);
+            if (size <= 0f) return;
+            var c = r.center;
+            float s = size * 0.25f;
+            var p = ctx.painter2D;
+            p.lineWidth = Mathf.Max(1.5f, size * 0.085f);
+            p.lineCap = LineCap.Round;
+            p.lineJoin = LineJoin.Round;
+            p.strokeColor = Symbol switch
+            {
+                Shape.Cross => CrossColour, Shape.Circle => CircleColour, Shape.Square => SquareColour, _ => TriangleColour,
+            };
+            p.BeginPath();
+            switch (Symbol)
+            {
+                case Shape.Cross:
+                    p.MoveTo(c + new Vector2(-s, -s)); p.LineTo(c + new Vector2(s, s));
+                    p.MoveTo(c + new Vector2(s, -s)); p.LineTo(c + new Vector2(-s, s));
+                    break;
+                case Shape.Circle:
+                    p.Arc(c, s * 1.05f, Angle.Degrees(0f), Angle.Degrees(360f));
+                    p.ClosePath();
+                    break;
+                case Shape.Square:
+                    float h = s * 0.92f;
+                    p.MoveTo(c + new Vector2(-h, -h)); p.LineTo(c + new Vector2(h, -h)); p.LineTo(c + new Vector2(h, h)); p.LineTo(c + new Vector2(-h, h));
+                    p.ClosePath();
+                    break;
+                default:   // the triangle, point up, a little low so it sits in the middle of the circle
+                    p.MoveTo(c + new Vector2(0f, -s * 1.05f)); p.LineTo(c + new Vector2(s * 1.12f, s * 0.8f)); p.LineTo(c + new Vector2(-s * 1.12f, s * 0.8f));
+                    p.ClosePath();
+                    break;
+            }
+            p.Stroke();
         }
     }
 }

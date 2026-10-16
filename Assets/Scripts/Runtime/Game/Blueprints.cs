@@ -182,8 +182,9 @@ namespace GoF2Remake.Data
         /// Remake mods: a ship blueprint's ship always waits at the production station (TakeBuiltShips), here too.</summary>
         public static bool Produce(Database db, int product, int currentStation)
         {
-            var s = State(db, product);
             var it = db.Item(product);
+            if (it == null || it.blueprint == null) return false;   // not a product (-1 from a stale hangar row)
+            var s = State(db, product);
             int qty = BaseQuantity(it);
             if (s.station < 0) s.station = currentStation;
             bool here = s.station == currentStation;

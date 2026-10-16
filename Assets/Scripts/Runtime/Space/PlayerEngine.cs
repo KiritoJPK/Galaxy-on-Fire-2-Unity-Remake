@@ -10,6 +10,8 @@
 //                                   0.5 (speaker spread, no 2D effect); "load" is never set: its volume envelope's 0.7
 //   PlayerEgo::boost                FModSound::play(+0xd4) when a boost starts
 // In the supernova orbits the gamma shield's loop takes the engine's slot (PlayerHealth plays it), so no engine then.
+// Remake mods: a ship with its own sounds (ships.json "sounds", Modding.ModShipSounds: EVERSPACE 2's engines) plays its engine
+// loop by speed, its boost start / loop / stop and its booster's recharge loop instead.
 // Volumes: the event volume x Sfx.EventGain, x the events' linear rolloff from the camera (EngineVoices; the sound stays
 // 2D, only its volume follows the distance).
 
@@ -28,6 +30,9 @@ namespace GoF2Remake.Flight
         PlayerHealth health;
         Mining mining;
         AudioSource main, extra, boostSource;
+        // Remake mods: the ship's own sounds (Modding.ModShipSounds), null = the game's.
+        Modding.ModShipSounds.ShipSounds modSounds;
+        AudioSource boostLoop, charger;
         int engine = -1, boost = -1;
         bool wasBoosting;
         /// <summary>MGame::OnInitialize starts the engine loop only above campaign index 1: the prologue's and the rescue's
@@ -42,6 +47,16 @@ namespace GoF2Remake.Flight
             return e;
         }
 
+        /// <summary>PlayerEgo::PlayerEgo's boost sound (+0xd4) for the mounted booster, by its look: boosters 71-74 -> 0-3 (events
+        /// 38-41), 195 -> 4 (1102); -1 without a booster. Remake: a mod's booster sounds like the original it is based on
+        /// (ItemData.Look: it was silent, its own number matching none), and any other booster like item 71's.</summary>
+        public static int BoostSound(ItemData booster)
+        {
+            if (booster == null) return -1;
+            int look = booster.Look;
+            return look >= 71 && look <= 74 ? look - 71 : look == 195 ? 4 : 0;
+        }
+
         void Setup(Database db, ShipController shipController)
         {
             ship = shipController;
@@ -50,13 +65,27 @@ namespace GoF2Remake.Flight
             var audio = CombatAudio.Load();
             engine = EngineIndex(db, Session.ShipIndex);
             var booster = Shop.FirstMounted(db, 14);
-            boost = booster == null ? -1 : booster.index >= 71 && booster.index <= 74 ? booster.index - 71 : booster.index == 195 ? 4 : -1;
-            if (audio == null) return;
-            main = Loop(Pick(audio.playerEngines, engine));
-            extra = Loop(Pick(audio.playerEngineExtras, engine));
+            boost = BoostSound(booster);
+            modSounds = Modding.ModShipSounds.Ship(Session.ShipIndex);
+            if (modSounds?.engine?.Clip is AudioClip own)
+            {
+                main = Loop(own);
+                engine = -1;   // no game engine layers
+            }
+            if (modSounds != null)
+            {
+                if (modSounds.boostLoop?.Clip is AudioClip loop) boostLoop = Loop(loop);
+                if (modSounds.charger?.Clip is AudioClip charge) charger = Loop(charge);
+            }
             boostSource = gameObject.AddComponent<AudioSource>();
             boostSource.playOnAwake = false;
             boostSource.spatialBlend = 0f;
+            if (audio == null) return;
+            if (main == null)
+            {
+                main = Loop(Pick(audio.playerEngines, engine));
+                extra = Loop(Pick(audio.playerEngineExtras, engine));
+            }
             boostSource.clip = GoF2Remake.Modding.ModSounds.Get(Pick(audio.boosters, boost));
         }
 
@@ -72,6 +101,8 @@ namespace GoF2Remake.Flight
         /// hangar flights (HangarFlight).</summary>
         public static AudioClip EngineClip(Database db, int ship, out float volume)
         {
+            // Remake mods: the ship's own engine (ModShipSounds), heard at cruising speed.
+            if (Modding.ModShipSounds.EngineClip(ship, 0.6f, out volume) is AudioClip own) return own;
             int e = EngineIndex(db, ship);
             volume = EngineVolume[e] * LoadGain * Sfx.EventGain;
             return Pick(CombatAudio.Load()?.playerEngines, e);
@@ -112,17 +143,64 @@ namespace GoF2Remake.Flight
             if (ear != null) volume *= EngineVoices.Rolloff(Vector3.Distance(ear.position, transform.position) * ship.engineEarScale);
             // ... and deeper the heavier it is (ShipController.mass).
             float deep = Mathf.Lerp(1f, 0.6f, ship.mass);
+            bool boosting = ship.Model != null && ship.Model.IsBoosting;
+            if (modSounds != null) { UpdateOwn(on, boosting, ear, deep); return; }
             // 1104: one layer with the pitch; 1106 / 1107: EngineDLC_07 plain + the pitched second layer.
             Drive(main, on, volume, (engine >= 5 ? 1f : pitch) * deep);
             Drive(extra, on, volume, pitch * deep);
 
-            bool boosting = ship.Model != null && ship.Model.IsBoosting;
             if (boosting && !wasBoosting && boostSource != null && boostSource.clip != null)
             {
                 boostSource.pitch = Mathf.Lerp(1f, 0.7f, ship.mass);   // 1 for every ordinary ship, as before
                 boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(boostSource.clip), BoostVolume[boost] * Sfx.EventGain * Settings.SfxVolume);
             }
             wasBoosting = boosting;
+        }
+
+        /// <summary>Remake mods: the ship's own sounds (ModShipSounds). The engine by speed (0 at a standstill, 1 at top speed),
+        /// the boost's start / loop / stop, the booster's recharge loop; each at the FX volume x the camera's distance.</summary>
+        void UpdateOwn(bool on, bool boosting, Transform ear, float deep)
+        {
+            var model = ship.Model;
+            float gain = Settings.SfxVolume * (ear != null ? EngineVoices.Rolloff(Vector3.Distance(ear.position, transform.position) * ship.engineEarScale) : 1f);
+            float top = model != null ? Mathf.Max(0.01f, model.TopSpeed) : 1f;
+            float speed = model == null ? 1f : Mathf.Clamp01((model.FreeFlight ? model.FreeVelocity.magnitude : model.MoveSpeed) / top);
+            var e = modSounds.engine;
+            if (e != null && main != null && engine < 0) Drive(main, on, e.Volume(speed) * gain, e.Pitch(speed) * deep);
+            else
+            {
+                // The game's engine with the ship's own boost sounds.
+                var stick = ship.SteerInput;
+                float v = Mathf.Clamp01(Mathf.Max(Mathf.Abs(stick.x), Mathf.Abs(stick.y)));
+                float pitch = engine >= 4 ? Mathf.Pow(2f, 8f * Mathf.Lerp(0.479167f, 0.520833f, v) - 4f)
+                            : engine == 1 ? PitchEnvelope(v, 0.489583f, 0.510417f) : PitchEnvelope(v, 0.479167f, 0.520833f);
+                float volume = (engine >= 0 ? EngineVolume[engine] : 0f) * LoadGain * Sfx.EventGain * gain;
+                Drive(main, on, volume, (engine >= 5 ? 1f : pitch) * deep);
+                Drive(extra, on, volume, pitch * deep);
+            }
+            float boostLevel = model != null ? model.BoostVisualPercent : 0f;
+            if (boostLoop != null) Drive(boostLoop, on && boosting, modSounds.boostLoop.Volume(boostLevel) * gain, modSounds.boostLoop.Pitch(boostLevel) * deep);
+            if (boostSource != null && on && boosting != wasBoosting)
+            {
+                var s = boosting ? modSounds.boostStart : modSounds.boostStop;
+                if (s?.Clip is AudioClip clip)
+                {
+                    boostSource.pitch = s.RandomPitch * deep * TimeExtender.SoundPitch;
+                    boostSource.PlayOneShot(clip, s.vol0 * gain);
+                }
+                else if (boosting && s == null && modSounds.boostStart == null && boostSource.clip != null && boost >= 0)
+                {
+                    boostSource.pitch = deep;
+                    boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(boostSource.clip), BoostVolume[boost] * Sfx.EventGain * gain);
+                }
+            }
+            wasBoosting = boosting;
+            if (charger != null)
+            {
+                float refill = model != null ? model.BoostRechargePercent : 1f;
+                bool charging = on && !boosting && model != null && model.HasBooster && refill < 0.999f;
+                Drive(charger, charging, modSounds.charger.Volume(refill) * gain, modSounds.charger.Pitch(refill));
+            }
         }
 
         static float PitchEnvelope(float v, float low, float high) =>

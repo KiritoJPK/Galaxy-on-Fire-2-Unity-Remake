@@ -89,6 +89,7 @@ namespace GoF2Remake.Events
             if (level != null && level.StorySpace != null) { level.StorySpace.FailQuest(title); return; }
             System.Action reload = () =>
             {
+                if (Modding.ModBuilder.PlayTesting) { Modding.ModBuilder.EndPlayTest(); return; }   // a Mod Builder play test
                 if (Session.LoadAutosave() && Application.CanStreamedLevelBeLoaded("Station")) UnityEngine.SceneManagement.SceneManager.LoadScene("Station");
                 else UnityEngine.SceneManagement.SceneManager.LoadScene(0);
             };

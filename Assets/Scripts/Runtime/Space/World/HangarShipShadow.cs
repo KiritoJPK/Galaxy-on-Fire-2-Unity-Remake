@@ -23,9 +23,13 @@ namespace GoF2Remake.World
     public sealed class HangarShipShadow : MonoBehaviour
     {
         const float FadeHeight = 15f, RestSeconds = 0.3f;
-        /// <summary>The projector box, metres around the resting hull's lowest point: down to the floor under a raised hull or a sunk pad centre (the Vossk turntable's disc is ~2 m below it),
-        /// up past the pads' rims and recesses (full over its lower part, gone at its top).</summary>
-        const float Below = 6f, Above = 8f;
+        /// <summary>The projector box, metres around the resting hull's lowest point: down to the floor under a raised hull or a sunk pad centre (the Vossk turntable's disc is ~2 m below it;
+        /// the Terran turntable's inner ring slopes ~7 m below a low hull's bottom into its pit: at 6 m that slope stayed
+        /// lit, a mod kit ship's report), up past the pads' rims and recesses (full over its lower part, gone at its top).</summary>
+        const float Below = 12f, Above = 8f;
+        /// <summary>Full strength up to this many metres above the floor, fading out to Above (it was the box's lower 60 % when
+        /// the box went 6 m down).</summary>
+        const float FullAbove = 2.4f;
 
         static Mesh boxMesh;
         /// <summary>The camera the shadows switched the depth texture on for, and its own setting before (restored when the
@@ -234,7 +238,7 @@ namespace GoF2Remake.World
             box.transform.SetPositionAndRotation(new Vector3(transform.position.x + c.x, floorY + (Above - Below) * 0.5f, transform.position.z + c.z), yaw);
             box.transform.localScale = new Vector3(side, Below + Above, side);
             block.SetColor("_Color", new Color(baseColour.r, baseColour.g, baseColour.b, baseColour.a * alpha));
-            block.SetVector("_Hull", new Vector4(HullBottom(), heightRange * scale, 0f, 0f));
+            block.SetVector("_Hull", new Vector4(HullBottom(), heightRange * scale, floorY + FullAbove, floorY + Above));
             boxRenderer.SetPropertyBlock(block);
         }
 

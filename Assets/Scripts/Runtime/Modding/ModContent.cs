@@ -58,6 +58,7 @@ namespace GoF2Remake.Modding
             public string where, localId, key, overrideRef, data;   // data: the entry as CustomShipData JSON (no texts / ids)
             public Dictionary<string, string> name, description;
             public bool hasLounge, hasDealer;
+            public object sounds;   // "sounds" (ModShipSounds.ShipSounds, GameHooks.ParseShipSounds), null = none
         }
 
         /// <summary>The parsed content of one mod (read when the mods are scanned, so a broken file shows in the browser).</summary>
@@ -166,7 +167,8 @@ namespace GoF2Remake.Modding
                 if (ModJson.Has(o, "icon"))
                 {
                     string icon = ModJson.Str(o, "icon");
-                    if (string.IsNullOrEmpty(icon) || !mod.Source.Exists(icon))
+                    if (GameModels.Is(icon)) { if (GameModels.Icon(icon) == null) mod.Warnings.Add($"{where}: the game has no icon \"{icon}\" (the base item's is used)"); }
+                    else if (string.IsNullOrEmpty(icon) || !mod.Source.Exists(icon))
                         mod.Warnings.Add($"{where}: the icon \"{icon}\" isn't in the mod (the base item's is used)");
                 }
                 p.items.Add(d);
@@ -179,7 +181,11 @@ namespace GoF2Remake.Modding
         {
             "id", "override", "name", "description", "race", "armor", "cargo", "price", "priceDefault", "slots", "handling",
             "hangarHeight", "mounts", "model", "icon", "modelLength", "modelYaw", "modelPitch", "modelRoll", "modelOffset", "engineGlowRadius", "engineGlowColor", "materials", "throttleGlow",
-            "extraGlows", "lounge", "dealer", "available",
+            "extraGlows", "lounge", "dealer", "traffic", "available", "npcTurrets", "flightStyle", "flight", "kit", "kitType", "build",
+            "skins", "weaponColors",   // customizations of a ship without a kit (ModShipKits.CustomizationOf)
+            "engineFx",   // Galaxy on Fire 3's engine effect (EngineFx)
+            "sounds",     // the ship's own engine and boost sounds (ModShipSounds)
+            "integrated", // a built-in Khador Drive / cloak (ApplyIntegrated)
         };
 
         static void ParseShips(ModInfo mod, Parsed p)
@@ -200,27 +206,39 @@ namespace GoF2Remake.Modding
                 };
                 if ((d.localId == null) == (d.overrideRef == null))
                     throw new ModJsonException($"{where}: a ship needs either \"id\" (a new ship) or \"override\" (change an existing one)");
+                if (ModJson.Get(o, "integrated") is JToken ig && !(ig is JObject))
+                    throw new ModJsonException($"{where}: \"integrated\" must be an object {{ \"khadorDrive\": true, \"cloak\": 95 }}");
+                if (ModJson.Get(o, "npcTurrets") is JToken nt && !(nt is JArray))
+                    throw new ModJsonException($"{where}: \"npcTurrets\" must be a list of turret items [ 48, \"mod:id\" ]");
                 foreach (var prop in o.Properties())
                     if (!ShipFields.Contains(prop.Name)) mod.Warnings.Add($"{ModJson.Where(prop, ShipsFile)}: unknown field \"{prop.Name}\" (ignored)");
                 foreach (var f in new[] { "race", "armor", "cargo", "price", "priceDefault", "handling", "hangarHeight" }) ModJson.Int(o, f, 0, ShipsFile);
+                ModFlight.CheckShip(o, where, mod, ShipsFile);   // "flightStyle", "flight": per flight style
+                d.sounds = GameHooks.ParseShipSounds?.Invoke(o, mod, ShipsFile);
                 if (d.localId != null)
                 {
                     if (!ModManifest.ValidId(d.localId)) throw new ModJsonException($"{where}: the id \"{d.localId}\" may only use a-z, 0-9, _ and -");
                     if (!ids.Add(d.localId)) throw new ModJsonException($"{where}: the id \"{d.localId}\" is used twice");
-                    string model = ModJson.Str(o, "model");
-                    if (string.IsNullOrEmpty(model)) throw new ModJsonException($"{where}: a new ship needs \"model\", its glTF / GLB file");
-                    if (!mod.Source.Exists(model)) throw new ModJsonException($"{where}: the model \"{model}\" isn't in the mod");
+                    string model = ModJson.Str(o, "model"), kit = ModJson.Str(o, "kit");
+                    if (!string.IsNullOrEmpty(kit))
+                    {
+                        // A customizable ship (ModShipKits): its parts come from the kit, its default build from "build".
+                        if (string.IsNullOrEmpty(ModJson.Str(o, "kitType"))) throw new ModJsonException($"{where}: a kit ship needs \"kitType\" (which parts it may fit)");
+                        if (ModJson.Get(o, "build") is JToken bt && !(bt is JObject)) throw new ModJsonException($"{where}: \"build\" must be an object {{ \"wings\": \"part_id\", \"tier\": 1 }}");
+                    }
+                    else if (string.IsNullOrEmpty(model)) throw new ModJsonException($"{where}: a new ship needs \"model\", its glTF / GLB file or \"gof2:<model>\" (one of the game's), or \"kit\" (a customizable ship)");
+                    else if (!GameModels.Is(model) && !mod.Source.Exists(model)) throw new ModJsonException($"{where}: the model \"{model}\" isn't in the mod");
                     d.key = mod.Id + ":" + d.localId;
                 }
                 else if (ModJson.Has(o, "model"))
                 {
                     // An override with a model replaces an original ship's model (ModelOverrides).
                     string model = ModJson.Str(o, "model");
-                    if (string.IsNullOrEmpty(model) || !mod.Source.Exists(model)) throw new ModJsonException($"{where}: the model \"{model}\" isn't in the mod");
+                    if (string.IsNullOrEmpty(model) || !GameModels.Is(model) && !mod.Source.Exists(model)) throw new ModJsonException($"{where}: the model \"{model}\" isn't in the mod");
                 }
-                // The rest as CustomShipData (JsonUtility reads it; the texts and ids are the mod's own).
+                // The rest as CustomShipData (JsonUtility reads it; the texts and ids are the mod's own; npcTurrets: ApplyShips).
                 var data = (JObject)o.DeepClone();
-                foreach (var k in new[] { "id", "override", "name", "description" }) data.Remove(k);
+                foreach (var k in new[] { "id", "override", "name", "description", "npcTurrets", "build", "sounds", "integrated" }) data.Remove(k);
                 try { JsonUtility.FromJson<CustomShipData>(data.ToString()); }
                 catch (Exception e) { throw new ModJsonException($"{where}: {e.Message}"); }
                 d.data = data.ToString();
@@ -297,7 +315,7 @@ namespace GoF2Remake.Modding
                 foreach (var d in Parse(mod).items)
                 {
                     string icon = ModJson.Str(d.json, "icon");
-                    if (string.IsNullOrEmpty(icon) || !mod.Source.Exists(icon)) continue;
+                    if (string.IsNullOrEmpty(icon) || !GameModels.Is(icon) && !mod.Source.Exists(icon)) continue;
                     if (d.key != null ? itemIndex.TryGetValue(d.key, out int i) : TryResolveItem(d.overrideRef, out i)) itemIcons[i] = d;
                 }
             // A new item without an icon of its own takes the nearest base's that has one (a copy of a mod item, or of an
@@ -349,13 +367,28 @@ namespace GoF2Remake.Modding
             var c = JsonUtility.FromJson<CustomShipData>(d.data);
             c.index = index;
             c.assembly = $"ship_{index:000}_mod";
+            if (GameModels.Is(c.model, out string gameModel))
+            {
+                // One of the game's own models (no file to build): the ship's hangar height and icon follow it unless given.
+                c.assembly = gameModel;
+                c.gameModelShip = GameModels.ShipOf(gameModel);
+                if (!ModJson.Has(d.json, "hangarHeight") && c.gameModelShip >= 0) c.hangarHeight = -1;
+            }
             if (!d.hasLounge) c.lounge = null;   // JsonUtility makes one with its defaults
             if (!d.hasDealer) c.dealer = null;
             if (c.throttleGlow != null && string.IsNullOrEmpty(c.throttleGlow.mask)) c.throttleGlow = null;
+            if (c.engineFx != null && !c.engineFx.Any) c.engineFx = null;   // (JsonUtility makes one either way)
             ShipText(index, false, out c.name);
             ShipText(index, true, out c.description);
             c.handlingMultiplier = c.handling / 100f;
             c.slots ??= new ShipSlots();
+            if (!string.IsNullOrEmpty(c.kit))
+            {
+                // A customizable ship (ModShipKits): the kit as "mod_id:kit_id", the default build as build text.
+                if (c.kit.IndexOf(':') < 0) c.kit = d.mod.Id + ":" + c.kit;
+                c.defaultBuild = GameHooks.KitBuildText?.Invoke(ModJson.Get(d.json, "build") as JObject) ?? "";
+            }
+            else c.kit = null;
             return c;
         }
 
@@ -373,7 +406,10 @@ namespace GoF2Remake.Modding
             foreach (var mod in ModManager.Active)
                 foreach (var d in Parse(mod).ships)
                     if (d.overrideRef != null && ModJson.Has(d.json, "model") && TryResolveShip(d.overrideRef, out int t) && t < originalShips)
-                        byShip[t] = d;
+                    {
+                        if (GameModels.Is(ModJson.Str(d.json, "model"))) byShip.Remove(t);   // the game's model: nothing to build
+                        else byShip[t] = d;
+                    }
             if (byShip.Count == 0) return l;
             var db = Database.Load();
             foreach (var kv in byShip)
@@ -384,11 +420,25 @@ namespace GoF2Remake.Modding
                 c.name = db.Ship(kv.Key)?.name ?? c.assembly;
                 c.lounge = null;
                 if (c.throttleGlow != null && string.IsNullOrEmpty(c.throttleGlow.mask)) c.throttleGlow = null;
+                if (c.engineFx != null && !c.engineFx.Any) c.engineFx = null;
                 if (c.mounts == null || c.mounts.Count == 0)
                     c.mounts = db.WeaponMounts.Find(w => w.ship == kv.Key)?.mounts ?? new List<WeaponMount>();
                 l.Add((kv.Value.mod, c));
             }
             return l;
+        }
+
+        /// <summary>The ships' own sounds (ships.json "sounds", ModShipSounds) by ship number: new ships' and overrides', the
+        /// later mod in the load order winning.</summary>
+        public static Dictionary<int, object> ShipSounds()
+        {
+            EnsureMapping();
+            var r = new Dictionary<int, object>();
+            foreach (var kv in shipDefAt) if (kv.Value.sounds != null) r[kv.Key] = kv.Value.sounds;
+            foreach (var mod in ModManager.Active)
+                foreach (var d in Parse(mod).ships)
+                    if (d.overrideRef != null && d.sounds != null && TryResolveShip(d.overrideRef, out int t)) r[t] = d.sounds;
+            return r;
         }
 
         /// <summary>The assembly of a mod's model for an original ship (ModelOverrides).</summary>
@@ -400,11 +450,12 @@ namespace GoF2Remake.Modding
         public static bool AnyShipModels()
         {
             EnsureMapping();
-            if (shipDefAt.Count > 0) return true;
+            if (shipDefAt.Count > 0) return true;   // a new ship on a game model still has its icon to load (ModShips)
             if (originalShips < 0) return false;
             foreach (var mod in ModManager.Active)
                 foreach (var d in Parse(mod).ships)
-                    if (d.overrideRef != null && ModJson.Has(d.json, "model") && TryResolveShip(d.overrideRef, out int t) && t < originalShips)
+                    if (d.overrideRef != null && ModJson.Has(d.json, "model") && !GameModels.Is(ModJson.Str(d.json, "model"))
+                        && TryResolveShip(d.overrideRef, out int t) && t < originalShips)
                         return true;
             return false;
         }
@@ -492,7 +543,9 @@ namespace GoF2Remake.Modding
         {
             EnsureMapping();
             if (!itemIcons.TryGetValue(index, out var d)) return null;
-            var t = ModMaterials.Texture(d.mod, ModJson.Str(d.json, "icon"), false, true);
+            string icon = ModJson.Str(d.json, "icon");
+            if (GameModels.Is(icon)) return GameModels.Icon(icon);   // one of the game's own icons ("gof2:item_046")
+            var t = ModMaterials.Texture(d.mod, icon, false, true);
             if (t != null) t.wrapMode = TextureWrapMode.Clamp;   // a UI image: no bleeding in from the opposite edge
             return t;
         }
@@ -609,8 +662,31 @@ namespace GoF2Remake.Modding
             ModWorld.Apply(db);
         }
 
+        /// <summary>A ship on one of the game's ship models (GameModels) takes that ship's hardpoints (weapons, turrets, exhausts)
+        /// unless its entry has its own "mounts"; a model that is no ship's (a capital ship's) brings none.</summary>
+        static void CopyModelMounts(Database db, ShipDef d, int ship, string shipName, string model)
+        {
+            if (ModJson.Has(d.json, "mounts")) return;
+            int source = GameModels.ShipOf(model);
+            var mounts = source >= 0 ? Database.GameMounts(source) : null;   // the model's own, whatever other mods did to that ship
+            if (mounts == null || mounts.Count == 0) return;
+            db.WeaponMounts.RemoveAll(w => w.ship == ship);
+            db.WeaponMounts.Add(new WeaponMountSet { ship = ship, shipName = shipName, mounts = mounts.ConvertAll(Copy) });
+        }
+
+        static WeaponMount Copy(WeaponMount m) => new WeaponMount
+        {
+            slotType = m.slotType, upsideDown = m.upsideDown, position_engine = (int[])m.position_engine?.Clone(),
+            turretAngles = (float[])m.turretAngles?.Clone(), glowColor = (float[])m.glowColor?.Clone(),
+            glowSize = (float[])m.glowSize?.Clone(), turretUp = (float[])m.turretUp?.Clone(),
+        };
+
         static void ApplyShips(Database db, bool dflt)
         {
+            db.NpcTurrets.Clear();
+            db.ShipModels.Clear();
+            db.IntegratedDrives = new HashSet<int>(Database.DefaultIntegratedDrives);
+            db.IntegratedCloaks = new Dictionary<int, int>(Database.DefaultIntegratedCloaks);
             foreach (var mod in ModManager.Active)
                 foreach (var d in Parse(mod).ships)
                 {
@@ -632,13 +708,25 @@ namespace GoF2Remake.Modding
                                     primary = ModJson.Int(sl, "primary", s.slots?.primary ?? 0, ShipsFile), secondary = ModJson.Int(sl, "secondary", s.slots?.secondary ?? 0, ShipsFile),
                                     turret = ModJson.Int(sl, "turret", s.slots?.turret ?? 0, ShipsFile), equipment = ModJson.Int(sl, "equipment", s.slots?.equipment ?? 0, ShipsFile),
                                 };
+                            ModFlight.ApplyShip(s, o, d.where);
                             if (s is CustomShipData cs)
                             {
                                 cs.race = ModJson.Int(o, "race", cs.race, ShipsFile);
                                 cs.hangarHeight = ModJson.Int(o, "hangarHeight", cs.hangarHeight, ShipsFile);
                             }
                             if (ShipText(t, false, out var n)) s.name = n;
-                            if (ModJson.Has(o, "model") && t < originalShips)
+                            if (GameModels.Is(ModJson.Str(o, "model"), out string gameModel))
+                            {
+                                // One of the game's own models for this ship (Database.ShipModels; no file to build): its
+                                // hardpoints come with it unless the entry has its own.
+                                if (GameModels.Find(db, gameModel) == null) { Report(mod, $"{d.where}: \"model\": the game has no model \"{gameModel}\""); }
+                                else
+                                {
+                                    db.ShipModels[t] = gameModel;
+                                    CopyModelMounts(db, d, t, s.name, gameModel);
+                                }
+                            }
+                            else if (ModJson.Has(o, "model") && t < originalShips)
                             {
                                 // A new model for an original ship (ModelOverrides; Database.ShipAssembly takes this first).
                                 string asm = ModelOverrideAssembly(t);
@@ -656,15 +744,27 @@ namespace GoF2Remake.Modding
                                     db.WeaponMounts.Add(new WeaponMountSet { ship = t, shipName = s.name, mounts = own.mounts });
                                 }
                             }
+                            ApplyNpcTurrets(db, mod, d, t);
+                            ApplyIntegrated(db, mod, d, t);
                             continue;
                         }
                         int index = shipIndex[d.key];
                         var c = ShipData(index, d);
                         if (dflt && c.priceDefault > 0) c.price = c.priceDefault;
+                        ModFlight.ApplyShip(c, d.json, d.where);
                         db.Ships.Add(c);
-                        db.Assemblies.Add(new AssemblyData { name = c.assembly, pack = ModContent.Pack, category = "ships", origin = "mod " + mod.Id });
+                        if (GameModels.Is(c.model, out string shipModel))
+                        {
+                            // One of the game's own models: nothing to build, ShipAssembly hands the game's out.
+                            if (GameModels.Find(db, shipModel) == null) Report(mod, $"{d.where}: \"model\": the game has no model \"{shipModel}\"");
+                            else db.ShipModels[index] = shipModel;
+                        }
+                        else db.Assemblies.Add(new AssemblyData { name = c.assembly, pack = ModContent.Pack, category = "ships", origin = "mod " + mod.Id });
                         if (c.mounts != null && c.mounts.Count > 0)
                             db.WeaponMounts.Add(new WeaponMountSet { ship = index, shipName = c.name, mounts = c.mounts });
+                        else if (GameModels.Is(c.model, out string mountsModel)) CopyModelMounts(db, d, index, c.name, mountsModel);
+                        ApplyNpcTurrets(db, mod, d, index);
+                        ApplyIntegrated(db, mod, d, index);
                     }
                     catch (ModJsonException e) { Report(mod, e.Message); }
                 }
@@ -673,6 +773,60 @@ namespace GoF2Remake.Modding
             int max = db.Ships.Max(s => s.index);
             for (int i = originalShips; i <= max; i++) if (db.Ship(i) == null) db.Ships.Add(PlaceholderShip(i));
             db.Ships.Sort((a, c) => a.index.CompareTo(c.index));
+        }
+
+        /// <summary>Remake (generic turrets): ships.json "npcTurrets", the turret items (category 8 / 35, numbers or "mod:id") the
+        /// NPC ships of this type carry on its turret mounts in space (World.NpcMountedTurrets) and parked in the hangar; the
+        /// later mod wins, an empty list takes them off.</summary>
+        static void ApplyNpcTurrets(Database db, ModInfo mod, ShipDef d, int ship)
+        {
+            if (!(ModJson.Get(d.json, "npcTurrets") is JArray list)) return;
+            var items = new List<int>();
+            foreach (var e in list)
+            {
+                string reference = e.Type == JTokenType.Integer ? ((int)e).ToString() : e.Type == JTokenType.String ? (string)e : null;
+                if (reference == null || !TryResolveItem(reference, out int i) || db.Item(i) == null)
+                { Report(mod, $"{d.where}: \"npcTurrets\": {e} is no item"); continue; }
+                var it = db.Item(i);
+                if (it.categoryId != 8 && it.categoryId != 35) { Report(mod, $"{d.where}: \"npcTurrets\": {it.name} ({i}) is no turret"); continue; }
+                items.Add(i);
+            }
+            if (db.MountsOf(ship, 2).Count < items.Count)
+                Report(mod, $"{d.where}: \"npcTurrets\" lists {items.Count} turrets, the ship has {db.MountsOf(ship, 2).Count} turret mounts (the rest is left off)");
+            db.NpcTurrets[ship] = items;
+        }
+
+        /// <summary>Remake (a modder's request): ships.json "integrated", what a ship has built in like the Kothar ships' Khador
+        /// Drive (37 / 38 / 40) and the Specter's / Scimitar's cloak (44 / 49): "khadorDrive" true / false (Database.IntegratedDrives:
+        /// GalaxyMap.HasJumpDrive, the Khador entry and its hints), "cloak" true (the U'tool's stats, 95), a cloak item (a number or
+        /// "mod:id", category 21) or false (Database.IntegratedCloaks: PlayerCloak, the cloak bay). An override can take an
+        /// original ship's away; the later mod wins.</summary>
+        static void ApplyIntegrated(Database db, ModInfo mod, ShipDef d, int ship)
+        {
+            if (!(ModJson.Get(d.json, "integrated") is JObject o)) return;
+            foreach (var prop in o.Properties())
+            {
+                var v = prop.Value;
+                if (string.Equals(prop.Name, "khadorDrive", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (v.Type != JTokenType.Boolean) { Report(mod, $"{d.where}: \"integrated\": \"khadorDrive\" must be true or false"); continue; }
+                    if ((bool)v) db.IntegratedDrives.Add(ship); else db.IntegratedDrives.Remove(ship);
+                }
+                else if (string.Equals(prop.Name, "cloak", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (v.Type == JTokenType.Boolean)
+                    {
+                        if ((bool)v) db.IntegratedCloaks[ship] = Database.IntegratedCloakItem; else db.IntegratedCloaks.Remove(ship);
+                        continue;
+                    }
+                    string reference = v.Type == JTokenType.Integer ? ((int)v).ToString() : v.Type == JTokenType.String ? (string)v : null;
+                    if (reference == null || !TryResolveItem(reference, out int item) || db.Item(item) == null)
+                    { Report(mod, $"{d.where}: \"integrated\": \"cloak\": {v} is no item (true, false or a cloak item)"); continue; }
+                    if (db.Item(item).categoryId != 21) { Report(mod, $"{d.where}: \"integrated\": \"cloak\": {db.Item(item).name} ({item}) is no cloak"); continue; }
+                    db.IntegratedCloaks[ship] = item;
+                }
+                else mod.Warnings.Add($"{d.where}: \"integrated\": unknown field \"{prop.Name}\" (ignored; \"khadorDrive\", \"cloak\")");
+            }
         }
 
         /// <summary>A mod ship whose mod isn't on: never sold, can't be flown (ModSaves moves the player out of it).</summary>

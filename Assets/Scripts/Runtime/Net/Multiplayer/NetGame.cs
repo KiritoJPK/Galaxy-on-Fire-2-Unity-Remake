@@ -355,7 +355,12 @@ namespace GoF2Remake.Multiplayer
             hostAllocation = null;
             PrepareSession();
             SetUpHostedWorld();
-            if (!Dedicated) NetRules.Host = NetRules.FromOptions();   // a player host's own Gameplay options (a server: Boot)
+            if (!Dedicated)
+            {
+                NetRules.Host = NetRules.FromOptions();   // a player host's own Gameplay options (a server: Boot)
+                NetRules.HostKaamoLevel = Settings.LocalKaamoLevel();
+                NetRules.HostFlight = SessionRules.DefaultFlight;   // the game's flight model; an admin's /flightmodel changes it
+            }
             NetMods.BeginHost();   // the host's mods when modded content is allowed, else none
             Seed = Environment.TickCount & 0x7fffffff;
             ushort port = HostPort;
@@ -489,6 +494,7 @@ namespace GoF2Remake.Multiplayer
             worldEntered = true;
             if (seed >= 0) Seed = seed;
             Session.DockedFromSpace = false;
+            NetMotd.RequestOnEnter();   // the server's message of the day (shown unless already seen)
             // The session's mods' ship models first (NetMods: a joining game has just turned the session's mods on).
             Modding.ModShips.WhenReady(() => { if (Active) SceneManager.LoadScene(StationScene); });
         }
@@ -735,6 +741,7 @@ namespace GoF2Remake.Multiplayer
             Session.Difficulty = Session.DifficultyNormal;   // every session plays on Normal (the shared stock, NPCs, rewards)
             Session.Economy = Economy.Android;               // and on one economy (the shared stock's prices)
             Session.UseCompletedWorld();   // free play in the finished game's world (every dealer ship, Ginoya after the supernova)
+            ResetDb();   // the session's tables (Database.Load reads CompletedWorld: the Cronus' price)
             Session.StationIndex = Station;
             Session.LaunchedFromStation = false;   // the session starts docked (EnterWorld)
             // Remake: a modest start instead of resetGame's well-equipped Phantom, so the pilot works up to better ships (a

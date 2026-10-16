@@ -11,6 +11,10 @@
 //   AlignHorizon  R / gamepad north button (Y / Triangle)
 // Touch or your own UI: call SetSteer()/SetThrottle()/Boost(); the stronger of the external steer and the
 // built-in actions wins, so both can be used at the same time (FlightHud's touch stick does this).
+// Remake: free flight (Settings.FlightStyle, after EVERSPACE 2; FlightModel.StepFree) with the keyboard / mouse or a
+// controller: GameControls' Thrust / Strafe / Hover / Roll held, the stick or the mouse's virtual joystick aims, the boost
+// held, Dampeners toggles the inertial dampeners. Touch, tilt and VR keep the original style; so do the autopilot, the
+// launch / arrival camera, the turret view, the dodge and computer control, which hand the ship back where they left it.
 
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -18,8 +22,23 @@ using UnityEngine.InputSystem;
 namespace GoF2Remake.Flight
 {
     [DisallowMultipleComponent]
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class ShipController : MonoBehaviour
     {
+        /// <summary>Free flight's inertial dampeners (the Dampeners key toggles them; on at every start, like EVERSPACE 2's
+        /// default; kept between levels).</summary>
+        public static bool Dampeners { get; private set; } = true;
+        /// <summary>The dampeners were toggled (on / off): the HUD says so.</summary>
+        public static event System.Action<bool> DampenersChanged;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() { Dampeners = true; DampenersChanged = null; }
+
+        /// <summary>Free flight is in use for this ship now: the style (the option, or a mod's / an event's), the player's own input (keyboard / mouse or a
+        /// controller; touch, tilt and VR keep the original style).</summary>
+        public bool FreeFlightActive => Data.FlightStyles.Current == Data.FlightStyles.Free && useBuiltInInput && !tiltMode
+                                        && UI.InputMode.Current != UI.InputKind.Touch && !Data.VrFlags.Enabled;
+
         [Header("Ship")]
         public FlightStats stats = new FlightStats();
 
@@ -46,7 +65,7 @@ namespace GoF2Remake.Flight
 
         [Header("Visual banking (cosmetic only)")]
         public Transform visualModel;
-        [Tooltip("Degrees of model roll per unit of H while yawing. Tune by eye; not a recovered constant.")]
+        [Tooltip("Free flight only: degrees of model roll per unit of H while yawing (tuned by eye). The original style banks from the turn rates (UpdateVisualBank).")]
         public float bankDegreesPerH = 1.2f;
         public float pitchTiltDegreesPerH = 0.4f;
         public float bankSmoothing = 6f;
@@ -137,10 +156,16 @@ namespace GoF2Remake.Flight
         /// <summary>Remake: the mouse offset is inside the steering dead zone (Settings.MouseDeadzone): no turning.</summary>
         public bool MouseInDeadzone { get; private set; } = true;
 
+        /// <summary>Free flight: the mouse's virtual joystick radius, of the screen height (full deflection at its edge):
+        /// EVERSPACE 2's measured ~0.51 (the turn rate grows linearly with the reticle's offset, 0.229 deg/s per px at 1080p,
+        /// 125 deg/s at ~546 px).</summary>
+        public const float StickRadius = 0.5f;
+
         Vector2 ReadMouseSteer()
         {
             var mouse = Mouse.current;
             if (!mouseSteering || mouse == null) { MouseOffset = Vector2.zero; MouseInDeadzone = true; return Vector2.zero; }
+            if (Model.FreeFlight) return ReadVirtualStick(mouse);
             var lim = new Vector2(Screen.width * 0.5f * 0.7f, Screen.height * 0.5f * 0.7f);
             var o = MouseOffset + mouse.delta.ReadValue();
             MouseOffset = new Vector2(Mathf.Clamp(o.x, -lim.x, lim.x), Mathf.Clamp(o.y, -lim.y, lim.y));
@@ -154,13 +179,65 @@ namespace GoF2Remake.Flight
             return new Vector2(Mathf.Clamp(scaled.x, -1f, 1f), Mathf.Clamp(scaled.y, -1f, 1f));
         }
 
+        /// <summary>Free flight's mouse, EVERSPACE 2's virtual joystick (measured: the reticle stays where the mouse leaves
+        /// it, the ship keeps turning at a rate by its offset): the mouse moves the reticle inside a circle round the centre,
+        /// its offset beyond the dead zone (Settings.MouseDeadzone) is the stick's deflection. It holds still while free look
+        /// turns the camera and is centred while the autopilot or a script steers.</summary>
+        Vector2 ReadVirtualStick(Mouse mouse)
+        {
+            if (freeLook == null) freeLook = GetComponent<FreeLookCamera>();
+            if (autopilotTarget != null || steeringLocked) MouseOffset = Vector2.zero;
+            else if (freeLook == null || !freeLook.FreeLookActive)
+                MouseOffset = Vector2.ClampMagnitude(MouseOffset + mouse.delta.ReadValue(), Screen.height * StickRadius);
+            float m = MouseOffset.magnitude / Mathf.Max(1f, Screen.height * StickRadius), dz = Data.Settings.MouseDeadzone;
+            MouseInDeadzone = m <= dz;
+            if (MouseInDeadzone) return Vector2.zero;
+            // A hard dead zone, not rescaled: beyond it the deflection is the whole offset over the radius (measured in
+            // EVERSPACE 2: 0.229 deg/s per px of offset, through the centre, from the dead zone's edge on).
+            return MouseOffset / Mathf.Max(1f, Screen.height * StickRadius);
+        }
+
         Target selfTarget;
+        bool freeSettle;   // free flight brakes the fly-in's speed away (StepFree)
+        Transform enginePartsModel;
+        GameObject[] engineParts;
+        bool enginePartsOff;
+
+        /// <summary>Free flight with no forward thrust (FlightModel.EnginesOff): the model's player engine parts (the original
+        /// ships' engine glow, a mod ship's glow discs) aren't drawn. Renderer.enabled, so the parts' active state (mining,
+        /// cutscenes: AssembledObject.SetExhaust) and the cloak's forceRenderingOff (CloakGlow) stay theirs.</summary>
+        void UpdateEngineParts()
+        {
+            if (visualModel != enginePartsModel)
+            {
+                enginePartsModel = visualModel;
+                var assembled = visualModel != null ? visualModel.GetComponentInChildren<Visuals.AssembledObject>(true) : null;
+                engineParts = assembled != null ? assembled.playerVariantParts : null;
+                enginePartsOff = false;   // a new model's renderers start drawn
+            }
+            bool off = Model.EnginesOff;
+            if (off == enginePartsOff || engineParts == null) return;
+            enginePartsOff = off;
+            foreach (var g in engineParts)
+                if (g != null)
+                    foreach (var r in g.GetComponentsInChildren<Renderer>(true))
+                        if (!IsManoeuvringJet(r.transform)) r.enabled = !off;   // the jets fire without the main engines
+        }
+
+        static bool IsManoeuvringJet(Transform t)
+        {
+            for (; t != null; t = t.parent) if (t.name.StartsWith("engine_glow_thruster")) return true;
+            return false;
+        }
 
         void Update()
         {
+            UpdateEngineParts();
             // Remake: a boost shakes off the homing missiles locked on this ship (Gun, Target.boosting).
             if (selfTarget == null) selfTarget = GetComponent<Target>();
             if (selfTarget != null) selfTarget.boosting = Model.IsBoosting;
+            // A mod or an event can switch the flight style in flight (Modding.ModFlight): its key layout follows.
+            if (useBuiltInInput) GameControls.ApplyStyle();
             Model.TiltMode = tiltMode;
             Model.LevelPitch = Data.Settings.LevelPitch;
             Model.Mass = mass;
@@ -178,12 +255,16 @@ namespace GoF2Remake.Flight
                     if (externalSteer.sqrMagnitude > turretSteer.sqrMagnitude) turretSteer = externalSteer;
                     SteerInput = turretSteer;
                 }
+                Model.FreeFlight = FreeFlightActive;
+                Model.BoostHeld = Model.FreeFlight && useBuiltInInput && !inputLocked && !Navigation.InputHalted && GameControls.Boost.IsPressed();
                 Model.TickBoost(dtMs);   // PlayerEgo::update: the boost and its recharge run on (the mining approach boosts)
                 SpeedMetersPerSecond = ExternalSpeedMetersPerSecond;
+                Model.SyncFree(transform.forward, ExternalSpeedMetersPerSecond / 1000f / metersPerUnit);
                 Maneuver.Cancel();
                 if (!modelTumbling && !modelHeld) UpdateVisualBank(0f, 0f);   // computer controlled: no stick, the model's bank and tilt level out
                 return;
             }
+            Model.FreeFlight = FreeFlightActive;
             if (useBuiltInInput && !inputLocked) ReadDodgeInput();
             if (Maneuver.Active && (inputLocked || steeringLocked)) Maneuver.Cancel();
             ManeuverSlide = Vector3.zero;
@@ -201,12 +282,14 @@ namespace GoF2Remake.Flight
                 ManeuverSlide = -transform.right * (slide * metersPerUnit);
                 transform.position += transform.forward * (mr.forwardUnits * metersPerUnit) + ManeuverSlide;
                 SpeedMetersPerSecond = dtMs > 0f ? mr.forwardUnits * metersPerUnit / (dtMs / 1000f) : 0f;
+                if (Model.FreeFlight && dtMs > 0f) Model.SyncFree(transform.forward, mr.forwardUnits / dtMs);
                 UpdateVisualBank();
                 return;
             }
 
             // The launch / arrival camera: no steering, throttle, boost or levelling (the ship flies on).
             if (!useBuiltInInput || inputLocked) Model.Braking = false;
+            if (inputLocked) freeSettle = true;   // free flight takes over at rest once the fly-in is over (StepFree)
             Vector2 steer = useBuiltInInput && !inputLocked ? ReadInput() : Vector2.zero;
             if (!inputLocked && externalSteer.sqrMagnitude > steer.sqrMagnitude) steer = externalSteer;
             var mouseSteer = !inputLocked ? ReadMouseSteer() : Vector2.zero;
@@ -221,6 +304,16 @@ namespace GoF2Remake.Flight
 
             // Model convention: +x = yaw left, +y = pitch down. Map "stick right = turn right".
             var model = new Vector2(invertYaw ? steer.x : -steer.x, invertPitch ? steer.y : -steer.y);
+
+            Model.BoostHeld = Model.FreeFlight && useBuiltInInput && !inputLocked && GameControls.Boost.IsPressed();
+            if (Model.FreeFlight && autopilotTarget == null && !inputLocked && !steeringLocked)
+            {
+                // In free look the stick (the right one in this layout) and the mouse turn the camera: the ship flies on.
+                if (freeLook == null) freeLook = GetComponent<FreeLookCamera>();
+                if (freeLook != null && freeLook.FreeLookActive) model = Vector2.zero;
+                StepFree(model, dtMs);
+                return;
+            }
 
             var r = Model.Step(model, dtMs, transform.up, transform.right);
 
@@ -268,7 +361,44 @@ namespace GoF2Remake.Flight
             }
 
             SpeedMetersPerSecond = dtMs > 0f ? r.forwardUnits * metersPerUnit / (dtMs / 1000f) : 0f;
+            if (Model.FreeFlight && dtMs > 0f) Model.SyncFree(transform.forward, r.forwardUnits / dtMs);   // free flight picks up from here
 
+            UpdateVisualBank();
+        }
+
+        /// <summary>Free flight (FlightModel.StepFree): the held thrust / strafe / up-down / roll, the aim, the dampeners.</summary>
+        void StepFree(Vector2 aim, float dtMs)
+        {
+            bool live = useBuiltInInput && !Navigation.InputHalted;
+            if (live && GameControls.Dampeners.WasPressedThisFrame())
+            {
+                Dampeners = !Dampeners;
+                DampenersChanged?.Invoke(Dampeners);
+            }
+            var input = new FlightModel.FreeInput
+            {
+                thrust = live ? GameControls.Thrust.ReadValue<float>() : 0f,
+                strafe = live ? GameControls.StrafeAxis.ReadValue<float>() : 0f,
+                hover = live ? GameControls.Hover.ReadValue<float>() : 0f,
+                roll = Mathf.Clamp((live ? GameControls.Roll.ReadValue<float>() : 0f) + touchRoll, -1f, 1f),
+                aim = aim,
+                dampeners = Dampeners,
+            };
+            // After the launch / arrival fly-in (the original flight at full throttle) the ship comes to rest with its engines
+            // off, the dampeners braking it even when they are switched off, until the player thrusts or it has stopped.
+            if (freeSettle)
+            {
+                if (input.thrust != 0f || input.strafe != 0f || input.hover != 0f || Model.BoostHeld || Model.FreeVelocity.sqrMagnitude < 1e-6f) freeSettle = false;
+                else input.dampeners = true;
+            }
+            var r = Model.StepFree(input, dtMs, transform.rotation, transform.up, transform.right);
+            transform.Rotate(r.pitchDeg, -r.yawDeg, r.rollDeg, Space.Self);
+            var move = r.move * metersPerUnit + transform.right * (r.sidePushUnits * metersPerUnit);
+            transform.position += move;
+            // The chase camera keeps the sideways part of the move (TargetFollowCamera::translateNoUpdate, as for the
+            // strafe): it trails the ship's forward motion and stays square behind it while it slides.
+            StrafeSlide = move - transform.forward * Vector3.Dot(move, transform.forward);
+            SpeedMetersPerSecond = dtMs > 0f ? r.move.magnitude * metersPerUnit / (dtMs / 1000f) : 0f;
             UpdateVisualBank();
         }
 
@@ -294,6 +424,13 @@ namespace GoF2Remake.Flight
 
         Vector2 ReadInput()
         {
+            if (Model.FreeFlight)
+            {
+                // Free flight: thrust is held (StepFree), the boost too (BoostHeld); the level-out still works.
+                Model.Braking = false;
+                if (GameControls.LevelOut.WasPressedThisFrame()) Model.AlignToHorizon();
+                return Vector2.ClampMagnitude(GameControls.Steer.ReadValue<Vector2>(), 1f);
+            }
             float throttle = GameControls.Throttle.ReadValue<float>();
             if (Mathf.Abs(throttle) > 0.01f) Model.ChangeThrottle(throttle * throttleChangePerSecond * Time.deltaTime);
             // Brake (S): the engines stop while it is held (FlightModel.Braking); a boost overrides it until it is pressed again.
@@ -317,14 +454,27 @@ namespace GoF2Remake.Flight
             return Vector2.ClampMagnitude(GameControls.Steer.ReadValue<Vector2>(), 1f);
         }
 
-        // A heavy hull banks less and settles into it slowly (remake debug, mass).
-        void UpdateVisualBank() => UpdateVisualBank(Model.VisualYawBank * bankDegreesPerH * Mathf.Lerp(1f, 0.35f, mass),
-                                                    Model.VisualPitchBank * pitchTiltDegreesPerH * Mathf.Lerp(1f, 0.35f, mass));
+        /// <summary>The turn rates' units (1/4096 of a turn, PlayerEgo +0x278 / +0x27c) in degrees.</summary>
+        public const float RateToDegrees = 360f / 4096f;
 
-        void UpdateVisualBank(float targetBank, float targetTilt)
+        // PlayerEgo::update 0xaa5f4: the model node rolls by -yawRate x 2 pi / 4096 and tilts by pitchRate x 0.25 x 2 pi / 4096,
+        // straight from the turn rates, which ramp in (dt H / ((3.3 - sens) 20) a ms) and decay (dt H / 126): no easing of
+        // its own. #114: the remake eased toward a fixed angle per stick (+0x25c / +0x258, the frame's input) at 6 / s, so the
+        // ship snapped into a bank in ~0.2 s and out of it as fast, where the original's takes ~0.5 s in and ~1.5 s out.
+        // Free flight keeps the remake's stick-driven bank; a heavy hull banks less and settles slowly (remake debug, mass).
+        void UpdateVisualBank()
+        {
+            float heavy = Mathf.Lerp(1f, 0.35f, mass);
+            if (Model.FreeFlight)
+                UpdateVisualBank(Model.VisualYawBank * bankDegreesPerH * heavy, Model.VisualPitchBank * pitchTiltDegreesPerH * heavy);
+            else
+                UpdateVisualBank(Model.YawRate * RateToDegrees * heavy, Model.PitchRate * 0.25f * RateToDegrees * heavy, mass <= 0f);
+        }
+
+        void UpdateVisualBank(float targetBank, float targetTilt, bool direct = false)
         {
             if (visualModel == null) return;
-            float k = 1f - Mathf.Exp(-bankSmoothing * Mathf.Lerp(1f, 0.2f, mass) * Time.deltaTime);
+            float k = direct ? 1f : 1f - Mathf.Exp(-bankSmoothing * Mathf.Lerp(1f, 0.2f, mass) * Time.deltaTime);
             bankAngle = Mathf.Lerp(bankAngle, targetBank, k);
             tiltAngle = Mathf.Lerp(tiltAngle, targetTilt, k);
             visualModel.localRotation = Quaternion.Euler(tiltAngle, 0f, bankAngle);

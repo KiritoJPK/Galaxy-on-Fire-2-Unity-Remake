@@ -434,14 +434,46 @@
     display: none;
 }
 
-/* The Debug page (StationMenu.BuildStationDebug): wider, the tabs over its rows. */
+/* The Debug page (StationMenu.BuildStationDebug): wider, the tabs over its rows; the list fills the menu's 92 % of the
+   screen and scrolls (its fixed 480 px overflowed short screens and wasted tall ones). */
 .system-menu--wide {
     max-width: 1180px;   /* the Give items grid: seven icons to a row */
+    height: 92%;
 }
 
-/* The Debug page: room for Give items' rows, icon grid and buttons without scrolling. */
+.system-menu--wide .system-menu-page--shown {
+    flex-grow: 1;
+}
+
 .system-menu--wide .system-slot-list {
-    height: 570px;
+    flex-grow: 1;
+    flex-shrink: 1;
+    height: auto;
+    min-height: 140px;
+}
+
+/* A small high-density screen (UiScale, the root's ui-large): the menu fills the screen, bigger rows. */
+.ui-large .system-menu {
+    width: 94%;
+    max-width: none;
+    max-height: 96%;
+}
+
+.ui-large .system-menu--wide {
+    height: 96%;
+}
+
+.ui-large .system-option,
+.ui-large .system-option Label {
+    font-size: 27px;
+}
+
+.ui-large .system-option {
+    padding: 12px 18px;
+}
+
+.ui-large .system-option .choice-value {
+    font-size: 25px;
 }
 
 .system-menu--wide .system-option Label {

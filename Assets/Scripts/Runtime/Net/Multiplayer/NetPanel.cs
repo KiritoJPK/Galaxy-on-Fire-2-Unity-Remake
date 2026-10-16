@@ -64,7 +64,7 @@ namespace GoF2Remake.Multiplayer
         [Serializable] public class ProfileRow { public string id = "", name = "", lastSeen = ""; public int role, devices; public bool online, banned; }
 
         [Serializable] public class Member { public string name = ""; public int rank; public bool online; }
-        [Serializable] public class ClaimRow { public int station; public string name = ""; public bool home; public float daysLeft; public bool sieged; }
+        [Serializable] public class ClaimRow { public int station; public string name = ""; public bool home; public float daysLeft; public bool sieged; public int garrisonSize, garrisonLevel = 1, vat; }
         [Serializable] public class FactionRow { public string tag = "", name = ""; public int members, claims; }
         [Serializable] public class Pilot { public long client; public string name = "", tag = ""; public bool docked, inMatch, self; public int role; }
         [Serializable] public class BanRow { public string name = "", account = "", reason = "", by = "", left = ""; }

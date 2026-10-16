@@ -156,7 +156,8 @@ namespace GoF2Remake
             UpscalerFramework.Apply(UpscalerId(upscaler), Settings.UpscalerQuality);
 #else
             // FSR 1 only below 100 % (#45: on Android FSR at 100 % or more left part of the screen frozen; at those scales
-            // there is nothing to upscale).
+            // there is nothing to upscale). The likely cause, Vulkan pre-transform, is off since 2026-10-14 (CLAUDE.md, "UI and
+            // platforms"); this guard stays until FSR at 100 % is checked on a phone.
             urp.upscalingFilter = upscaler == Settings.UpscalerFsr && urp.renderScale < 0.999f ? UpscalingFilterSelection.FSR
                 : upscaler == Settings.UpscalerStp ? UpscalingFilterSelection.STP : UpscalingFilterSelection.Auto;
 #endif

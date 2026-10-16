@@ -16,6 +16,7 @@ namespace GoF2Remake.Events
         /// <summary>Why a ship (or, for Spawn, an object) isn't known; null when it is.</summary>
         public static string CheckShip(string name, bool objects)
         {
+            if (objects && string.Equals(name?.Trim(), "wreck", System.StringComparison.OrdinalIgnoreCase)) return null;   // Spawn's hackable wreck
             if (NetAdmin.FindShip(name, out string error) >= 0) return null;
             if (objects && NetAdmin.FindAssembly(name, out _) != null) return null;
             return error;

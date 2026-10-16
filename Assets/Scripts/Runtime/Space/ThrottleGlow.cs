@@ -9,13 +9,11 @@
 // colour streams from the glow's rear ends ('trailPoints', set by the builder; 'trailWidth' metres, 'trailTime' s; a band's
 // trails, 'trailProfile', shrink and dim from its middle to its ends like an ellipse); never
 // while docking or leaving a station (the hangar flights, the launch fly-in).
-// The player's ship reads its ShipController; any other copy (NPC, another player's ship in multiplayer, the hangar)
-// has no throttle at hand, so it uses how fast the ship actually moves against the base speed every ship shares
-// (FlightModel.BaseSpeed, game units per ms; above it = boosting). The level eases toward the target so throttle steps
+// The drive comes from EngineDrive (the player's ShipController, else the ship's measured speed). The level eases toward the target so throttle steps
 // fade in and out. Never hidden with the engines: while the game has the player's engine parts off (mining, object
 // docking, cutscenes; AssembledObject.playerVariantParts holds the empty 'engineState' for it) the glow sits at 'idle'.
+// Remake mods: 'off' (ships.json "off") is the level while parked in a hangar with the engines off instead.
 
-using GoF2Remake.Flight;
 using UnityEngine;
 
 namespace GoF2Remake.Visuals
@@ -23,8 +21,6 @@ namespace GoF2Remake.Visuals
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class ThrottleGlow : MonoBehaviour
     {
-        const float MetersPerUnit = 0.05f;
-
         [Tooltip("Tint (multiplies the mask's own colours).")]
         public Color color = new Color(0.55f, 0.8f, 1f, 1f);
         [Tooltip("Glow intensity at throttle 0.")]
@@ -33,6 +29,8 @@ namespace GoF2Remake.Visuals
         public float full = 4f;
         [Tooltip("Glow intensity at the height of a boost.")]
         public float boost = 7f;
+        [Tooltip("Remake mods: glow intensity while the ship is parked in a hangar with its engines off; below 0 = 'idle'.")]
+        public float off = -1f;
         [Tooltip("How fast the glow follows the throttle (1/s).")]
         public float response = 4f;
         [Tooltip("An empty player engine part: while the game has the engines off (it is inactive) the glow stays at idle.")]
@@ -53,30 +51,21 @@ namespace GoF2Remake.Visuals
 
         Renderer[] renderers;
         MaterialPropertyBlock block;
-        ShipController ship;
-        Navigation nav;
-        World.SystemJump systemJump;
+        EngineDrive drive;
         TrailRenderer[] trails;
         Material trailMaterial;
         float level = -1f;
-        Vector3 lastPosition;
-        bool hasLast;
-        float lookupTimer;   // the level adds Navigation / SystemJump to the player after spawning the model: look again
         World.SpaceLevel spaceLevel;
         bool inStation;      // the docked station scene: hangar flights (arriving, leaving) never leave a trail
-        float measured;   // the moved-speed estimate (0..2: 1 = base speed)
 
         void OnEnable()
         {
             if (trails == null) BuildTrails();
             renderers = GetComponent<Renderer>() != null ? new[] { GetComponent<Renderer>() } : new Renderer[0];
             block ??= new MaterialPropertyBlock();
-            ship = GetComponentInParent<ShipController>();
-            nav = GetComponentInParent<Navigation>();
-            systemJump = GetComponentInParent<World.SystemJump>();
+            if (drive == null) drive = new EngineDrive(transform); else drive.Reset();
             inStation = FindAnyObjectByType<World.StationLevel>() != null;
             spaceLevel = inStation ? null : FindAnyObjectByType<World.SpaceLevel>();
-            hasLast = false;
         }
 
         /// <summary>No trail while docking or leaving a station: the station scene's hangar flights, and in space the launch
@@ -139,44 +128,14 @@ namespace GoF2Remake.Visuals
             return scaled;
         }
 
-        /// <summary>0 = engines idle, 1 = full throttle, up to 2 = full boost.</summary>
-        float Drive(float dt)
-        {
-            if (engineState != null && !engineState.activeInHierarchy) { hasLast = false; measured = 0f; return 0f; }
-            // Travelling between planets / systems: a full boost; the Khador Drive's charge builds up to it.
-            if ((nav != null && nav.Jumping) || (systemJump != null && systemJump.Traveling)) return 2f;
-            if (ship != null && ship.Model != null)
-            {
-                var m = ship.Model;
-                float d = (m.Braking ? 0f : m.Throttle) + m.BoostVisualPercent;
-                if (systemJump != null && systemJump.Charging) d = Mathf.Max(d, 1f + systemJump.ChargeRate);
-                return d;
-            }
-            var p = transform.position;
-            if (hasLast && dt > 0f)
-            {
-                float unitsPerMs = (p - lastPosition).magnitude / dt / MetersPerUnit / 1000f;
-                // A jump or respawn moves the ship in one frame: ignore it.
-                if (unitsPerMs < FlightModel.BaseSpeed * 6f)
-                    measured = Mathf.Lerp(measured, Mathf.Clamp(unitsPerMs / FlightModel.BaseSpeed, 0f, 2f), 1f - Mathf.Exp(-dt * 5f));
-            }
-            lastPosition = p;
-            hasLast = true;
-            return measured;
-        }
-
         void LateUpdate()
         {
             float dt = Time.deltaTime;
-            if ((nav == null || systemJump == null || ship == null) && (lookupTimer -= Time.unscaledDeltaTime) <= 0f)
-            {
-                lookupTimer = 0.5f;
-                if (ship == null) ship = GetComponentInParent<ShipController>();
-                if (nav == null) nav = GetComponentInParent<Navigation>();
-                if (systemJump == null) systemJump = GetComponentInParent<World.SystemJump>();
-            }
-            float d = Drive(dt);
-            float target = d <= 1f ? Mathf.Lerp(idle, full, d) : Mathf.Lerp(full, boost, d - 1f);
+            float d = drive.Sample(dt, engineState);
+            float target = drive.Off ? 0f : d <= 1f ? Mathf.Lerp(idle, full, d) : Mathf.Lerp(full, boost, d - 1f);   // free flight, no thrust: off
+            // Remake mods ("off"): parked in a hangar (the engine part hidden) the glow sits at 'off', so with idle = full it
+            // is steady like the game's own engine glow: dark on the pad, lit through the take-off and all flight.
+            if (inStation && off >= 0f && engineState != null && !engineState.activeInHierarchy) target = off;
             level = level < 0f ? target : Mathf.Lerp(level, target, 1f - Mathf.Exp(-dt * response));
             block.SetFloat(GlowId, level);
             block.SetColor(ColorId, color);

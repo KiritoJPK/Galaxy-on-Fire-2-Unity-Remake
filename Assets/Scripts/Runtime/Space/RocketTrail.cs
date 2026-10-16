@@ -59,11 +59,27 @@ namespace GoF2Remake.Flight
             return gun != null && gun.kind == Gun.Kind.Thermo && gun.lookIndex == 193 ? assets.sunfireTrailMaterial : assets.particlesMaterial;
         }
 
+        /// <summary>The record for a player gun with a mod's trail (WeaponFx.trail): its width and life over the game's
+        /// record, the rocket's for a weapon that has none; null = no trail.</summary>
+        public static Record For(Gun gun, TrailLook look)
+        {
+            var rec = For(gun);
+            if (look == null) return rec;
+            if (look.none) return null;
+            var b = rec ?? Rocket;
+            return new Record
+            {
+                size = look.width > 0f ? look.width : b.size, lifeMs = look.lifeMs > 0f ? look.lifeMs : b.lifeMs, sectionMs = b.sectionMs,
+                pool = Mathf.Clamp(Mathf.CeilToInt((look.lifeMs > 0f ? look.lifeMs : b.lifeMs) / b.sectionMs) + 1, 4, 120),
+                afterDeathMs = b.afterDeathMs, uv = b.uv,
+            };
+        }
+
         /// <summary>The record for a player gun, null = no trail (RocketGun::setRadar's cases).</summary>
         public static Record For(Gun gun)
         {
             if (gun == null) return null;
-            if (gun.kind == Gun.Kind.Rocket || gun.kind == Gun.Kind.Missile) return Rocket;
+            if (gun.kind == Gun.Kind.Rocket || gun.kind == Gun.Kind.Missile || gun.missiles) return Rocket;   // + mod guns firing missiles
             if (gun.kind == Gun.Kind.ClusterMissile) return Thermo(0, 50f, true);
             if (gun.kind == Gun.Kind.Thermo)
                 return gun.lookIndex switch { 28 => Thermo(0, 50f, false), 29 => Thermo(1, 100f, false), 30 => Thermo(2, 150f, false),
@@ -104,9 +120,13 @@ namespace GoF2Remake.Flight
         Color32[] cols;
         int[] tris;
 
-        public RocketTrail(Record record, Transform parent, Material material)
+        /// <summary>A mod's colour (TrailLook.color), white = the game's.</summary>
+        readonly Color tint;
+
+        public RocketTrail(Record record, Transform parent, Material material, Color? tint = null)
         {
             rec = record;
+            this.tint = tint ?? Color.white;
             points = new Vector3[rec.pool];
             born = new float[rec.pool];
             go = new GameObject("Rocket trail");
@@ -205,8 +225,8 @@ namespace GoF2Remake.Flight
                 uvs[k * 2] = new Vector2(rec.uv.xMin, v);
                 uvs[k * 2 + 1] = new Vector2(rec.uv.xMax, v);
                 // FFFFFFFF -> 00000000 over the life (additive: the RGB fades too)
-                byte c = (byte)(255f * Mathf.Clamp01(1f - Age(k) / rec.lifeMs));
-                cols[k * 2] = cols[k * 2 + 1] = new Color32(c, c, c, c);
+                float f = Mathf.Clamp01(1f - Age(k) / rec.lifeMs);
+                cols[k * 2] = cols[k * 2 + 1] = new Color32((byte)(255f * f * tint.r), (byte)(255f * f * tint.g), (byte)(255f * f * tint.b), (byte)(255f * f * tint.a));
             }
             for (int k = n; k < verts.Length / 2; k++) verts[k * 2] = verts[k * 2 + 1] = verts[(n - 1) * 2];
             mesh.Clear();

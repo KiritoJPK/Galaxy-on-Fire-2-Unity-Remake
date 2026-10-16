@@ -58,6 +58,8 @@ namespace GoF2Remake.Multiplayer
         readonly NetworkVariable<FixedString4096Bytes> pirateBoard = new NetworkVariable<FixedString4096Bytes>();   // PirateReports' board (JSON)
         readonly NetworkVariable<int> toll = new NetworkVariable<int>();   // NetFactions.Toll
         readonly NetworkVariable<int> rules = new NetworkVariable<int>();   // NetRules: the session's gameplay options
+        readonly NetworkVariable<byte> kaamoLevel = new NetworkVariable<byte>();   // NetRules.HostKaamoLevel
+        readonly NetworkVariable<byte> flightModel = new NetworkVariable<byte>();  // NetRules.HostFlight + 2 (0 = not arrived)
         readonly NetworkVariable<FixedString64Bytes> serverId = new NetworkVariable<FixedString64Bytes>();   // their key on the client
         readonly NetworkVariable<bool> freeForAll = new NetworkVariable<bool>();     // /pvp, an event's Free For All: every player an enemy
         readonly NetworkVariable<Unity.Collections.FixedString4096Bytes> sessionMods = new NetworkVariable<Unity.Collections.FixedString4096Bytes>();   // NetMods.SessionList
@@ -95,7 +97,16 @@ namespace GoF2Remake.Multiplayer
         internal void SetFreePvp(bool on) { if (IsServer && freePvp.Value != on) freePvp.Value = on; }
         internal void SetRules(int mask) { if (IsServer && rules.Value != mask) rules.Value = mask; }
 
-        /// <summary>The factions' claimed stations, "station|TAG|Name" per line (NetFactions, NetFactionsClient).</summary>
+        /// <summary>The session's Kaamo upgrade limit (NetRules.HostKaamoLevel; 0 before it has arrived).</summary>
+        public int KaamoLevel => kaamoLevel.Value;
+        internal void SetKaamoLevel(int level) { if (IsServer && kaamoLevel.Value != level) kaamoLevel.Value = (byte)level; }
+
+        /// <summary>The session's flight model (NetRules.HostFlight; FlightKnown false before it has arrived).</summary>
+        public int FlightModel => flightModel.Value - 2;
+        public bool FlightKnown => flightModel.Value > 0;
+        internal void SetFlightModel(int style) { if (IsServer && flightModel.Value != style + 2) flightModel.Value = (byte)(style + 2); }
+
+        /// <summary>The factions' claimed stations, "station|TAG|Name|VAT %" per line (NetFactions, NetFactionsClient).</summary>
         public string Claims => claims.Value.ToString();
 
         /// <summary>Server: the claims (cut at a whole line to fit the network variable's 4 KB).</summary>
@@ -106,7 +117,8 @@ namespace GoF2Remake.Multiplayer
             if (claims.Value.ToString() != text) claims.Value = text;
         }
 
-        /// <summary>The sieges, "station|attacker|defender|started|seconds left|control" per line (NetFactions).</summary>
+        /// <summary>The sieges, "station|attacker|defender|phase|seconds left|stake|garrison alive|garrison level|station
+        /// defenders|their level|attackers' kills|defenders' kills|days added" per line (NetFactions).</summary>
         public string Sieges => sieges.Value.ToString();
 
         internal void SetSieges(string text)
@@ -116,7 +128,8 @@ namespace GoF2Remake.Multiplayer
             if (sieges.Value.ToString() != text) sieges.Value = text;
         }
 
-        /// <summary>The toll a pilot of another faction pays at a held station (NetFactions.Toll; 0 = none).</summary>
+        /// <summary>The toll a pilot of another faction pays at a held station (NetFactions.Toll: credits, or -N = N % of the
+        /// pilot's credits; 0 = none). What one pilot pays: NetFactionsClient.TollAmount.</summary>
         public int Toll => toll.Value;
 
         internal void SetToll(int value) { if (IsServer && toll.Value != value) toll.Value = value; }
@@ -150,6 +163,7 @@ namespace GoF2Remake.Multiplayer
                 NetAdmin.Reset();
                 EventRunner.Reset();
                 NetNews.ServerStart();   // the saved news (a dedicated server with profiles)
+                NetMotd.Load();          // motd.txt
                 seed.Value = pendingSeed;
                 dedicated.Value = pendingDedicated;
                 debugAllowed.Value = NetGame.HostAllowsDebug;
@@ -157,6 +171,8 @@ namespace GoF2Remake.Multiplayer
                 serverId.Value = NetProfiles.ServerId;
                 freePvp.Value = NetGame.FreePvp;
                 rules.Value = NetRules.Host;
+                kaamoLevel.Value = (byte)NetRules.HostKaamoLevel;
+                flightModel.Value = (byte)(NetRules.HostFlight + 2);
                 NetFactions.OnStateSpawned();   // the claims, now that this object exists
                 PirateReports.ServerReset();   // the Pirate activity board starts empty (filled by the next sweep)
                 sessionMods.Value = NetMods.SessionList;
@@ -245,6 +261,24 @@ namespace GoF2Remake.Multiplayer
 
         [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
         void DestroyedListRpc(int station, int[] indices, RpcParams rpc = default) => NetOrbit.Current?.OnDestroyedList(station, indices);
+
+        // ---- the message of the day (NetMotd) -----------------------------------------------------------------
+
+        /// <summary>A player entered the world: the server's MOTD to them.</summary>
+        [Rpc(SendTo.Server)]
+        public void MotdRequestRpc(RpcParams rpc = default)
+        {
+            ulong client = rpc.Receive.SenderClientId;
+            if (NetRateLimit.Allow(client, NetRateLimit.Kind.Request)) NetMotd.Send(client, false);
+        }
+
+        internal void SendMotd(ulong client, string title, string text, string hash, bool force)
+        {
+            if (IsServer) MotdRpc(title ?? "", text ?? "", hash ?? "", force, RpcTarget.Single(client, RpcTargetUse.Temp));
+        }
+
+        [Rpc(SendTo.SpecifiedInParams, InvokePermission = RpcInvokePermission.Server)]
+        void MotdRpc(string title, string text, string hash, bool force, RpcParams rpc = default) => NetMotd.Received(title, text, hash, force);
 
         // ---- chat (NetChat) ---------------------------------------------------------------------------------
 
@@ -592,6 +626,7 @@ namespace GoF2Remake.Multiplayer
             var by = NetSquad.Find(killer);
             if (victim == null || by == null || !HitRecently(victim.NetworkObjectId, killer, 30f)) return;
             NetArena.OnKill(victim.OwnerClientId, by.OwnerClientId);   // an arena match's score
+            NetFactions.OnPilotKilled(victim, by);                     // a siege fight: the killer repaired
             NoticeRpc(string.Format(Localization.Extra("mpDestroyedBy", "{0} was destroyed by {1}."), victim.DisplayName, by.DisplayName));
             EventRunner.OnPlayerKilled(by, victim);   // an event's "on pvpkill"
         }
@@ -713,6 +748,18 @@ namespace GoF2Remake.Multiplayer
         /// never by the sender's game: to the killer, or split evenly across the killer's squad (every member online,
         /// wherever they are; players' suggestion).</summary>
         [Rpc(SendTo.Server)]
+        public void WreckHackedRpc(int station, string name, RpcParams rpc = default)
+        {
+            // A player's game hacked a wreck in its orbit: the events' "on hacked" (checked: the sender is in that orbit).
+            ulong client = rpc.Receive.SenderClientId;
+            if (!NetRateLimit.Allow(client, NetRateLimit.Kind.Kill) || !NetGuard.InOrbit(client, station)) return;
+            name = name ?? "";
+            if (name.Length > 64) name = name.Substring(0, 64);
+            var pilot = GoF2Remake.Events.EventHost.Find(client);
+            if (pilot != null) GoF2Remake.Events.EventRunner.OnWreckHacked(pilot, station, name);
+        }
+
+        [Rpc(SendTo.Server)]
         public void PirateSightingDoneRpc(int id, ulong killer, RpcParams rpc = default)
         {
             ulong client = rpc.Receive.SenderClientId;
@@ -774,9 +821,16 @@ namespace GoF2Remake.Multiplayer
 
         /// <summary>A pilot of another faction paid the toll at 'station' (their game took the credits).</summary>
         [Rpc(SendTo.Server)]
-        public void TollPaidRpc(int station, RpcParams rpc = default)
+        public void TollPaidRpc(int station, int amount, RpcParams rpc = default)
         {
-            if (NetRateLimit.Allow(rpc.Receive.SenderClientId, NetRateLimit.Kind.Request)) NetFactions.OnTollPaid(rpc.Receive.SenderClientId, station);
+            if (NetRateLimit.Allow(rpc.Receive.SenderClientId, NetRateLimit.Kind.Request)) NetFactions.OnTollPaid(rpc.Receive.SenderClientId, station, amount);
+        }
+
+        /// <summary>An orbit's authority: one of the besieged station's garrison fighters died there (NetOrbit.UpdateGarrison).</summary>
+        [Rpc(SendTo.Server)]
+        public void GarrisonKillRpc(int station, RpcParams rpc = default)
+        {
+            if (NetRateLimit.Allow(rpc.Receive.SenderClientId, NetRateLimit.Kind.Kill)) NetFactions.OnGarrisonKill(rpc.Receive.SenderClientId, station);
         }
 
         /// <summary>Server: a notice for everyone (a claim).</summary>
@@ -1130,10 +1184,10 @@ namespace GoF2Remake.Multiplayer
                 NetRateLimit.Reject(client, $"a trade of {delta} x item {item} at {station}");
                 return;
             }
-            int done = NetStock.HostItem(station, item, delta);
+            int done = NetStock.HostItem(station, item, delta, out int vatUnits);
             if (delta < 0 && done < -delta)
                 ItemRefusedRpc(station, item, price, -delta - done, RpcTarget.Single(client, RpcTargetUse.Temp));
-            if (delta < 0 && done > 0 && NetProfiles.Enabled) NetFactions.OnPurchase(client, station, price * done);   // a faction station's tax
+            if (delta < 0 && vatUnits > 0 && NetProfiles.Enabled) NetFactions.OnPurchase(client, station, item, price, vatUnits);   // a faction station's VAT
             dirtyStock.Add(station);
         }
 
@@ -1188,6 +1242,7 @@ namespace GoF2Remake.Multiplayer
             else ok = added >= 0 && reserved != null && reserved.Remove(added);   // the reserved row back: not bought after all
             if (!ok) { NetRateLimit.Reject(client, $"an unreserved ship trade {removed} -> {added} at {station}"); return; }
             if (NetStock.HostShip(station, removed, added)) dirtyStock.Add(station);
+            if (removed >= 0 && NetProfiles.Enabled) NetFactions.OnShipBought(client, station, removed);   // a faction station's VAT
         }
 
         /// <summary>Host: the stock of 'station' for every player docked there.</summary>

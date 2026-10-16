@@ -11,6 +11,7 @@
 //                                     kills are "by NPC" (no kill credit)
 //   death                             sound 22, a type-0 explosion with fire streaks, gone after 4500 ms, the slot freed
 // Hostile NPCs add it to their target list (it is a KIPlayer of the level).
+// Its aim, shots and pick are the shared turret's (TurretCore, TurretTargeting.Rule.Retarget).
 
 using System.Collections.Generic;
 using GoF2Remake.Data;
@@ -23,7 +24,7 @@ namespace GoF2Remake.Flight
     public class SentryGun : MonoBehaviour
     {
         const float M = Gun.MetersPerUnit;
-        const float InvulnerableMs = 3000f, PickMs = 3000f, RangeUnits = 50000f, LeadUnits = 1500f, GoneMs = 4500f;
+        const float InvulnerableMs = 3000f, RangeUnits = 50000f, GoneMs = 4500f;
         public const int MaxActive = 3;
 
         /// <summary>Level+0x6c: sentries deployed and not yet gone.</summary>
@@ -32,14 +33,13 @@ namespace GoF2Remake.Flight
         Target self;
         /// <summary>The sentry's hittable object (its HUD marker: CombatView).</summary>
         public Target Target => self;
-        Gun gun;
-        GunRig rig;
-        TurretAim aim;
-        Transform muzzle, fxRoot;
+        TurretCore core;
+        TurretTargeting picking;
+        Gun gun => core.Gun;
+        GunRig rig => core.Rig;
+        Transform fxRoot;
         WeaponFx lookFx;
-        Target target;
-        float ageMs, pickMs, deadMs = -1f, sinceShotMs = 1e9f;
-        Visuals.PartAnimation[] anims = new Visuals.PartAnimation[0];
+        float ageMs, deadMs = -1f;
 
         public static bool CanDeploy => ActiveCount < MaxActive;
         /// <summary>The deployed sentries (multiplayer: their shots are shown to the others, NetPlayer).</summary>
@@ -68,6 +68,7 @@ namespace GoF2Remake.Flight
             yawNode.SetParent(transform, false);
             var pitchNode = new GameObject("gun").transform;
             pitchNode.SetParent(yawNode, false);
+            var anims = new Visuals.PartAnimation[0];
             if (fx != null && fx.sentry != null)
             {
                 var model = Instantiate(fx.sentry, pitchNode, false);
@@ -75,7 +76,14 @@ namespace GoF2Remake.Flight
                 anims = model.GetComponentsInChildren<Visuals.PartAnimation>(true);
                 foreach (var a in anims) { a.loop = true; a.speed = 0f; }   // animated only while it fires
             }
-            aim = new TurretAim(yawNode, pitchNode) { yawRatePerMs = TurretAim.RadPerMs, pitchRatePerMs = TurretAim.RadPerMs };
+            // No pitch limit (TurretAim's NaN), both at 2 pi / 4096 rad per ms.
+            var aim = new TurretAim(yawNode, pitchNode) { yawRatePerMs = TurretAim.RadPerMs, pitchRatePerMs = TurretAim.RadPerMs };
+            core = TurretCore.Wrap(transform, yawNode, pitchNode, aim, TurretCore.ShotFrom.Muzzle);
+            core.SetAnimations(anims);
+            picking = new TurretTargeting(TurretTargeting.Rule.Retarget, RangeUnits)
+            {
+                Candidate = t => t.isShip && t.hostileToPlayer && t.Alive && !t.untargetable && !t.cloaked && t.isActiveAndEnabled,
+            };
 
             self = gameObject.AddComponent<Target>();
             self.isShip = true;
@@ -92,13 +100,14 @@ namespace GoF2Remake.Flight
             int look = item.Look == 211 ? 2 : item.Look == 212 ? 20 : 14;
             var lookItem = db.Item(look);
             lookFx = WeaponFx.Load(look);
-            gun = new Gun(lookItem, item.Attr(9), item.Attr(11, 430), 4, item.Attr(12, 1000), item.Attr(13, 22)) { owner = self, Ignores = t => t.playerProof };
-            muzzle = new GameObject("muzzle").transform;
+            var g = new Gun(lookItem, item.Attr(9), item.Attr(11, 430), 4, item.Attr(12, 1000), item.Attr(13, 22)) { owner = self, Ignores = t => t.playerProof };
+            var muzzle = new GameObject("muzzle").transform;
             muzzle.SetParent(pitchNode, false);
             muzzle.localPosition = new Vector3(0f, 0f, item.Look == 213 ? 300f : 250f) * M;
+            core.SetMuzzle(muzzle);
             fxRoot = new GameObject("Sentry fx").transform;
-            rig = new GunRig(gun, lookFx, fxRoot, muzzle);
-            gun.Hit += (b, t, p) => { t.Damage(gun.damage, true, gun.bullets[b].velocity); rig.ShowImpact(p); };
+            core.SetGun(g, new GunRig(g, lookFx, fxRoot, muzzle));
+            g.Hit += (b, t, p) => { t.Damage(g.damage, true, g.bullets[b].velocity); rig.ShowImpact(p); };
 
             // A KIPlayer of the level: the hostile ships may shoot at it.
             if (traffic != null) foreach (var s in traffic.Ships) if (s.Target.hostileToPlayer && !s.enemies.Contains(self)) s.enemies.Add(self);
@@ -116,39 +125,15 @@ namespace GoF2Remake.Flight
                 return;
             }
             ageMs += dtMs;
-            sinceShotMs += dtMs;
-            float animSpeed = sinceShotMs <= gun.reloadMs + 50f ? 1f : 0f;
-            foreach (var a in anims) if (a != null) a.speed = animSpeed;
+            core.SinceShotMs += dtMs;
+            core.SetAnimating(core.RecentlyFired);
             if (ageMs >= InvulnerableMs) self.invulnerable = false;
-            gun.Update(dtMs, Target.All, null);
-            rig.UpdateVisuals(dtMs, Camera.main, aim.BarrelForward);
+            core.Tick(dtMs, Target.All, null);
             if (ageMs < InvulnerableMs) return;
-            pickMs += dtMs;
-            if (pickMs >= PickMs || target == null || !target.Alive || !target.isActiveAndEnabled || target.cloaked) { pickMs = 0f; target = Pick(); }
+            var target = picking.Update(dtMs, Target.All, transform.position);
             if (target == null) return;
-            if (aim.Step(target.transform.position + target.transform.forward * LeadUnits * M, dtMs))
-            {
-                int b = gun.TryFire(muzzle.position, Quaternion.LookRotation(aim.BarrelForward, aim.BarrelUp), false);
-                if (b >= 0)
-                {
-                    rig.OnShot();
-                    sinceShotMs = 0f;
-                    if (lookFx != null && lookFx.shot != null) Sfx.PlayAt(lookFx.Shot, transform.position, 0.6f);
-                }
-            }
-        }
-
-        Target Pick()
-        {
-            Target best = null;
-            float bestD = RangeUnits * M;
-            foreach (var t in Target.All)
-            {
-                if (t == null || !t.isShip || !t.hostileToPlayer || !t.Alive || t.untargetable || t.cloaked || !t.isActiveAndEnabled) continue;
-                float d = (t.transform.position - transform.position).magnitude;
-                if (d < bestD) { bestD = d; best = t; }
-            }
-            return best;
+            if (core.StepToward(TurretTargeting.LeadPoint(target), dtMs) && core.Fire() >= 0
+                && lookFx != null && lookFx.shot != null) Sfx.PlayAt(lookFx.Shot, transform.position, 0.6f);
         }
 
         void OnDied(Target t)

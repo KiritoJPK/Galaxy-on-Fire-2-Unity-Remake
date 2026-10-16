@@ -3,8 +3,9 @@
 `gof2-modding/` holds a guide written for AI assistants (Claude, ChatGPT, Gemini...): `SKILL.md` is the complete mod file
 format with rules, balancing numbers and a checklist, `reference.md` lists every number and name of the original game a mod
 refers to (items, stats, blueprints, ships, systems, stations, story steps and speakers, models and their textures, music,
-sounds), `voices.md` every voice clip with its line, `events.md` every event graph node and command (for quests and bar
-missions), and `guide.md` the full modders' guide. With both, an assistant can write a working mod for you.
+sounds), `voices.md` every voice clip with its line, `quests.md` + `quest.schema.json` the quest format (`.gof2quest`: quests,
+bar missions and events as steps, which the Mod Builder also shows as a node graph), `events.md` every event graph node and
+command, and `guide.md` the full modders' guide. With both, an assistant can write a working mod for you.
 
 ## Claude
 
@@ -12,11 +13,11 @@ missions), and `guide.md` the full modders' guide. With both, an assistant can w
   example: "Make a GoF2 Remake mod that adds a Valkyrie ship as a blueprint after the Supernova."
 - **Claude Code:** copy the `gof2-modding` folder into `~/.claude/skills/` (or your project's `.claude/skills/`). Claude uses
   it by itself when you ask for a GoF2 mod.
-- **Any chat:** attach `SKILL.md`, `reference.md` and `guide.md` (plus `events.md` for quests / bar missions, `voices.md` for voice-over) (or paste them) at the start of the conversation.
+- **Any chat:** attach `SKILL.md`, `reference.md` and `guide.md` (plus `quests.md` for quests / bar missions, `voices.md` for voice-over) (or paste them) at the start of the conversation.
 
 ## ChatGPT and others
 
-Attach `SKILL.md`, `reference.md` and `guide.md` (plus `events.md` for quests / bar missions, `voices.md` for voice-over) to the chat (or a custom GPT's knowledge, or a project's files), then say what the mod
+Attach `SKILL.md`, `reference.md` and `guide.md` (plus `quests.md` for quests / bar missions, `voices.md` for voice-over) to the chat (or a custom GPT's knowledge, or a project's files), then say what the mod
 should do. If the assistant can't read files, paste `SKILL.md` first and the part of `reference.md` you need.
 
 ## Tips
@@ -25,4 +26,40 @@ should do. If the assistant can't read files, paste `SKILL.md` first and the par
   what you have: models (GLB), icons, card art, sounds. The assistant tells you the sizes and folders for the files it names.
 - Copy the files it gives you into a folder named after the mod id, put it in the game's Mods folder, press **Refresh** in the
   Mods screen and turn it on. If the Mods screen shows an error or warning, paste it back to the assistant.
-- Quests and bar missions are event graphs made in the Unity Editor; the assistant can plan them node by node for you.
+- Quests and bar missions: the assistant writes them as `events/<name>.gof2quest` files (`quests.md`), which the game runs and
+  the Mod Builder opens as a graph. Unity-made event graphs still work too.
+
+## Live in the Mod Builder (MCP, Windows)
+
+The game's Mod Builder can let your assistant work on the open project directly, with the game's own checks: main menu >
+Mods > Mod Builder, open a project, press **AI tools** in the top bar (between Redo and the hangar) and switch the **MCP
+server** on (it is off by default and runs only while the builder is open, on this computer only, with a token). The tab
+shows the commands to connect, with Copy buttons:
+
+- **Claude Code:** `claude mcp add --transport http gof2-builder http://127.0.0.1:47630/mcp --header "Authorization: Bearer <token>"`
+- **Claude Desktop:** the tab's JSON for `claude_desktop_config.json` (Settings > Developer > Edit config; it uses
+  `npx mcp-remote`, so Node.js must be installed). Restart Claude Desktop.
+- **Other MCP apps:** Streamable HTTP, the URL `http://127.0.0.1:47630/mcp` and the header `Authorization: Bearer <token>`.
+
+Give the assistant the skill as well (above): the server knows the game, the skill explains the formats. Its tools:
+`builder_status`, `search_content` (the game's, your project's and other mods' items, ships, systems, stations,
+characters, quests, music, rooms), `list_entries` / `get_entries` / `put_entry` / `delete_entry` (the project's entries in
+the mod files' own JSON; `patch_entry` changes part of one, e.g. one line of a quest, leaving the rest and its graph layout
+as they are), `list_files` / `read_file` / `write_file` (portraits, textures, models, audio inside the project),
+`compile_quest`, `validate`, `get_quest_schema`, `play_test` / `end_play_test`, `get_log`, `screenshot`, `undo` / `redo`,
+`show_kind`. To see its work: `view_model` (any model, a game one, your ship with its hardpoints tagged, a station or a .glb,
+drawn from any side into one image without touching the screen), `view_texture` / `list_textures` (textures as images, normal
+maps decoded), `select_entry` and `view` (an entry on the builder's screen, its camera aimed from a side, with a screenshot,
+optionally without the panels). To work the builder: `hardpoint` (hardpoints placed onto the hull from a side, snapped,
+mirrored, removed), `engines`, `test_fly` / `end_test_fly`, `weapon_range`, `switch_hangar`, and the projects:
+`list_projects`, `create_project`, `open_project`, `export_mod`; `loadout` (the test flight's weapons and cheats),
+`room_marker` (a room's pad, camera and other markers put on its surfaces). And to play your mod: during a play test or test
+flight `press` (game actions and keys), `steer` and `ui_buttons` / `ui_click` (the buttons on screen by their text), so the
+assistant can launch, talk, dock and play a quest through, watching with screenshots. Every change is an undo step in the builder, and the **AI
+tools** tab lists what the assistant did.
+**Permissions** on the same tab decide what waits for you: *Read only* (the assistant only looks and suggests), *Ask
+always* (every change waits for your Yes in the game), *Ask to remove* (the default: only removing an entry asks) or
+*Allow all* (nothing asks, so you needn't watch the game while it builds). A question's **Yes to everything** switches to
+Allow all. Then ask, for example: "Make a quest where Vega asks me to clear two waves of pirates at Var
+Hastra, then play-test it."
+

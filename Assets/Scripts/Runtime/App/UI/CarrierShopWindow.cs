@@ -139,6 +139,7 @@ namespace GoF2Remake.UI
             tradeAllRow = El("trade-all-row");
             sellAllButton = new Button { focusable = false };
             sellAllButton.AddToClassList("trade-all");
+            sellAllButton.AddToClassList("trade-all--first");
             sellAllButton.style.visibility = Visibility.Hidden;
             buyAllButton = new Button(() => BuyAll()) { text = X("shopBuyAll", "BUY ALL"), focusable = false };
             buyAllButton.AddToClassList("trade-all");

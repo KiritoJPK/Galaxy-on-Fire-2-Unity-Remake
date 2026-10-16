@@ -267,6 +267,16 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void SuccessPaysTheBonusPromisedOnAccepting()
+        {
+            // A standing change during the mission doesn't change the pay (the original keeps the chat's bonus).
+            Session.Standing = new[] { 40, 0 };
+            Freelance.Accept(Db, AgentWith(M(MissionType.Defense, reward: 10000, race: 0)));
+            Session.Standing = new[] { 0, 0 };
+            Assert.AreEqual(14000, Freelance.Succeed(false));
+        }
+
+        [Test]
         public void StandingPlusFiveTowardTheClientsRace()
         {
             Session.Standing = new[] { 30, 0 };

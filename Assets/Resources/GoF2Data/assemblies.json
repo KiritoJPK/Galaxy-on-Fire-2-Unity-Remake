@@ -18383,6 +18383,60 @@
      "rotation": [],
      "scale": [],
      "lods": []
+    },
+    {
+     "key": "bot_a",
+     "parent": "",
+     "mesh": 99001,
+     "model": "Models/main/bars/bar_vossk_bot_a_anim_alpha.fbx",
+     "material": 0,
+     "role": "bot_a",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_b",
+     "parent": "",
+     "mesh": 99002,
+     "model": "Models/main/bars/bar_vossk_bot_b_anim_alpha.fbx",
+     "material": 0,
+     "role": "bot_b",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_c",
+     "parent": "",
+     "mesh": 99003,
+     "model": "Models/main/bars/bar_vossk_bot_c_anim_alpha.fbx",
+     "material": 0,
+     "role": "bot_c",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
     }
    ],
    "lodDistances": [],

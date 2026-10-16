@@ -136,8 +136,10 @@ namespace GoF2Remake.Flight
         public GameObject Crate(int race) => crates == null || crates.Length < 5 ? null
             : race == 0 ? crates[0] : race == 1 ? crates[1] : race == 3 ? crates[3] : race == 9 ? crates[4] : crates[2];
 
-        public GameObject Tractor(int item) => tractorBeams == null || tractorBeams.Length < 4 ? null
-            : item == 68 ? tractorBeams[0] : item == 69 ? tractorBeams[1] : item == 70 ? tractorBeams[2] : tractorBeams[3];
+        /// <summary>The tractor beam's look by the item's look (ItemData.Look: a mod's beam is its base's): 68, 69, 70, else
+        /// 194's.</summary>
+        public GameObject Tractor(int look) => tractorBeams == null || tractorBeams.Length < 4 ? null
+            : look == 68 ? tractorBeams[0] : look == 69 ? tractorBeams[1] : look == 70 ? tractorBeams[2] : tractorBeams[3];
 
         public static AudioClip Pick(AudioClip[] clips) => clips == null || clips.Length == 0 ? null : clips[Random.Range(0, clips.Length)];
     }

@@ -35,32 +35,26 @@ using UnityEngine.UIElements;
 
 namespace GoF2Remake.UI
 {
-    public partial class ModBuilderView
+    public partial class ModBuilderView : ModBuilderScreen
     {
         const float M = 0.05f;
-        static string T(string key, string english) => Localization.Extra(key, english);
         static readonly string[] TypeNames = { "Primary", "Secondary", "Turret", "Engine" };
         static readonly string[] TypeShort = { "P", "S", "T", "E" };
         static readonly int[] Races = { 0, 1, 2, 3, 8, 9 };
         static readonly string[] RaceNames = { "Terran", "Vossk", "Nivelian", "Midorian", "Pirate", "Void" };
 
         readonly StationLevel level;
-        readonly Action<bool> sound;
-        readonly VisualElement root, viewport, labels, modal, ship, hardpoints, loadout, shipList;
-        readonly Label status, projectLabel, placeHint;
+        VisualElement viewport, labels;
+        readonly VisualElement ship, hardpoints, loadout, shipList;
+        readonly Label placeHint;
         readonly Button testFly;
         readonly Button[] tabs = new Button[3];
         readonly ModBuilderGizmo gizmo;
         int tab;
-        string statusText;
-        float statusMs;
-        bool statusError;
-        ModProject Project => ModBuilder.Project;
         ProjectShip Current => ModBuilder.Ship;
 
         // reloading the project (the model changes)
-        bool reloadPending, reloading, launchPending, saveDirty;
-        float reloadAtMs, saveAtMs, nowMs;
+        bool launchPending;
         int boundShip = -2;
         Transform boundTransform;
 
@@ -78,55 +72,57 @@ namespace GoF2Remake.UI
         Vector2 pendingTurn;
         const float OrbitEaseMs = 25f;
 
-        public ModBuilderView(StationLevel level, VisualElement stationRoot, Action<bool> sound)
+        protected override void BuildViewport(VisualElement root)
         {
-            this.level = level;
-            this.sound = sound;
-            var sheet = Resources.Load<StyleSheet>("GoF2ModBuilder/ModBuilder");
-            root = new VisualElement { name = "modBuilder", pickingMode = PickingMode.Ignore };
-            root.AddToClassList("mbv-root");
-            if (sheet != null) root.styleSheets.Add(sheet);
-            stationRoot.Add(root);
-
             viewport = Add(root, new VisualElement { name = "mbvViewport" }, "mbv-viewport");
             viewport.RegisterCallback<PointerDownEvent>(OnPointerDown);
             viewport.RegisterCallback<PointerMoveEvent>(OnPointerMove);
             viewport.RegisterCallback<PointerUpEvent>(OnPointerUp);
             viewport.RegisterCallback<PointerCaptureOutEvent>(_ => EndDrag());
-            viewport.RegisterCallback<WheelEvent>(e => { if (InHangar) level.Inspect.Zoom(Mathf.Pow(0.85f, -Mathf.Sign(e.delta.y))); e.StopPropagation(); });
+            viewport.RegisterCallback<WheelEvent>(e => { OnWheel(e.delta.y); e.StopPropagation(); });
             labels = Add(root, new VisualElement { pickingMode = PickingMode.Ignore }, "mbv-labels");
+        }
 
-            // ---- top bar ----
-            var top = uiTop = Add(root, new VisualElement(), "mbv-top");
-            var titleBox = Add(top, new VisualElement(), "mbv-title-box");
-            Add(titleBox, new Label(T("mbTitle", "Mod Builder").ToUpperInvariant()), "mbv-title", "gof-semibold");
-            projectLabel = Add(titleBox, new Label(), "mbv-project");
-            // The kinds of content: a strip that scrolls sideways when the screen is narrow (Save / Exit never give way).
-            var kindsScroll = Add(top, new ScrollView(ScrollViewMode.Horizontal), "mbv-kinds-scroll");
-            kindsScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-            kindsScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-            new DragScroll(kindsScroll);
-            var kinds = Add(kindsScroll, new VisualElement(), "mbv-kinds");
-            foreach (var (k, e, kind) in new (string, string, ModBuilder.Kind?)[]
-                     {
-                         ("mbShips", "Ships", ModBuilder.Kind.Ships), ("mbItems", "Items", ModBuilder.Kind.Items), ("mbFx", "Weapon fx", null),
-                         ("mbSystems", "Systems", null), ("mbInteriors", "Hangars", null), ("mbQuests", "Quests", null),
-                         ("mbCharacters", "Characters", ModBuilder.Kind.Characters), ("mbAudio", "Audio", null), ("mbSkins", "Skins", ModBuilder.Kind.Skins),
-                         ("mbCampaigns", "Campaigns", null), ("mbBlueprints", "Blueprints", null),
-                     })
-                KindTab(kinds, T(k, e), kind);
+        protected override void AddTopButtons(VisualElement top)
+        {
             TopButton(top, $"{T("mbHangar", "Hangar")}: {HangarTypeName(Session.StationIndex)}", PickHangar, "mbv-hangar-button");
-            TopButton(top, Localization.Get(172), ShowMenu, "mbv-menu-button");   // "Menu", like the station's
+            TopButton(top, T("mbPlay", "Play"), ShowPlayMenu, "mbv-play-button");
+        }
+
+        /// <summary>The play tests (ModBuilderPlay): the game as a player has it, with the project on: from the builder's
+        /// station, from the campaign's start, or with one of its quests under way.</summary>
+        void ShowPlayMenu()
+        {
+            void Run(Func<string> start)
+            {
+                SaveNow();
+                ModBuilder.Reload();
+                afterReload.Clear();
+                string why = start();
+                if (why != null) Status(why, true);
+            }
+            var choices = new List<(string, Texture2D, Action)>
+            {
+                (T("mbPlayHere", "Play from this station") + "\n" + T("mbPlayHereSub", "Dock, fly, trade: your systems, stations, ships and bar missions are in the game"), null,
+                 () => Run(() => { ModBuilderPlay.Start(); return null; })),
+            };
+            if (Project.Campaign != null)
+                choices.Add((T("mbPlayCampaign", "Play the campaign") + "\n" + T("mbPlayCampaignSub", "From its start: its station, ship and story quest"), null, () => Run(ModBuilderPlay.StartCampaign)));
+            foreach (var q in Project.Quests)
+            {
+                var quest = q;
+                choices.Add((string.Format(T("mbPlayQuestN", "Play \"{0}\""), q.Title ?? q.Name) + "\n" + T("mbPlayQuestSub", "With the quest under way from its first step"), null,
+                             () => Run(() => ModBuilderPlay.StartQuest(quest.Name))));
+            }
+            ShowPicker(T("mbPlay", "Play"), choices);
+        }
+
+        public ModBuilderView(StationLevel level, VisualElement stationRoot, Action<bool> sound) : base(stationRoot, sound)
+        {
+            this.level = level;
 
             // ---- left: the ships (or the kind's list) ----
-            var left = uiLeft = Add(root, new VisualElement(), "mbv-left", "mbv-panel");
-            var right = uiRight = Add(root, new VisualElement(), "mbv-right", "mbv-panel");
-            for (int k = 0; k < KindCount; k++)
-            {
-                leftGroups[k] = Add(left, new VisualElement(), "mbv-group");
-                rightGroups[k] = Add(right, new VisualElement(), "mbv-group");
-            }
-            left = leftGroups[(int)ModBuilder.Kind.Ships];
+            var left = leftGroups[(int)ModBuilder.Kind.Ships];
             Add(left, new Label(T("mbShips", "Ships").ToUpperInvariant()), "mbv-heading", "gof-semibold");
             var shipScroll = Add(left, new ScrollView(ScrollViewMode.Vertical), "mbv-ship-scroll");
             shipScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
@@ -136,11 +132,13 @@ namespace GoF2Remake.UI
             Action importAction = ModImport.Available ? ImportModel : null;
             var newShip = Act(left, T("mbNewShip", "+ New ship from .glb"), () => importAction?.Invoke(), "mbv-add");
             newShip.SetEnabled(ModImport.Available);
+            Act(left, T("mbNewShipGame", "+ New ship on a game model"), () => PickGameShip(T("mbNewShipGameTitle", "New ship on a game model"), NewShipOnGameModel), "mbv-add");
+            Act(left, T("mbNewShipKit", "+ New ship from a kit"), NewShipFromKit, "mbv-add");
             Act(left, T("mbChangeShip", "+ Change a game ship"), PickOriginal, "mbv-add");
-            Act(left, T("mbRemoveShip", "Remove ship"), AskRemove, "mbv-danger");
+            Act(left, T("mbRemoveShip", "Remove ship"), AskRemove, "mbv-danger", "mbv-remove");
 
             // ---- right: the selected ship ----
-            right = rightGroups[(int)ModBuilder.Kind.Ships];
+            var right = rightGroups[(int)ModBuilder.Kind.Ships];
             var tabRow = Add(right, new VisualElement(), "mbv-tabs");
             string[] tabNames = { T("mbTabShip", "Ship"), T("mbTabHardpoints", "Hardpoints"), T("mbTabLoadout", "Loadout") };
             for (int i = 0; i < 3; i++)
@@ -157,9 +155,15 @@ namespace GoF2Remake.UI
             BuildItemsPanels(leftGroups[(int)ModBuilder.Kind.Items], rightGroups[(int)ModBuilder.Kind.Items]);
             BuildCharactersPanels(leftGroups[(int)ModBuilder.Kind.Characters], rightGroups[(int)ModBuilder.Kind.Characters]);
             BuildSkinsPanels(leftGroups[(int)ModBuilder.Kind.Skins], rightGroups[(int)ModBuilder.Kind.Skins]);
+            BuildBlueprintsPanels(leftGroups[(int)ModBuilder.Kind.Blueprints], rightGroups[(int)ModBuilder.Kind.Blueprints]);
+            BuildKitsPanels(leftGroups[(int)ModBuilder.Kind.Kits], rightGroups[(int)ModBuilder.Kind.Kits]);
+            BuildCampaignPanels(leftGroups[(int)ModBuilder.Kind.Campaigns], rightGroups[(int)ModBuilder.Kind.Campaigns]);
+            BuildInteriorsPanels(leftGroups[(int)ModBuilder.Kind.Interiors], rightGroups[(int)ModBuilder.Kind.Interiors]);
+            BuildQuestsPanels(leftGroups[(int)ModBuilder.Kind.Quests], rightGroups[(int)ModBuilder.Kind.Quests]);
+            BuildAudioPanels(leftGroups[(int)ModBuilder.Kind.Audio], rightGroups[(int)ModBuilder.Kind.Audio]);
+            BuildSystemsPanels(leftGroups[(int)ModBuilder.Kind.Systems], rightGroups[(int)ModBuilder.Kind.Systems]);
 
             // ---- bottom ----
-            status = Add(root, new Label { pickingMode = PickingMode.Ignore }, "mbv-status");
             placeHint = Add(root, new Label { pickingMode = PickingMode.Ignore }, "mbv-place-hint");
             // The engines: the turntable ship's engine glow and exhaust as in flight, a slider from off through the throttle to
             // a boost at its right end.
@@ -172,8 +176,7 @@ namespace GoF2Remake.UI
             ApplyEngines();
             testFly = Add(root, new Button(StartTestFlight) { text = T("mbTestFly", "Test fly").ToUpperInvariant() }, "mbv-testfly", "gof-semibold");
             testFly.RegisterCallback<PointerDownEvent>(_ => sound(true), TrickleDown.TrickleDown);
-            modal = Add(root, new VisualElement(), "mbv-modal");
-            modal.RegisterCallback<PointerDownEvent>(e => { if (e.target == modal) CloseModal(); });
+            FinishLayout();
             // Over everything while the panels fly in or out: nothing takes a click meanwhile.
             uiBlocker = Add(root, new VisualElement { pickingMode = PickingMode.Position }, "mbv-blocker");
             uiBlocker.style.display = DisplayStyle.None;
@@ -185,7 +188,6 @@ namespace GoF2Remake.UI
 
             // Back from a test flight: the flight's wear undone.
             if (ModBuilder.TestFlying) ModBuilder.OnDocked();
-            projectLabel.text = Project != null ? Project.Name : "";
             SelectTab(0);
             RebuildShips();
             RebuildPages();
@@ -195,119 +197,132 @@ namespace GoF2Remake.UI
             ShowProblems();
         }
 
-        // ---- building blocks ---------------------------------------------------------------------------------
-
-        static TE Add<TE>(VisualElement parent, TE e, params string[] classes) where TE : VisualElement
+        void OnWheel(float delta)
         {
-            foreach (var c in classes) e.AddToClassList(c);
-            parent.Add(e);
-            return e;
-        }
-
-        Button Act(VisualElement parent, string text, Action onClick, params string[] classes)
-        {
-            var b = new Button(() => { sound(false); onClick(); }) { text = text.ToUpperInvariant() };
-            b.AddToClassList("mbv-button");
-            foreach (var c in classes) b.AddToClassList(c);
-            b.focusable = false;   // keys are the builder's shortcuts, not button presses
-            parent.Add(b);
-            return b;
-        }
-
-        void TopButton(VisualElement parent, string text, Action onClick, string extra = null)
-        {
-            var b = Act(parent, text, onClick, "mbv-top-button");
-            if (extra != null) b.AddToClassList(extra);
-        }
-
-        void KindTab(VisualElement parent, string text, ModBuilder.Kind? kind)
-        {
-            // The name and the badge as two labels: a Button with text of its own and children lays them over each other.
-            var b = new Button { focusable = false };
-            b.AddToClassList("mbv-kind");
-            Add(b, new Label(text.ToUpperInvariant()) { pickingMode = PickingMode.Ignore }, "mbv-kind-name");
-            if (kind != null)
-            {
-                var k = kind.Value;
-                b.clicked += () => { if (k != this.kind) { sound(false); SelectKind(k); } };
-                kindTabs[(int)k] = b;
-            }
-            else
-            {
-                b.SetEnabled(false);
-                b.tooltip = T("mbSoon", "Coming soon");
-                Add(b, new Label(T("mbSoonShort", "Soon").ToUpperInvariant()) { pickingMode = PickingMode.Ignore }, "mbv-soon");
-            }
-            parent.Add(b);
-        }
-
-        Label Heading(VisualElement parent, string text) => Add(parent, new Label(text.ToUpperInvariant()), "mbv-heading", "gof-semibold");
-
-        Label Note(VisualElement parent, string text) => Add(parent, new Label(text), "mbv-note");
-
-        TextField Text(VisualElement parent, string label, string value, int max, Action<string> set, bool multi = false)
-        {
-            var f = Add(parent, new TextField(label) { value = value ?? "", maxLength = max, multiline = multi, isDelayed = true }, "mbv-field");
-            if (multi) f.AddToClassList("mbv-field--multi");
-            f.RegisterValueChangedCallback(e => set(e.newValue));
-            return f;
-        }
-
-        IntegerField Int(VisualElement parent, string label, int value, int min, int max, Action<int> set)
-        {
-            var f = Add(parent, new IntegerField(label) { value = value, isDelayed = true }, "mbv-field");
-            f.RegisterValueChangedCallback(e =>
-            {
-                int v = Mathf.Clamp(e.newValue, min, max);
-                if (v != e.newValue) f.SetValueWithoutNotify(v);
-                set(v);
-            });
-            return f;
+            if (ModalOpen) return;
+            if (kind == ModBuilder.Kind.Interiors) InteriorWheel(delta);
+            else if (InHangar && ShipKind(kind)) level.Inspect.Zoom(Mathf.Pow(0.85f, -Mathf.Sign(delta)));
         }
 
         // ---- kinds of content ---------------------------------------------------------------------------------
 
-        const int KindCount = 4;
-        readonly Button[] kindTabs = new Button[KindCount];
-        readonly VisualElement[] leftGroups = new VisualElement[KindCount], rightGroups = new VisualElement[KindCount];
-        ModBuilder.Kind kind = (ModBuilder.Kind)(-1);
-        /// <summary>Things to do once the game has read the project again (an item's number to use, Update).</summary>
-        readonly List<Action> afterReload = new List<Action>();
-
-        /// <summary>The station shows its hangar (the turntable ship, its orbit camera); the Characters kind shows the bar.</summary>
+        /// <summary>The station shows its hangar (the turntable ship, its orbit camera); the lounge kinds show the bar.</summary>
         bool InHangar => level.View == StationView.Hangar;
 
-        /// <summary>Shows a kind's panels; the hardpoint gizmo only with the ships; the characters in the Space Lounge.</summary>
-        void SelectKind(ModBuilder.Kind k)
+        /// <summary>The kind shows the hangar's turntable ship (and flies it).</summary>
+        static bool ShipKind(ModBuilder.Kind k) => k == ModBuilder.Kind.Ships || k == ModBuilder.Kind.Items || k == ModBuilder.Kind.Skins
+                                                 || k == ModBuilder.Kind.Blueprints || k == ModBuilder.Kind.Campaigns || k == ModBuilder.Kind.Kits;
+
+        /// <summary>The kind edits hardpoints on the turntable ship: a ship's own, or a kit part's (ModBuilderViewKits).</summary>
+        bool EditsMounts => kind == ModBuilder.Kind.Ships || kind == ModBuilder.Kind.Kits;
+
+        /// <summary>The hardpoints the gizmo edits: the selected kit part's in the Kits kind, else the current ship's.</summary>
+        List<WeaponMount> EditedMounts => kind == ModBuilder.Kind.Kits ? currentPart?.Mounts : Current?.Mounts;
+
+        /// <summary>A ship's slot counts follow its hardpoints (a kit part's are its own "slots", set on its page).</summary>
+        bool SlotsFollow => kind == ModBuilder.Kind.Ships && Current != null;
+
+        /// <summary>The page listing the hardpoints shown again.</summary>
+        void RefreshPoints()
         {
-            var was = kind;
-            kind = k;
-            ModBuilder.OpenKind = k;
-            for (int i = 0; i < KindCount; i++)
-            {
-                leftGroups[i].style.display = i == (int)k ? DisplayStyle.Flex : DisplayStyle.None;
-                rightGroups[i].style.display = i == (int)k ? DisplayStyle.Flex : DisplayStyle.None;
-                kindTabs[i]?.EnableInClassList("mbv-kind--on", i == (int)k);
-            }
+            if (kind == ModBuilder.Kind.Kits) BuildKitPage();
+            else BuildHardpointsPage();
+        }
+
+        protected override bool EditsHere(ModBuilder.Kind k) => ModBuilder.PlaceOf(k) != ModBuilder.Place.Space;
+
+        /// <summary>Shows a kind's panels; the hardpoint gizmo only with the ships; the lounge kinds in the Space Lounge, the
+        /// systems on the star map, a room in itself.</summary>
+        protected override void ShowKind(ModBuilder.Kind k, ModBuilder.Kind was)
+        {
             bool ships = k == ModBuilder.Kind.Ships;
             placing = -1;
-            if (!ships && gizmo.Selected >= 0) { gizmo.Selected = -1; gizmo.Refresh(); }
-            gizmo.gameObject.SetActive(ships);
-            bool bar = k == ModBuilder.Kind.Characters;
-            level.SetView(bar ? StationView.Lounge : StationView.Hangar);
+            if (gizmo.Selected >= 0) { gizmo.Selected = -1; gizmo.Refresh(); }
+            gizmo.gameObject.SetActive(ships || k == ModBuilder.Kind.Kits);
+            var place = ModBuilder.PlaceOf(k);
+            bool bar = place == ModBuilder.Place.Lounge;
+            if (place != ModBuilder.Place.Map && k != ModBuilder.Kind.AiTools) level.SetView(bar ? StationView.Lounge : StationView.Hangar);
+            viewport.pickingMode = place == ModBuilder.Place.Map ? PickingMode.Ignore : PickingMode.Position;   // the map takes the pointer
+            root.EnableInClassList("mbv-root--map", place == ModBuilder.Place.Map);
             drag = Drag.None;
             fling = Vector2.zero;
-            testFly.style.display = bar ? DisplayStyle.None : StyleKeyword.Null;
-            root.EnableInClassList("mbv-root--bar", bar);   // no Test fly: the right panel reaches the bottom
-            uiEngines.style.display = bar ? DisplayStyle.None : StyleKeyword.Null;
+            // Test fly only where flying tests what is edited: a ship, an item fitted to it, a skin. Blueprints and the
+            // campaign keep their ship on the turntable (and its engines) as a preview only.
+            bool flies = Flies(k), turntable = ShipKind(k);
+            testFly.style.display = flies ? StyleKeyword.Null : DisplayStyle.None;
+            root.EnableInClassList("mbv-root--bar", !flies);   // no Test fly: the right panel reaches the bottom
+            uiEngines.style.display = turntable ? StyleKeyword.Null : DisplayStyle.None;
             // Item changes reach the rest of the builder (the loadout's pickers) once the game has read them.
             if (was == ModBuilder.Kind.Items && itemsChanged) { itemsChanged = false; RequestReload(true); }
+            if (was == ModBuilder.Kind.Systems && k != ModBuilder.Kind.Systems) CloseMap();
+            if (was == ModBuilder.Kind.Interiors && k != ModBuilder.Kind.Interiors) EndInteriorView();
             if (k == ModBuilder.Kind.Items) { RebuildItems(); BuildItemPage(); }
             if (k == ModBuilder.Kind.Characters) { RebuildCharacters(); BuildCharacterPage(); }
             if (k == ModBuilder.Kind.Skins) { RebuildSkins(); BuildSkinPage(); }
-            // The turntable swaps between the project's ship and the skinned game ship.
-            if ((was == ModBuilder.Kind.Skins) != (k == ModBuilder.Kind.Skins) && (int)was >= 0) { ModBuilder.ApplyShip(); boundShip = -2; }
+            if (k == ModBuilder.Kind.Blueprints) { RebuildBlueprints(); BuildBlueprintPage(); }
+            if (k == ModBuilder.Kind.Kits) EnterKits();
+            else if (was == ModBuilder.Kind.Kits) LeaveKits();
+            if (k == ModBuilder.Kind.Campaigns) { RebuildCampaign(); BuildCampaignPage(); }
+            if (k == ModBuilder.Kind.Interiors) { RebuildInteriors(); BuildInteriorPage(); ShowInteriorInScene(); }
+            if (k == ModBuilder.Kind.Quests) { RebuildQuests(); BuildQuestPage(); }
+            else UpdateQuestGraph();
+            if (k == ModBuilder.Kind.Audio) { RebuildAudio(); BuildAudioPage(); }
+            if (k == ModBuilder.Kind.Systems) { RebuildSystems(); BuildSystemPage(); OpenMap(); }
+            // The turntable swaps between the project's ship, the skinned game ship and the campaign's start ship.
+            if (SwapsTurntable(was) != SwapsTurntable(k) && (int)was >= 0) { ModBuilder.ApplyShip(); boundShip = -2; }
             if (ships) { RebuildShips(); BuildHardpointsPage(); BuildLoadoutPage(); }
+        }
+
+        /// <summary>The kinds Test fly is offered in.</summary>
+        static bool Flies(ModBuilder.Kind k) => k == ModBuilder.Kind.Ships || k == ModBuilder.Kind.Items || k == ModBuilder.Kind.Skins || k == ModBuilder.Kind.Kits;
+
+        static bool SwapsTurntable(ModBuilder.Kind k) => k == ModBuilder.Kind.Skins || k == ModBuilder.Kind.Campaigns || k == ModBuilder.Kind.Blueprints;
+
+        protected override bool CanReload => drag != Drag.Gizmo;
+        protected override bool Dragging => drag != Drag.None;
+
+        protected override void OnReloadStarted() => ModBuilder.ApplyShip();
+
+        protected override void OnReloaded()
+        {
+            ModBuilder.ApplyShip();
+            boundShip = -2;
+            RebuildShips();
+            if (kind == ModBuilder.Kind.Items) { RebuildItems(); BuildItemPage(); }
+            if (kind == ModBuilder.Kind.Skins) { RebuildSkins(); BuildSkinPage(); }
+            if (kind == ModBuilder.Kind.Blueprints) { RebuildBlueprints(); BuildBlueprintPage(); }
+            if (kind == ModBuilder.Kind.Kits) { RebuildKits(); BuildKitPage(); }
+            if (kind == ModBuilder.Kind.Campaigns) { RebuildCampaign(); BuildCampaignPage(); }
+            if (kind == ModBuilder.Kind.Quests) { RebuildQuests(); BuildQuestPage(); }
+            if (kind == ModBuilder.Kind.Audio) { RebuildAudio(); BuildAudioPage(); }
+            if (kind == ModBuilder.Kind.Characters) { RebuildCharacters(); BuildCharacterPage(); }
+            if (kind == ModBuilder.Kind.Systems) { RebuildSystems(); BuildSystemPage(); RefreshMap(); }
+            if (kind == ModBuilder.Kind.Interiors) { RebuildInteriors(); BuildInteriorPage(); }
+        }
+
+        protected override Action BeforeUndo()
+        {
+            string shipRef = Current?.Ref, itemRef = currentItem?.Ref, characterRef = currentCharacter?.Ref, kitId = currentKit?.Id, partId = currentPart?.Id;
+            var picks = RememberPicks();
+            return () =>
+            {
+                ModBuilder.Ship = Project.Ships.FirstOrDefault(s => s.Ref == shipRef) ?? Project.Ships.FirstOrDefault();
+                currentItem = Project.Items.FirstOrDefault(i => i.Ref == itemRef) ?? Project.Items.FirstOrDefault();
+                currentCharacter = Project.Characters.FirstOrDefault(c => c.Ref == characterRef) ?? Project.Characters.FirstOrDefault();
+                currentKit = Project.FindKit(kitId) ?? Project.Kits.FirstOrDefault();
+                currentPart = currentKit?.Find(partId) ?? currentKit?.Parts.FirstOrDefault();
+                picks?.Invoke();
+                var skins = Project.SkinShips();
+                if (!skins.Contains(ModBuilder.SkinShip)) ModBuilder.SkinShip = skins.Count > 0 ? skins[0] : -1;
+                gizmo.Selected = -1;
+                placing = -1;
+                ModBuilder.ApplyShip();
+                boundShip = -2;
+                RebuildShips();
+                RebuildPages();
+                OnReloaded();
+                gizmo.Refresh();
+            };
         }
 
         // ---- pages ----------------------------------------------------------------------------------------------
@@ -338,7 +353,8 @@ namespace GoF2Remake.UI
                 if (tex != null) icon.style.backgroundImage = new StyleBackground(tex);
                 var text = Add(row, new VisualElement { pickingMode = PickingMode.Ignore }, "mbv-ship-text");
                 Add(text, new Label(ShipName(s, db)) { pickingMode = PickingMode.Ignore }, "mbv-ship-name");
-                Add(text, new Label(s.IsOverride ? string.Format(T("mbChanges", "Changes {0}"), GameNames.Ship(s.OverrideIndex)) : T("mbNewShipSub", "New ship"))
+                Add(text, new Label(s.IsOverride ? string.Format(T("mbChanges", "Changes {0}"), GameNames.Ship(s.OverrideIndex))
+                                    : s.IsKitShip ? T("mbKitShipSub", "Customizable ship") : T("mbNewShipSub", "New ship"))
                     { pickingMode = PickingMode.Ignore }, "mbv-ship-sub");
                 shipList.Add(row);
             }
@@ -378,6 +394,8 @@ namespace GoF2Remake.UI
             ship.Clear();
             var s = Current;
             if (s == null) { Note(ship, T("mbPickShip", "Add a ship on the left to start.")); return; }
+            JsonButton(ship, s.Json, () => { s.ReadMounts(); SaveNow(); RequestReload(false); RebuildShips(); BuildShipPage(); BuildHardpointsPage(); },
+                       T("mbJsonShipNote", "ships.json's fields: also materials (per mesh), throttleGlow / extraGlows, dealer, lounge, npcTurrets, priceDefault, engineGlowColor / Radius, available."));
             var db = Database.Shared;
             var original = s.IsOverride ? db.Ship(s.OverrideIndex) : null;
             Heading(ship, s.IsOverride ? string.Format(T("mbChanges", "Changes {0}"), GameNames.Ship(s.OverrideIndex)) : T("mbNewShipSub", "New ship"));
@@ -404,14 +422,32 @@ namespace GoF2Remake.UI
             if (original != null)
                 Note(ship, string.Format(T("mbOriginalStats", "Original: {0} hull, {1} t, handling {2}, {3}."), original.armor, original.cargo,
                                          Mathf.RoundToInt(original.handling), ItemInfo.Credits(original.price)));
+            BuildShipMore(s);
+            if (s.IsKitShip) { BuildKitShipSection(s); return; }   // its look is the kit's parts, its height over the pad measured
 
             Heading(ship, T("mbModel", "Model"));
-            bool hasModel = !string.IsNullOrEmpty(s.Model);
-            Note(ship, hasModel ? s.Model : T("mbOriginalModel", "The game's own model."));
+            bool gameModel = s.HasGameModel;
+            bool hasModel = !string.IsNullOrEmpty(s.Model) && !gameModel;
+            int modelShip = gameModel && GameModels.Is(s.Model, out string modelName) ? GameModels.ShipOf(modelName) : -1;
+            Note(ship, gameModel ? string.Format(T("mbGameModelNote", "The game's {0} model, as it is: it sits on the pads like that ship."),
+                                                 modelShip >= 0 ? GameNames.Ship(modelShip) : s.Model)
+                       : hasModel ? s.Model : T("mbOriginalModel", "The game's own model."));
             var mrow = Add(ship, new VisualElement(), "mbv-row");
             if (ModImport.Available)
                 Act(mrow, hasModel ? T("mbReplaceModel", "Replace model…") : T("mbUseModel", "Use a .glb model…"), () => PickModel(s));
-            if (s.IsOverride && hasModel) Act(mrow, T("mbOriginalModelButton", "Original model"), () => { s.Model = null; RequestReload(true); BuildShipPage(); });
+            Act(mrow, T("mbGameModel", "Game model…"), () => PickGameShip(T("mbGameModelTitle", "Use a game ship's model"), i => UseGameShipModel(s, i)));
+            if (s.IsOverride && (hasModel || gameModel)) Act(mrow, T("mbOriginalModelButton", "Original model"), () =>
+            {
+                s.Model = null;
+                if (gameModel)
+                {
+                    // Back to the ship's own model: its own hardpoints too.
+                    s.Mounts.Clear();
+                    s.Mounts.AddRange(Database.GameMounts(s.OverrideIndex).Select(ProjectShip.Copy));
+                }
+                RequestReload(true);
+                BuildShipPage();
+            });
             if (hasModel)
             {
                 Int(ship, T("mbLength", "Length nose to tail (units, 20 = 1 m)"), Mathf.RoundToInt(s.ModelLength), 50, 200000,
@@ -450,7 +486,7 @@ namespace GoF2Remake.UI
                 Act(nrow, T("mbCentreModel", "Centre on pivot"), () => CentreModel(s));
                 BuildTextures(s);
             }
-            if (!s.IsOverride)
+            if (!s.IsOverride && !gameModel)
             {
                 var hrow = Add(ship, new VisualElement(), "mbv-row");
                 Int(hrow, T("mbHangarHeight", "Height over the pad"), s.HangarHeight, 0, 20000, v => { s.HangarHeight = v; RequestReload(true); });
@@ -593,20 +629,21 @@ namespace GoF2Remake.UI
                 hardpoints.Add(row);
             }
             if (s.Mounts.Count == 0) Note(hardpoints, T("mbNoPoints", "No hardpoints: pick a kind above, then click on the hull."));
+            if (s.IsKitShip) Note(hardpoints, T("mbKitShipPoints", "A customizable ship's hardpoints come from its kit's parts (Ship kits). These are only for a kind no part of a build has."));
             BuildSelectedPoint();
         }
 
         IntegerField px, py, pz;
 
-        void BuildSelectedPoint()
+        void BuildSelectedPoint(VisualElement into = null)
         {
-            var s = Current;
+            var s = EditedMounts;
             int i = gizmo.Selected;
-            if (s == null || i < 0 || i >= s.Mounts.Count) { px = null; return; }
-            var m = s.Mounts[i];
+            if (s == null || i < 0 || i >= s.Count) { px = null; return; }
+            var m = s[i];
             m.position_engine ??= new int[3];
             int type = Mathf.Clamp(m.slotType, 0, 3);
-            var selectedBox = Add(hardpoints, new VisualElement(), "mbv-selected");
+            var selectedBox = Add(into ?? hardpoints, new VisualElement(), "mbv-selected");
             Heading(selectedBox, string.Format(T("mbSelectedPoint", "Selected: {0}"), T("mbType" + TypeNames[type], TypeNames[type])));
             var xyz = Add(selectedBox, new VisualElement(), "mbv-row", "mbv-xyz");
             px = Int(xyz, "X", m.position_engine[0], -200000, 200000, v => { m.position_engine[0] = v; OnMountEdited(type); });
@@ -615,13 +652,27 @@ namespace GoF2Remake.UI
             Note(selectedBox, T("mbXyzNote", "Game units from the ship's centre: X toward the pilot's left, Y up, Z forward (20 units = 1 m)."));
             var acts = Add(selectedBox, new VisualElement(), "mbv-row");
             Act(acts, T("mbMirror", "Mirror"), Mirror);
-            Act(acts, T("mbCentre", "Centre X"), () => { m.position_engine[0] = 0; OnMountEdited(type); BuildHardpointsPage(); });
+            Act(acts, T("mbCentre", "Centre X"), () => { m.position_engine[0] = 0; OnMountEdited(type); RefreshPoints(); });
             Act(acts, T("mbDelete", "Delete"), DeleteSelected, "mbv-danger");
             if (type == 2)
             {
-                var b = Act(selectedBox, m.upsideDown ? T("mbUpsideDownOn", "Hangs under the hull: on") : T("mbUpsideDownOff", "Hangs under the hull: off"),
-                            () => { m.upsideDown = !m.upsideDown; MarkDirty(); BuildHardpointsPage(); });
-                b.EnableInClassList("mbv-toggle--on", m.upsideDown);
+                // The way the turret's base faces (WeaponMount.turretUp): a preset, or the hull's surface at the point.
+                Add(selectedBox, new Label(T("mbTurretFaces", "Turret faces")), "mbv-inline-label");
+                var faces = Add(selectedBox, new VisualElement(), "mbv-row", "mbv-add-row");
+                var up = m.TurretUpLocal;
+                foreach (var (key, label, dir) in TurretFacings)
+                {
+                    var d = dir;
+                    var b = Act(faces, T(key, label), () => { SetTurretUp(m, d); OnMountEdited(2); RefreshPoints(); }, "mbv-type-button");
+                    b.EnableInClassList("mbv-type-button--on", Vector3.Dot(up, new Vector3(-d.x, d.y, d.z)) > 0.999f);
+                }
+                Act(selectedBox, T("mbTurretMatchHull", "Match the hull here"), () =>
+                {
+                    if (gizmo.HullNormalAt(i, out var n)) { m.SetTurretUp(gizmo.GameDirOf(n), true); OnMountEdited(2); RefreshPoints(); }
+                    else Status(T("mbTurretNoHull", "No hull found at that point."), true);
+                });
+                var g = new Vector3(-up.x, up.y, up.z);
+                Note(selectedBox, string.Format(T("mbTurretFacesNote", "Facing {0:0.##}, {1:0.##}, {2:0.##} (X left, Y up, Z forward). Placing or dragging it over the hull turns it to the surface."), g.x, g.y, g.z));
             }
             if (type == 3)
             {
@@ -646,17 +697,17 @@ namespace GoF2Remake.UI
                     m.turretAngles = new[] { f, f, f };
                     MarkDirty();
                 });
-                if (Current.IsOverride && string.IsNullOrEmpty(Current.Model))
+                if (kind == ModBuilder.Kind.Ships && Current.IsOverride && string.IsNullOrEmpty(Current.Model))
                     Note(selectedBox, T("mbEngineOriginal", "With the game's own model the flame is part of the model: only the exhaust particles move."));
             }
         }
 
         void RefreshSelectedFields()
         {
-            var s = Current;
+            var s = EditedMounts;
             int i = gizmo.Selected;
-            if (s == null || i < 0 || i >= s.Mounts.Count || px == null) return;
-            var p = s.Mounts[i].position_engine;
+            if (s == null || i < 0 || i >= s.Count || px == null) return;
+            var p = s[i].position_engine;
             px.SetValueWithoutNotify(p[0]);
             py.SetValueWithoutNotify(p[1]);
             pz.SetValueWithoutNotify(p[2]);
@@ -765,89 +816,80 @@ namespace GoF2Remake.UI
             return l;
         }
 
-        // ---- editing ------------------------------------------------------------------------------------------------
-
-        void MarkDirty()
-        {
-            saveDirty = true;
-            saveAtMs = nowMs + 400f;
-        }
-
-        void SaveNow()
-        {
-            saveDirty = false;
-            Project?.Save();
-        }
-
-        /// <summary>The game reads the project again soon ('soon': a structural change, half a second after the last one).</summary>
-        void RequestReload(bool soon)
-        {
-            MarkDirty();
-            reloadPending = true;
-            reloadAtMs = nowMs + (soon ? 600f : 0f);
-        }
-
         void OnMountEdited(int type)
         {
             gizmo.Refresh();
             MarkDirty();
-            if (type == 3 && !string.IsNullOrEmpty(Current?.Model)) RequestReload(true);   // the flame is built into the model
+            if (type == 3 && (kind == ModBuilder.Kind.Kits || !string.IsNullOrEmpty(Current?.Model))) RequestReload(true);   // the flame is built into the model
+            if (type == 2) RequestReload(true);   // the turntable's turrets sit on the mounts as the game reads them
         }
+
+        /// <summary>The turret facings offered (game frame: x toward the pilot's left, y up, z forward).</summary>
+        static readonly (string key, string label, Vector3 dir)[] TurretFacings =
+        {
+            ("mbFaceUp", "Up", Vector3.up), ("mbFaceDown", "Down", Vector3.down), ("mbFaceLeft", "Left", Vector3.right),
+            ("mbFaceRight", "Right", Vector3.left), ("mbFaceFront", "Front", Vector3.forward), ("mbFaceBack", "Back", Vector3.back),
+        };
+
+        static void SetTurretUp(WeaponMount m, Vector3 game) => m.SetTurretUp(game);
 
         void OnMountMoved() => RefreshSelectedFields();
 
-        void AddMount(int type, Vector3 world)
+        /// <summary>A new point where the hull was clicked; a turret faces out of the hull there ('normal', world).</summary>
+        void AddMount(int type, Vector3 world, Vector3 normal)
         {
-            var s = Current;
+            var s = EditedMounts;
             var g = gizmo.GameOf(world);
             var m = new WeaponMount { slotType = type, position_engine = new[] { g.x, g.y, g.z } };
+            if (type == 2) m.SetTurretUp(gizmo.GameDirOf(normal), true);
             if (type == 3)
             {
                 float r = Mathf.Clamp(Mathf.Round(Mathf.Min(gizmo.LocalBounds.size.x, gizmo.LocalBounds.size.y) / M * 0.05f), 8f, 200f);
                 m.glowSize = new[] { r, r, r * 0.87f };
                 m.turretAngles = new[] { 0.55f, 0.55f, 0.55f };
             }
-            s.Mounts.Add(m);
-            if (type < 3 && s.SlotCount(type) < s.MountCount(type)) s.SetSlotCount(type, s.MountCount(type));
-            gizmo.Selected = s.Mounts.Count - 1;
+            s.Add(m);
+            if (type < 3 && SlotsFollow && Current.SlotCount(type) < Current.MountCount(type)) Current.SetSlotCount(type, Current.MountCount(type));
+            gizmo.Selected = s.Count - 1;
             gizmo.Refresh();
             OnMountEdited(type);
-            BuildHardpointsPage();
+            RefreshPoints();
             BuildLoadoutPage();
         }
 
         void DeleteSelected()
         {
-            var s = Current;
+            var s = EditedMounts;
             int i = gizmo.Selected;
-            if (s == null || i < 0 || i >= s.Mounts.Count) return;
-            int type = s.Mounts[i].slotType;
-            int before = s.MountCount(type);
-            s.Mounts.RemoveAt(i);
-            if (type < 3 && s.SlotCount(type) == before) s.SetSlotCount(type, before - 1);   // the slots followed the points
+            if (s == null || i < 0 || i >= s.Count) return;
+            int type = s[i].slotType;
+            int before = s.Count(x => x.slotType == type);
+            s.RemoveAt(i);
+            if (type < 3 && SlotsFollow && Current.SlotCount(type) == before) Current.SetSlotCount(type, before - 1);   // the slots followed the points
             gizmo.Selected = -1;
             gizmo.Refresh();
             OnMountEdited(type);
-            BuildHardpointsPage();
+            RefreshPoints();
             BuildLoadoutPage();
         }
 
         /// <summary>A copy of the selected point on the other side (x mirrored); a point on the centre line has none.</summary>
         void Mirror()
         {
-            var s = Current;
+            var s = EditedMounts;
             int i = gizmo.Selected;
-            if (s == null || i < 0 || i >= s.Mounts.Count) return;
-            var m = s.Mounts[i];
+            if (s == null || i < 0 || i >= s.Count) return;
+            var m = s[i];
             if (m.position_engine[0] == 0) { Status(T("mbMirrorCentre", "The point is on the centre line: move it sideways first."), true); return; }
             var c = ProjectShip.Copy(m);
             c.position_engine[0] = -c.position_engine[0];
-            s.Mounts.Insert(i + 1, c);
-            if (c.slotType < 3 && s.SlotCount(c.slotType) < s.MountCount(c.slotType)) s.SetSlotCount(c.slotType, s.MountCount(c.slotType));
+            if (c.turretUp != null && c.turretUp.Length >= 3) c.turretUp[0] = -c.turretUp[0];   // a side turret faces the other side
+            s.Insert(i + 1, c);
+            if (c.slotType < 3 && SlotsFollow && Current.SlotCount(c.slotType) < Current.MountCount(c.slotType)) Current.SetSlotCount(c.slotType, Current.MountCount(c.slotType));
             gizmo.Selected = i + 1;
             gizmo.Refresh();
             OnMountEdited(c.slotType);
-            BuildHardpointsPage();
+            RefreshPoints();
             BuildLoadoutPage();
         }
 
@@ -855,7 +897,7 @@ namespace GoF2Remake.UI
         void AutoHangarHeight()
         {
             var s = Current;
-            if (s == null || s.IsOverride || boundTransform == null) return;
+            if (s == null || s.IsOverride || s.HasGameModel || boundTransform == null) return;   // a game model sits like its ship
             s.HangarHeight = Mathf.Max(0, Mathf.CeilToInt(-gizmo.LocalBounds.min.y / M) + 4);
             RequestReload(true);
         }
@@ -885,14 +927,12 @@ namespace GoF2Remake.UI
 
         // ---- ships ---------------------------------------------------------------------------------------------------
 
-        bool picking;
-
-        void ImportModel() => PickGlb(path =>
+        void ImportModel() => PickGlb(T("mbPickModel", "Choose a ship model"), path =>
         {
             string name = System.IO.Path.GetFileNameWithoutExtension(pickedName ?? "ship");
             string id = Project.ShipIdFor(name);
             string model = Project.AddModel(path, id);
-            var s = Project.AddNewShip(id, Pretty(name), model);
+            var s = Project.AddNewShip(id, Pretty(name) == "New" ? T("mbNewShipName", "New ship") : Pretty(name), model);
             ModBuilder.Ship = s;
             Project.LastShip = s.Ref;
             gizmo.Selected = -1;
@@ -902,7 +942,7 @@ namespace GoF2Remake.UI
             Status(T("mbLoadingModel", "Loading the model…"), false);
         });
 
-        void PickModel(ProjectShip s) => PickGlb(path =>
+        void PickModel(ProjectShip s) => PickGlb(T("mbPickModel", "Choose a ship model"), path =>
         {
             string baseName = s.IsOverride ? "ship_" + s.OverrideIndex : s.LocalId;
             s.Model = Project.AddModel(path, baseName);
@@ -912,58 +952,54 @@ namespace GoF2Remake.UI
             Status(T("mbLoadingModel", "Loading the model…"), false);
         });
 
-        string pickedName;
-
-        /// <summary>The system's file picker for a .glb (ModImport.Pick, polled), the file checked, then 'use' with its copy.</summary>
-        void PickGlb(Action<string> use) => PickFile(T("mbPickModel", "Choose a ship model"), "glTF binary model", "glb", new byte[] { (byte)'g', (byte)'l', (byte)'T', (byte)'F' },
-            T("mbNotGlb", "That isn't a .glb model (glTF binary). In Blender: File > Export > glTF 2.0, format glTF Binary."), use);
-
-        /// <summary>The picker for one kind of file: its first bytes must be 'magic', else 'wrong' is shown.</summary>
-        void PickFile(string title, string filterName, string extension, byte[] magic, string wrong, Action<string> use) =>
-            PickRaw(title, filterName, new[] { extension }, picked =>
-            {
-                var head = new byte[magic.Length];
-                using (var f = System.IO.File.OpenRead(picked.path)) f.Read(head, 0, head.Length);
-                if (!head.SequenceEqual(magic)) { Status(wrong, true); return; }
-                pickedName = picked.name;
-                use(picked.path);
-            });
-
-        /// <summary>The picker for an image (ImageImport: PNG, JPG, TGA, BMP, DDS, the game's .aei): 'use' gets it as a PNG
-        /// (a temporary file, copied into the project by 'use').</summary>
-        void PickImage(string title, Action<string> use) =>
-            PickRaw(title, T("mbImageFilter", "Images"), ImageImport.Extensions, picked =>
-            {
-                string png = ImageImport.ToPng(picked.path, picked.name, out string error);
-                if (png == null) { Status(error, true); return; }
-                try { pickedName = picked.name; use(png); }
-                finally { try { System.IO.File.Delete(png); } catch { } }
-            });
-
-        /// <summary>The system's file picker (ModImport.Pick, polled); 'handle' gets the copied file, which goes afterwards.</summary>
-        void PickRaw(string title, string filterName, string[] extensions, Action<ModImport.Picked> handle)
+        /// <summary>A picker of the game's flyable ships (with their icons) for a game model.</summary>
+        void PickGameShip(string title, Action<int> pick)
         {
-            if (picking || Project == null) return;
-            picking = true;
-            var poll = ModImport.Pick(title, filterName, extensions);
-            ModImport.Picked picked = null;
-            root.schedule.Execute(() =>
+            var db = Database.Shared;
+            var choices = new List<(string name, Texture2D icon, Action pick)>();
+            for (int i = 0; i < GameNames.OriginalShips; i++)
             {
-                picked = poll();
-                if (picked == null) return;
-                picking = false;
-                if (picked.cancelled) return;
-                if (picked.error != null) { Status(string.Format(T("mbPickFailed", "The file couldn't be read: {0}"), picked.error), true); return; }
-                try { handle(picked); }
-                catch (Exception e) { Status(string.Format(T("mbPickFailed", "The file couldn't be read: {0}"), e.Message), true); }
-                finally { ModImport.Discard(picked.path); }
-            }).Every(200).Until(() => picked != null);
+                if (i == 13 || i == 14 || i == 15 || db.Ship(i) == null || db.ShipAssembly(i, original: true) == null) continue;
+                int index = i;
+                choices.Add((GameNames.Ship(i), ItemInfo.ShipIcon(i), () => pick(index)));
+            }
+            ShowPicker(title, choices);
         }
 
-        static string Pretty(string fileName)
+        /// <summary>A new ship on game ship 'index''s model (GameModels): its stats, slots, race and hardpoints to start from,
+        /// its icon unless one is set; nothing to import.</summary>
+        void NewShipOnGameModel(int index)
         {
-            var s = fileName.Replace('_', ' ').Replace('-', ' ').Trim();
-            return s.Length == 0 ? "New ship" : char.ToUpperInvariant(s[0]) + s.Substring(1);
+            var db = Database.Shared;
+            string name = string.Format(T("mbCustomShip", "Custom {0}"), GameNames.Ship(index));
+            string id = Project.ShipIdFor(name);
+            var asm = db.ShipAssembly(index, original: true);
+            var s = Project.AddNewShip(id, name, GameModels.Ref(asm.name));
+            s.UseGameModel(asm.name, db.Ship(index), Database.GameMounts(index), Shop.RaceOfShip(index));
+            Project.SetLoadout(s, ModBuilder.DefaultLoadout(db, index));
+            ModBuilder.Ship = s;
+            Project.LastShip = s.Ref;
+            gizmo.Selected = -1;
+            RequestReload(false);
+            RebuildShips();
+            RebuildPages();
+            Status(string.Format(T("mbShipOnGameModel", "A new ship on the {0}'s model: give it a name and its own stats."), GameNames.Ship(index)), false);
+        }
+
+        /// <summary>The ship flies game ship 'index''s model instead (its hardpoints come along; the stats stay).</summary>
+        void UseGameShipModel(ProjectShip s, int index)
+        {
+            var db = Database.Shared;
+            var asm = db.ShipAssembly(index, original: true);
+            if (asm == null) return;
+            string old = s.HasGameModel ? null : s.Model;
+            s.UseGameModel(asm.name, null, Database.GameMounts(index));
+            if (!string.IsNullOrEmpty(old) && !Project.Ships.Any(o => o != s && o.Model == old))
+                try { System.IO.File.Delete(System.IO.Path.Combine(Project.Folder, old)); } catch { }
+            gizmo.Selected = -1;
+            RequestReload(false);
+            RebuildPages();
+            Status(string.Format(T("mbShipModelSet", "{0}'s model, with its hardpoints."), GameNames.Ship(index)), false);
         }
 
         /// <summary>A picker of the game's ships for "Change a game ship" (not those already in the project).</summary>
@@ -1006,31 +1042,44 @@ namespace GoF2Remake.UI
 
         /// <summary>One station per kind of hangar (StationTables.HangarIndex): picking one moves the builder there, and its
         /// orbit is the test flights'. Dis (Terran) and Var Hastra (Midorian) where they can, else the first that can host.</summary>
-        void PickHangar()
+        /// <summary>The hangar kinds the builder can sit in: (room, its English name, the station that has it); 'current' the
+        /// room the builder is in now (-1 none).</summary>
+        static List<(int room, string name, int station)> HangarChoices(out int current)
         {
             var db = Database.Shared;
             var rooms = RoomNames;
             int[] preferred = { 70, -1, -1, 78 };
             int RoomOf(int i) => StationTables.HangarIndex(i, db.Systems.ElementAtOrDefault(db.Stations[i].system)?.raceId ?? 0);
             var hosts = Enumerable.Range(0, db.Stations.Count).Where(i => ModBuilder.CanHost(i, db)).ToList();
-            int current = hosts.Contains(Session.StationIndex) ? RoomOf(Session.StationIndex) : -1;
-            var choices = new List<(string, Texture2D, Action)>();
+            current = hosts.Contains(Session.StationIndex) ? RoomOf(Session.StationIndex) : -1;
+            var list = new List<(int, string, int)>();
             for (int room = 0; room < rooms.Length; room++)
             {
                 if (rooms[room] == null) continue;
                 int r = room;
                 int station = room < preferred.Length && preferred[room] >= 0 && hosts.Contains(preferred[room]) && RoomOf(preferred[room]) == room
                     ? preferred[room] : hosts.Where(i => RoomOf(i) == r).DefaultIfEmpty(-1).First();
-                if (station < 0) continue;
+                if (station >= 0) list.Add((room, rooms[room], station));
+            }
+            return list;
+        }
+
+        void PickHangar()
+        {
+            var db = Database.Shared;
+            var choices = new List<(string, Texture2D, Action)>();
+            foreach (var (room, name, station) in HangarChoices(out int current))
+            {
                 var st = db.Stations[station];
                 int race = db.Systems.ElementAtOrDefault(st.system)?.raceId ?? 0;
-                string label = $"{T("mbRoom" + room, rooms[room])}\n{st.name}" + (room == current ? " ✓" : "");
+                string label = $"{T("mbRoom" + room, name)}\n{st.name}" + (room == current ? " ✓" : "");
                 var emblem = Resources.Load<Texture2D>("GoF2Hud/race_" + (race >= 0 && race < 4 ? race : 0));
+                int r = room, s = station;
                 choices.Add((label, emblem, () =>
                 {
                     if (r == current) return;
                     SaveNow();
-                    ModBuilder.SwitchStation(station);
+                    ModBuilder.SwitchStation(s);
                 }));
             }
             ShowPicker(T("mbHangarTitle", "Build and test-fly at"), choices);
@@ -1044,7 +1093,7 @@ namespace GoF2Remake.UI
             {
                 Project.Ships.Remove(s);
                 // Its model file goes too when no other ship uses it.
-                if (!string.IsNullOrEmpty(s.Model) && !Project.Ships.Any(o => o.Model == s.Model))
+                if (!string.IsNullOrEmpty(s.Model) && !s.HasGameModel && !Project.Ships.Any(o => o.Model == s.Model))
                     try { System.IO.File.Delete(System.IO.Path.Combine(Project.Folder, s.Model)); } catch { }
                 ModBuilder.Ship = Project.Ships.FirstOrDefault();
                 Project.LastShip = ModBuilder.Ship?.Ref;
@@ -1067,105 +1116,11 @@ namespace GoF2Remake.UI
             ShowPicker(T("mbChooseItem", "Choose"), choices);
         }
 
-        // ---- modal ----------------------------------------------------------------------------------------------
-
-        bool ModalOpen => modal.ClassListContains("mbv-modal--shown");
-
-        void ShowPicker(string title, List<(string name, Texture2D icon, Action pick)> choices)
-        {
-            modal.Clear();
-            var box = Add(modal, new VisualElement(), "mbv-modal-box", "mbv-modal-box--list", "mbv-panel");
-            Heading(box, title);
-            var scroll = Add(box, new ScrollView(ScrollViewMode.Vertical), "mbv-picker-scroll");
-            scroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-            new DragScroll(scroll);
-            var grid = Add(scroll, new VisualElement(), "mbv-picker-grid");
-            foreach (var (name, icon, pick) in choices)
-            {
-                if (pick == null) { Add(grid, new Label(name.ToUpperInvariant()), "mbv-picker-heading", "gof-semibold"); continue; }   // a section's heading
-                var tile = new Button(() => { sound(false); CloseModal(); pick(); }) { focusable = false };
-                tile.AddToClassList("mbv-tile");
-                var img = Add(tile, new VisualElement { pickingMode = PickingMode.Ignore }, "mbv-tile-icon");
-                if (icon != null) img.style.backgroundImage = new StyleBackground(icon);
-                Add(tile, new Label(name) { pickingMode = PickingMode.Ignore }, "mbv-tile-name");
-                grid.Add(tile);
-            }
-            Act(box, T("mbCancel", "Cancel"), CloseModal);
-            modal.AddToClassList("mbv-modal--shown");
-        }
-
-        void Confirm(string title, string text, Action yes)
-        {
-            modal.Clear();
-            var box = Add(modal, new VisualElement(), "mbv-modal-box", "mbv-modal-box--small", "mbv-panel");
-            Heading(box, title);
-            Add(box, new Label(text), "mbv-confirm-text");
-            var row = Add(box, new VisualElement(), "mbv-row");
-            Act(row, Localization.Get(134), () => { CloseModal(); yes(); }, "mbv-danger");
-            Act(row, Localization.Get(135), CloseModal);
-            modal.AddToClassList("mbv-modal--shown");
-        }
-
-        void CloseModal()
-        {
-            modal.RemoveFromClassList("mbv-modal--shown");
-            modal.RemoveFromClassList("mbv-modal--options");
-            modal.Clear();
-            optionsView = null;
-        }
-
-        // ---- the Menu (like the station's: Options, leaving) ----------------------------------------------------
-
-        OptionsView optionsView;
-
-        /// <summary>The top bar's Menu (or Esc with nothing else open): Resume, Options (the game's, OptionsView), Save and
-        /// Exit the Mod Builder (back to the projects page).</summary>
-        void ShowMenu()
-        {
-            CloseModal();
-            var box = Add(modal, new VisualElement(), "mbv-modal-box", "mbv-modal-box--menu", "mbv-panel");
-            Heading(box, Localization.Get(172));
-            Act(box, T("mbResume", "Resume"), CloseModal, "mbv-menu-item");
-            Act(box, Localization.Get(31), ShowOptions, "mbv-menu-item");   // Options
-            Act(box, T("mbSave", "Save"), () => { SaveNow(); CloseModal(); Status(T("mbSaved", "Saved."), false); }, "mbv-menu-item");
-            Act(box, T("mbExitBuilder", "Exit the Mod Builder"), () => { CloseModal(); SaveNow(); ModBuilder.End(); }, "mbv-menu-item", "mbv-danger");
-            modal.AddToClassList("mbv-modal--shown");
-        }
-
-        void ShowOptions()
-        {
-            modal.Clear();
-            optionsView = new OptionsView(ShowMenu, true);
-            optionsView.Root.EnableInClassList("can-hover", true);
-            optionsView.Changed += c => { if (c.def.kind == OptionKind.Choice || c.def.kind == OptionKind.Toggle) sound(false); };
-            modal.Add(optionsView.Root);
-            modal.AddToClassList("mbv-modal--options");
-            modal.AddToClassList("mbv-modal--shown");
-            optionsView.Select(optionsView.ActiveTab);
-        }
-
-        // ---- status -------------------------------------------------------------------------------------------
-
-        void Status(string text, bool error)
-        {
-            statusText = text;
-            statusError = error;
-            statusMs = error ? 8000f : 4000f;
-        }
-
-        /// <summary>The project's errors and warnings as the game read it (a broken entry keeps it out of the game).</summary>
-        void ShowProblems()
-        {
-            var mod = ModManager.BuilderProject;
-            if (mod == null) return;
-            if (mod.Errors.Count > 0) Status("✖ " + string.Join("\n✖ ", mod.Errors.Take(3)), true);
-            else if (mod.Warnings.Count > 0) Status("! " + string.Join("\n! ", mod.Warnings.Take(3)), false);
-        }
-
         // ---- test flight --------------------------------------------------------------------------------------
 
         void StartTestFlight()
         {
+            if (!Flies(kind)) return;
             bool skin = kind == ModBuilder.Kind.Skins && ModBuilder.SkinShip >= 0;
             if (Current == null && !skin) { Status(T("mbNoShipToFly", "Add a ship first."), true); return; }
             if (!InHangar) return;
@@ -1194,71 +1149,35 @@ namespace GoF2Remake.UI
 
         // ---- per frame ---------------------------------------------------------------------------------------
 
-        /// <summary>Narrower screens get narrower panels: below 16:10 'mbv-narrow', below about 4:3 'mbv-compact' too.</summary>
-        void UpdateLayoutClasses()
-        {
-            float w = root.layout.width, h = root.layout.height;
-            if (float.IsNaN(w) || h <= 0f) return;
-            float aspect = w / h;
-            root.EnableInClassList("mbv-narrow", aspect < 1.58f);
-            root.EnableInClassList("mbv-compact", aspect < 1.4f);
-        }
-
         public void Update()
         {
             // Exit pressed: the project is closed and the main menu is loading; nothing here is rebuilt any more.
             if (!ModBuilder.Active) return;
             float dt = Time.unscaledDeltaTime * 1000f;
-            UpdateLayoutClasses();
-            nowMs += dt;
             bool flying = level.PlayerFlying;
             UpdateUiAnimation(flying);
-            if (flying)
+            if (flying || uiShown < 1f)
             {
+                nowMs += dt;
+                UpdateLayoutClasses();
+                if (!flying) return;   // landed, the panels still flying in: no input until they are in place
                 if (SpaceLevel.PlayerTriedToFly()) level.SkipPlayerFlight();
                 labels.Clear();
                 status.style.display = placeHint.style.display = DisplayStyle.None;   // inline styles beat the hiding rule
                 return;
             }
-            if (uiShown < 1f) return;   // landed, the panels still flying in: no input until they are in place
-            if (saveDirty && nowMs >= saveAtMs) SaveNow();
-            if (reloadPending && nowMs >= reloadAtMs && drag != Drag.Gizmo)
-            {
-                reloadPending = false;
-                reloading = true;
-                ModBuilder.Reload();
-                ModBuilder.ApplyShip();
-            }
-            if (reloading)
-            {
-                if (!ModShips.Ready || ModLoading.Busy) { statusMs = Mathf.Max(statusMs, 300f); if (!statusError) statusText = T("mbUpdating", "Updating the preview…"); }
-                else
-                {
-                    reloading = false;
-                    ModBuilder.ApplyShip();
-                    boundShip = -2;
-                    ShowProblems();
-                    RebuildShips();
-                    if (kind == ModBuilder.Kind.Items) { RebuildItems(); BuildItemPage(); }
-                    if (kind == ModBuilder.Kind.Skins) { RebuildSkins(); BuildSkinPage(); }
-                    var queued = afterReload.ToArray();
-                    afterReload.Clear();
-                    foreach (var a in queued) a();
-                }
-            }
+            if (!UpdateCommon(dt)) return;
             if (!reloading && !reloadPending && boundShip != Session.ShipIndex) BindShip();
+            else if (boundShip >= 0 && level.PlayerShip != null && level.PlayerShip != boundTransform) RebindShip();
             if (launchPending && !reloading && !reloadPending) Launch();
-
-            if (statusMs > 0f) statusMs -= dt;
-            status.text = statusMs > 0f ? statusText : "";
-            status.style.display = status.text.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
-            status.EnableInClassList("mbv-status--error", statusError);
             placeHint.text = placing >= 0 ? string.Format(T("mbPlaceHint", "Click on the hull to place the new {0} point.  Esc cancels."),
-                                                          T("mbType" + TypeNames[placing], TypeNames[placing]).ToLowerInvariant()) : "";
-            placeHint.style.display = placing >= 0 ? DisplayStyle.Flex : DisplayStyle.None;
+                                                          T("mbType" + TypeNames[placing], TypeNames[placing]).ToLowerInvariant())
+                           : PlaceHintOfKind();
+            placeHint.style.display = placeHint.text.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
             ReadKeys(dt);
             UpdateCamera(dt);
             UpdateLabels();
+            UpdateKind(dt);
         }
 
         // The panels fly out as the ship takes off and back in once it has landed, like the station menu
@@ -1268,7 +1187,7 @@ namespace GoF2Remake.UI
         const float UiAnimMs = 450f, UiPartMs = 300f;
         float uiShown = 1f;   // 0 away .. 1 in place
         bool uiStateTaken;
-        VisualElement uiTop, uiLeft, uiRight, uiEngines, uiBlocker;
+        VisualElement uiEngines, uiBlocker;
 
         void UpdateUiAnimation(bool flying)
         {
@@ -1347,11 +1266,12 @@ namespace GoF2Remake.UI
                 return;
             }
             var s = Current;
-            gizmo.Bind(boundTransform, s?.Mounts ?? new List<WeaponMount>());
-            if (InHangar) level.BeginInspect(0.55f);
+            gizmo.Bind(boundTransform, EditedMounts ?? new List<WeaponMount>());
+            if (InHangar && ShipKind(kind)) level.BeginInspect(0.55f);
             ApplyEngines();   // the rebuilt ship comes with its engines off
             // A new ship's first hardpoints (just imported, or never given any).
-            if (s != null && !s.IsOverride && (s.NeedsLayout || s.Mounts.Count == 0) && ModBuilder.IndexOf(s) == index) AutoLayout(s);
+            // Not on a game model: it came with that ship's own hardpoints (or, a model that is no ship's, none on purpose).
+            if (s != null && !s.IsOverride && !s.HasGameModel && !s.IsKitShip && (s.NeedsLayout || s.Mounts.Count == 0) && ModBuilder.IndexOf(s) == index) AutoLayout(s);
             else if (autoHeightAfterReload && s != null && ModBuilder.IndexOf(s) == index)
             {
                 autoHeightAfterReload = false;
@@ -1360,8 +1280,18 @@ namespace GoF2Remake.UI
                 if (s.HangarHeight == before) reloadPending = false;   // nothing moved: no second rebuild
                 BuildShipPage();
             }
-            BuildHardpointsPage();
+            RefreshPoints();
             MaybeMakeIcon(s, index);
+        }
+
+        /// <summary>The station rebuilt the turntable ship by itself (a customizable ship's parts arrived, ModShips.ModelsChanged):
+        /// the gizmo and the engines on the new one.</summary>
+        void RebindShip()
+        {
+            boundTransform = level.PlayerShip;
+            gizmo.Bind(boundTransform, EditedMounts ?? new List<WeaponMount>());
+            ApplyEngines();
+            MaybeMakeIcon(Current, Session.ShipIndex);
         }
 
         /// <summary>A new ship's shop icon, rendered from its model once (ShipIconMaker) into icons/&lt;id&gt;.png: when it has
@@ -1369,7 +1299,8 @@ namespace GoF2Remake.UI
         /// the modder set by hand is left alone.</summary>
         void MaybeMakeIcon(ProjectShip s, int index)
         {
-            if (s == null || s.IsOverride || string.IsNullOrEmpty(s.Model) || ModBuilder.IndexOf(s) != index) return;
+            if (s == null || s.IsOverride || string.IsNullOrEmpty(s.Model) && !s.IsKitShip || s.HasGameModel || ModBuilder.IndexOf(s) != index) return;   // a game model has the game's icon
+            if (s.IsKitShip && kind == ModBuilder.Kind.Kits) return;   // a preview build, not the default the icon shows
             var made = Project.GeneratedIcon(s);
             if (!string.IsNullOrEmpty(s.Icon) && (made == null || made.Value.file != s.Icon)) return;   // the modder's own
             string key = IconKey(s);
@@ -1379,8 +1310,10 @@ namespace GoF2Remake.UI
             if (entry == null || !ModShips.Built.Any(b => b.ship == index)) return;   // not built: the Phantom would stand in
             var icon = ShipIconMaker.Make(ModShips.Template(entry.name));
             if (icon == null) return;
+            ModBuilder.History?.Commit();   // the edits so far are their own step: the icon joins it, not a step of its own
             Project.SetGeneratedIcon(s, icon.EncodeToPNG(), key);
             Project.Save();
+            ModBuilder.History?.Absorb();
             ModShips.SetIcon(index, icon);
             RebuildShips();
         }
@@ -1388,6 +1321,24 @@ namespace GoF2Remake.UI
         /// <summary>What the icon is drawn from: the model file, its turn and the hull textures.</summary>
         string IconKey(ProjectShip s)
         {
+            if (s.IsKitShip)
+            {
+                // A kit ship: its default build, the kit's parts and their files.
+                var kit = Project.FindKit(s.Kit);
+                var sb = new System.Text.StringBuilder("kit|" + s.Kit + "|" + s.KitType + "|" + s.BuildText());
+                if (kit != null)
+                {
+                    kit.Flush();
+                    sb.Append('|').Append(kit.Scale).Append('|').Append(kit.Yaw);
+                    foreach (var p in kit.Parts)
+                    {
+                        var fi = new System.IO.FileInfo(System.IO.Path.Combine(Project.Folder, p.Model ?? ""));
+                        sb.Append('|').Append(p.Id).Append('@').Append(fi.Exists ? fi.Length + ":" + fi.LastWriteTimeUtc.Ticks : "missing");
+                    }
+                    sb.Append('|').Append(kit.Json["colorSlots"]?.ToString(Newtonsoft.Json.Formatting.None));
+                }
+                return sb.ToString();
+            }
             var file = new System.IO.FileInfo(System.IO.Path.Combine(Project.Folder, s.Model));
             string stamp = file.Exists ? file.Length + "@" + file.LastWriteTimeUtc.Ticks : "missing";
             var materials = s.ToJson()["materials"];
@@ -1396,32 +1347,12 @@ namespace GoF2Remake.UI
 
         void ReadKeys(float dt)
         {
+            if (ReadCommonKeys(EscapeInKind)) return;
             var kb = Keyboard.current;
-            if (kb == null) return;
-            var focused = root.panel?.focusController?.focusedElement as VisualElement;
-            bool typing = focused != null && TextFieldKeys.InTextField(focused);
-            if (kb.escapeKey.wasPressedThisFrame)
-            {
-                if (optionsView != null) { if (!optionsView.CloseResetPrompt()) ShowMenu(); }   // Options: back to the Menu
-                else if (ModalOpen) CloseModal();
-                else if (typing) focused.Blur();
-                else if (placing >= 0) { placing = -1; BuildHardpointsPage(); }
-                else if (gizmo.Selected >= 0) { gizmo.Selected = -1; gizmo.Refresh(); BuildHardpointsPage(); }
-                else ShowMenu();   // nothing else to close: the Menu, like the station's Esc
-                return;
-            }
-            if (optionsView != null)
-            {
-                // Q / E switch the Options tabs, as in the game's menus.
-                if (kb.qKey.wasPressedThisFrame) optionsView.StepTab(-1);
-                if (kb.eKey.wasPressedThisFrame) optionsView.StepTab(1);
-                return;
-            }
-            if (typing || ModalOpen) return;
-            if (kind == ModBuilder.Kind.Ships && (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) DeleteSelected();
-            if (kind == ModBuilder.Kind.Ships && kb.mKey.wasPressedThisFrame) Mirror();
-            if (!InHangar) return;   // the Space Lounge: no ship to fly or turn around
-            if (kb.lKey.wasPressedThisFrame) StartTestFlight();
+            if (EditsMounts && (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) DeleteSelected();
+            if (EditsMounts && kb.mKey.wasPressedThisFrame) Mirror();
+            if (!InHangar || !ShipKind(kind)) return;   // the Space Lounge, the map, a room: no ship to fly or turn around
+            if (kb.lKey.wasPressedThisFrame && Flies(kind)) StartTestFlight();
             float frames = dt / (1000f / 30f);
             float left = kb.leftArrowKey.isPressed || kb.aKey.isPressed ? 1f : 0f, right = kb.rightArrowKey.isPressed || kb.dKey.isPressed ? 1f : 0f;
             float up = kb.upArrowKey.isPressed || kb.wKey.isPressed ? 1f : 0f, dn = kb.downArrowKey.isPressed || kb.sKey.isPressed ? 1f : 0f;
@@ -1431,9 +1362,17 @@ namespace GoF2Remake.UI
             if (zoom != 0f) level.Inspect.Zoom(Mathf.Pow(1.03f, zoom * frames));
         }
 
+        /// <summary>Esc in the screen: a hardpoint being placed or selected, then the kind's own (a marker being placed).</summary>
+        bool EscapeInKind()
+        {
+            if (placing >= 0) { placing = -1; BuildHardpointsPage(); return true; }
+            if (gizmo.Selected >= 0) { gizmo.Selected = -1; gizmo.Refresh(); BuildHardpointsPage(); return true; }
+            return EscapeKind();
+        }
+
         void UpdateCamera(float dt)
         {
-            if (!InHangar) return;
+            if (!InHangar || !ShipKind(kind)) return;
             if (!level.Inspect.Active && boundTransform != null && !level.PlayerFlying) level.BeginInspect(0.55f);
             var ts = Touchscreen.current;
             int down = 0;
@@ -1463,15 +1402,15 @@ namespace GoF2Remake.UI
                 fling *= Mathf.Pow(0.9f, frames);
                 if (fling.magnitude <= 0.5f) fling = Vector2.zero;
             }
-            if (drag == Drag.None && Pointer.current != null && !ModalOpen && kind == ModBuilder.Kind.Ships) gizmo.Hover(Pointer.current.position.ReadValue());
+            if (drag == Drag.None && Pointer.current != null && !ModalOpen && EditsMounts) gizmo.Hover(Pointer.current.position.ReadValue());
         }
 
         /// <summary>A short tag by every hardpoint ("P1", "E2"...), where it shows on screen.</summary>
         void UpdateLabels()
         {
-            var s = Current;
+            var s = EditedMounts;
             var cam = level.MainCamera;
-            int n = s != null && boundTransform != null && cam != null && kind == ModBuilder.Kind.Ships ? s.Mounts.Count : 0;
+            int n = s != null && boundTransform != null && cam != null && EditsMounts ? s.Count : 0;
             while (labels.childCount < n) Add(labels, new Label { pickingMode = PickingMode.Ignore }, "mbv-point-tag");
             while (labels.childCount > n) labels.RemoveAt(labels.childCount - 1);
             if (n == 0) return;
@@ -1480,7 +1419,7 @@ namespace GoF2Remake.UI
             var counts = new int[4];
             for (int i = 0; i < n; i++)
             {
-                var m = s.Mounts[i];
+                var m = s[i];
                 int type = Mathf.Clamp(m.slotType, 0, 3);
                 counts[type]++;
                 var tag = (Label)labels[i];
@@ -1501,7 +1440,9 @@ namespace GoF2Remake.UI
 
         void OnPointerDown(PointerDownEvent e)
         {
-            if (ModalOpen || !InHangar) return;
+            if (ModalOpen) return;
+            if (KindPointerDown(e)) return;   // the kinds with a view of their own (a room)
+            if (!InHangar || !ShipKind(kind)) return;
             // While the preview rebuilds (reloading) the camera still turns and pans; only the hardpoints wait for the ship.
             // (It refused every drag then, and a rebuild that never finished left the camera stuck.)
             bool shipReady = boundTransform != null && !reloading;
@@ -1512,10 +1453,10 @@ namespace GoF2Remake.UI
             fling = Vector2.zero;
             viewport.CapturePointer(e.pointerId);
             if (e.button == 2) { drag = Drag.Pan; return; }   // the middle button pans the view (a click centres it again)
-            if (kind != ModBuilder.Kind.Ships || !shipReady) { drag = Drag.Camera; return; }   // the hardpoints are the Ships tab's
+            if (!EditsMounts || EditedMounts == null || !shipReady) { drag = Drag.Camera; return; }   // the hardpoints: a ship's, a kit part's
             if (e.button == 0 && placing >= 0)
             {
-                if (gizmo.RaycastHull(p, out var hit, out _)) { int type = placing; placing = -1; AddMount(type, hit); }
+                if (gizmo.RaycastHull(p, out var hit, out var normal)) { int type = placing; placing = -1; AddMount(type, hit, normal); }
                 else Status(T("mbMissedHull", "Click on the ship's hull."), false);
                 drag = Drag.None;
                 return;
@@ -1524,8 +1465,8 @@ namespace GoF2Remake.UI
             {
                 drag = Drag.Gizmo;
                 gizmo.Refresh();
-                BuildHardpointsPage();
-                if (tab != 1) SelectTab(1);
+                RefreshPoints();
+                if (kind == ModBuilder.Kind.Ships && tab != 1) SelectTab(1);
                 return;
             }
             drag = Drag.Camera;
@@ -1533,6 +1474,7 @@ namespace GoF2Remake.UI
 
         void OnPointerMove(PointerMoveEvent e)
         {
+            if (KindPointerMove(e)) return;
             if (drag == Drag.None || !viewport.HasPointerCapture(e.pointerId)) return;
             if (e.pressedButtons == 0) { viewport.ReleasePointer(e.pointerId); EndDrag(); return; }   // released where we didn't hear it
             var p = ScreenPos();
@@ -1561,6 +1503,7 @@ namespace GoF2Remake.UI
 
         void OnPointerUp(PointerUpEvent e)
         {
+            if (KindPointerUp(e)) return;
             if (!viewport.HasPointerCapture(e.pointerId)) return;
             viewport.ReleasePointer(e.pointerId);
             EndDrag();
@@ -1571,10 +1514,10 @@ namespace GoF2Remake.UI
             if (drag == Drag.Gizmo)
             {
                 gizmo.EndDrag();
-                var s = Current;
+                var s = EditedMounts;
                 int i = gizmo.Selected;
-                if (s != null && i >= 0 && i < s.Mounts.Count) OnMountEdited(s.Mounts[i].slotType);
-                BuildHardpointsPage();
+                if (s != null && i >= 0 && i < s.Count) OnMountEdited(s[i].slotType);
+                RefreshPoints();
             }
             else if (drag == Drag.Pan)
             {
@@ -1593,6 +1536,8 @@ namespace GoF2Remake.UI
         public void Dispose()
         {
             if (gizmo != null) UnityEngine.Object.Destroy(gizmo.gameObject);
+            DisposeKinds();
+            DisposeAi();
             SaveNow();
         }
     }

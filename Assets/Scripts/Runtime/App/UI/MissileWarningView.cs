@@ -20,7 +20,9 @@ namespace GoF2Remake.UI
     public class MissileWarningView
     {
         const float M = 0.05f;
-        const float EllipseX = 657f, EllipseY = 491f;
+        // Radar::elipsoidIntersect's ellipse, image 0x4c7's size (remake: x FlightHud.RadarScale, smaller in the phone layout).
+        static float EllipseX => 657f * FlightHud.RadarScale;
+        static float EllipseY => 491f * FlightHud.RadarScale;
         const float BeepMinMs = 110f, BeepMaxMs = 650f;
 
         readonly VisualElement layer, banner, hintRow;

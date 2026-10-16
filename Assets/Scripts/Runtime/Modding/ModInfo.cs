@@ -52,8 +52,42 @@ namespace GoF2Remake.Modding
             }
         }
 
-        /// <summary>"id@version#hash", what multiplayer and the save files record.</summary>
+        string netHash;
+
+        /// <summary>What multiplayer compares (NetMods): like Hash, but without the files mod.json's "multiplayerIgnore" lists
+        /// (models, textures, icons: a phone build with lighter ones plays with the PC build) and with mod.json itself as
+        /// its id, version, dependencies and that list (not its name or description: the phone build's says "(phone)").</summary>
+        public string NetHash
+        {
+            get
+            {
+                if (netHash != null || Source == null || Manifest == null) return netHash ?? "";
+                using var sha = SHA256.Create();
+                void Add(string s) { var b = Encoding.UTF8.GetBytes(s); sha.TransformBlock(b, 0, b.Length, null, 0); }
+                Add($"{Manifest.id}\n{Manifest.version}\n{string.Join(",", Manifest.dependencies)}\n");
+                foreach (var d in Manifest.dependencyVersions) Add($"{d.Key}>={d.Value}\n");
+                var ignore = new List<string>(Manifest.multiplayerIgnore ?? new List<string>());
+                ignore.Sort(StringComparer.Ordinal);
+                Add(string.Join(",", ignore) + "\n");
+                foreach (var f in Source.Files)
+                {
+                    if (string.Equals(f, ModManifest.FileName, StringComparison.OrdinalIgnoreCase) || Manifest.MultiplayerIgnores(f)) continue;
+                    Add(f.ToLowerInvariant() + "\n");
+                    var b = Source.ReadBytes(f) ?? Array.Empty<byte>();
+                    sha.TransformBlock(b, 0, b.Length, null, 0);
+                }
+                sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                var sb = new StringBuilder();
+                for (int i = 0; i < 6; i++) sb.Append(sha.Hash[i].ToString("x2"));
+                return netHash = sb.ToString();
+            }
+        }
+
+        /// <summary>"id@version#hash", what the save files record (every file).</summary>
         public string Signature => $"{Id}@{Version}#{Hash}";
+
+        /// <summary>"id@version#nethash", what a multiplayer session lists (NetMods).</summary>
+        public string NetSignature => $"{Id}@{Version}#{NetHash}";
 
         Texture2D preview;
         bool previewTried;

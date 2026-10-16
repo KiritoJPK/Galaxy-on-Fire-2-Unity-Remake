@@ -22,13 +22,28 @@ namespace GoF2Remake.UI
     public class NavigationView
     {
         const float M = 0.05f;
-        const float EllipseX = 657f, EllipseY = 491f;   // image 0x4c7, Radar::elipsoidIntersect
+        // Radar::elipsoidIntersect's ellipse, image 0x4c7's size (remake: x FlightHud.RadarScale, smaller in the phone layout).
+        static float EllipseX => 657f * FlightHud.RadarScale;
+        static float EllipseY => 491f * FlightHud.RadarScale;
 
         class Marker
         {
             public Navigation.Target target;
             public VisualElement bracket, icon, story, freelance;
             public Label name, tech, distance;
+            public VisualElement faction;   // multiplayer: this planet's station is held by the player's faction (a green orb; red under siege)
+        }
+
+        /// <summary>Multiplayer: 'station' is held by the local player's faction (NetFactionsClient's claims); 'sieged' = its
+        /// siege is on or declared.</summary>
+        static bool OwnFaction(int station, out bool sieged)
+        {
+            sieged = false;
+            var me = GoF2Remake.Multiplayer.NetPlayer.Local;
+            if (!GoF2Remake.Multiplayer.NetGame.Active || me == null || string.IsNullOrEmpty(me.FactionTag)) return false;
+            if (!GoF2Remake.Multiplayer.NetFactionsClient.Owner(station, out string tag, out _) || tag != me.FactionTag) return false;
+            sieged = GoF2Remake.Multiplayer.NetFactionsClient.SiegeAt(station) != null;
+            return true;
         }
 
         readonly VisualElement layer, lockRing, lockPlate, lockClass, navButtons, fastForward, autopilotButton, pill;
@@ -158,6 +173,11 @@ namespace GoF2Remake.UI
                     m.freelance.AddToClassList("nav-abs");
                     Image(m.freelance, Tex("map_freelance"));
                     layer.Add(m.freelance);
+                    // Remake multiplayer: a neighbouring station the player's faction holds shows an orb on its planet.
+                    m.faction = new VisualElement { pickingMode = PickingMode.Ignore, usageHints = UsageHints.DynamicTransform };
+                    m.faction.AddToClassList("nav-abs");
+                    m.faction.AddToClassList("nav-faction");
+                    layer.Add(m.faction);
                 }
                 m.name = Text(layer, null);
                 m.name.text = t.name;
@@ -174,8 +194,10 @@ namespace GoF2Remake.UI
             // Remake: a single-player event graph bar mission's target ("target" line).
             if (Events.EventMissions.Active != null && Events.EventRunner.LocalMissionTarget == station) return true;
             if (!Freelance.Active) return false;
-            var f = Freelance.Mission;
-            return station == (f.type == MissionType.StolenGoods ? f.clientStation : f.target);
+            // Stolen goods: the original marks the agent's station from the start, and players went back there looking for
+            // the documents (#113). Remake: nothing until the documents are aboard (the briefing names the system to
+            // search), then the client's station (Freelance.MarkedStation, the star map's rule too).
+            return station == Freelance.MarkedStation;
         }
 
         /// <summary>The gold story icon: the campaign target (visible missions only, Story.MapMarks) or an event graph quest's.</summary>
@@ -203,6 +225,7 @@ namespace GoF2Remake.UI
                     if (m.icon != null) m.icon.style.display = DisplayStyle.None;
                     if (m.story != null) m.story.style.display = DisplayStyle.None;
                     if (m.freelance != null) m.freelance.style.display = DisplayStyle.None;
+                    if (m.faction != null) m.faction.style.display = DisplayStyle.None;
                     m.name.style.display = DisplayStyle.None;
                     if (m.distance != null) m.distance.style.display = DisplayStyle.None;
                     continue;
@@ -229,8 +252,20 @@ namespace GoF2Remake.UI
                     bool storyHere = m.story != null && IsStoryTarget(t.station);
                     if (m.story != null) { m.story.style.display = onScreen && storyHere ? DisplayStyle.Flex : DisplayStyle.None; Place(m.story, ix, p.y - 10f); }
                     if (m.freelance != null) { m.freelance.style.display = onScreen && freelanceHere ? DisplayStyle.Flex : DisplayStyle.None; Place(m.freelance, ix, p.y - 10f); }
+                    float nx = ix + (storyHere || freelanceHere ? 28f : 0f);
+                    if (m.faction != null)
+                    {
+                        bool ours = OwnFaction(t.station, out bool sieged);
+                        m.faction.style.display = onScreen && ours ? DisplayStyle.Flex : DisplayStyle.None;
+                        if (ours)
+                        {
+                            m.faction.EnableInClassList("nav-faction--siege", sieged);
+                            Place(m.faction, nx, p.y - 5f);
+                            nx += 24f;   // the name after the orb
+                        }
+                    }
                     m.name.style.display = onScreen && inBox ? DisplayStyle.Flex : DisplayStyle.None;
-                    Place(m.name, ix + (storyHere || freelanceHere ? 28f : 0f), p.y - 10f);
+                    Place(m.name, nx, p.y - 10f);
                     continue;
                 }
 

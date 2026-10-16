@@ -74,7 +74,7 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                         <ui:VisualElement name="tradeAllRow" class="trade-all-row trade-box--hidden">
-                            <ui:Button name="sellAllButton" class="trade-all gof-semibold" />
+                            <ui:Button name="sellAllButton" class="trade-all trade-all--first gof-semibold" />
                             <ui:Button name="buyAllButton" class="trade-all trade-all--buy gof-semibold" />
                         </ui:VisualElement>
                         <ui:Button name="actionButton" class="detail-action gof-semibold" />

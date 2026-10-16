@@ -266,6 +266,13 @@
     margin-left: auto;
 }
 
+/* The Khador map's Jump to the Void button (StarMap.AskVoid): beside Back, in the Void's violet. */
+#voidButton {
+    display: none;
+    margin-left: 16px;
+    border-color: rgba(155, 77, 255, 0.85);
+}
+
 .map-button:hover,
 .map-button--focus {
     color: #FFFFFF;

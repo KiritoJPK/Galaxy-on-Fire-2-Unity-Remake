@@ -122,6 +122,9 @@ namespace GoF2Remake.Data
                 var w = db.Wanted[i];
                 var st = Session.Wanted[i];
                 if (w.board != race || w.requiredMission > campaign || (IsStoryline(i) && campaign > w.requiredMission)) continue;
+                // Remake: a save whose storyline criminal died without giving up (before Traffic.WantedKilled won the
+                // step on that blow too) waits at 128 / 130 for a dead man: he is back on his route.
+                if (IsStoryline(i) && st.terminated) st.terminated = false;
                 if (st.active || st.terminated || w.requiredBounties > Session.CollectedBounties[Mathf.Clamp(w.board, 0, 3)]) continue;
                 var (lo, hi) = PathBounds(i);
                 List<int> path = null;

@@ -198,23 +198,58 @@ namespace GoF2Remake.World
 
         static readonly int[] RareGoods = { 113, 108, 107, 102, 101 };   // Implants, Vossk Organs, Organs, Rare Plants / Animals
 
-        /// <summary>Two pieces of tech level 5+ weapons or equipment (a secondary 10-20 of it), 8-15 t of rare goods and 5-10
-        /// energy cells; empty while the last capital ship's crate is less than an hour of play ago.</summary>
-        public static List<ItemStack> RollLoot(Database db)
+        /// <summary>Any enhanced capital ship's crate, in this order: while the hour since the last capital ship's gear has
+        /// passed (LootReady) two pieces of tech level 5+ weapons or equipment (a secondary 10-20 of it) and 8-15 t of rare
+        /// goods, else 4-8 t of rare goods; 5-10 energy cells; then its hold, two to three of a freighter's cargo rolls
+        /// (NpcTables.RollLoot). Remake (a player's report 2026-10-16: "does not drop cargo"): the hour used to empty the whole crate, and the
+        /// Terran battleship had only a freighter's roll, nothing a third of the time. 'gear': the gear is in it.</summary>
+        public static List<ItemStack> RollLoot(Database db) => RollLoot(db, out _);
+
+        public static List<ItemStack> RollLoot(Database db, out bool gear)
         {
             var list = new List<ItemStack>();
-            if (db == null || !LootReady) return list;
-            var pool = db.Items.FindAll(it => it.maxPrice > 0 && it.blueprint.Count == 0 && it.TypeId <= 3 && it.techLevel >= 5 && it.occurrence > 0
-                                              && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index));
-            for (int n = 0; n < 2 && pool.Count > 0; n++)
+            gear = false;
+            if (db == null) return list;
+            if (LootReady)
             {
-                var it = pool[Random.Range(0, pool.Count)];
-                pool.Remove(it);
-                list.Add(new ItemStack(it.index, it.TypeId == 1 ? Random.Range(10, 21) : 1));
+                gear = true;
+                var pool = db.Items.FindAll(it => it.maxPrice > 0 && it.blueprint.Count == 0 && it.TypeId <= 3 && it.techLevel >= 5 && it.occurrence > 0
+                                                  && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index));
+                for (int n = 0; n < 2 && pool.Count > 0; n++)
+                {
+                    var it = pool[Random.Range(0, pool.Count)];
+                    pool.Remove(it);
+                    list.Add(new ItemStack(it.index, it.TypeId == 1 ? Random.Range(10, 21) : 1));
+                }
+                list.Add(new ItemStack(RareGoods[Random.Range(0, RareGoods.Length)], Random.Range(8, 16)));
             }
-            list.Add(new ItemStack(RareGoods[Random.Range(0, RareGoods.Length)], Random.Range(8, 16)));
+            else list.Add(new ItemStack(RareGoods[Random.Range(0, RareGoods.Length)], Random.Range(4, 9)));
             list.Add(new ItemStack(GalaxyMap.EnergyCellItem, Random.Range(5, 11)));
+            // The hold after them, each kind once (a kind already in the crate is left out).
+            int fixedStacks = list.Count;
+            for (int rolls = Random.Range(HoldRollsMin, HoldRollsMax + 1), tries = 0; rolls > 0 && tries < 20; tries++)
+            {
+                var hold = NpcTables.RollLoot(db, true);
+                if (hold.Count == 0) continue;
+                rolls--;
+                foreach (var st in hold)
+                {
+                    int at = list.FindIndex(x => x.item == st.item);
+                    if (at >= 0 && at < fixedStacks) continue;
+                    Add(list, st.item, st.amount);
+                }
+            }
             return list;
+        }
+
+        public const int HoldRollsMin = 2, HoldRollsMax = 3;
+
+        /// <summary>'amount' of 'item' into 'list', on its stack when it has one (a crate per kind: NpcShip.DropCrate).</summary>
+        public static void Add(List<ItemStack> list, int item, int amount)
+        {
+            if (amount <= 0) return;
+            var s = list.Find(x => x.item == item);
+            if (s != null) s.amount += amount; else list.Add(new ItemStack(item, amount));
         }
 
         // ---- the resupply dock (the carrier, the Vossk battleship) ----------------------------------------------------
@@ -236,6 +271,9 @@ namespace GoF2Remake.World
             return vossk ? Localization.Extra("vosskRefused", "The Vossk battleship only takes pilots the Vossk trust in a Vossk ship, or pilots with a Vossk signature.")
                          : Localization.Extra("carrierRefused", "The carrier only takes trusted Terran pilots in a Terran ship, or pilots with a Terran signature.");
         }
+
+        /// <summary>The resupply deck takes ships now: not while the ship is hostile, in a fleet battle or coasting after one.</summary>
+        public static bool DeckOpen(NpcShip host) => host != null && !host.Target.hostileToPlayer && !InBattle(host);
 
         /// <summary>A fleet battle's capital ship while the enemy capital ship stands (or it still coasts): not a docking target.</summary>
         public static bool InBattle(NpcShip ship)

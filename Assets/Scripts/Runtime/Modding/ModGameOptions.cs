@@ -3,7 +3,8 @@
 // Game options panel (MainMenu.RefreshModOptions) like the Kaamo Club / Hardcore toggles:
 //   [ { "id": "canon_ships", "name": "All Canon Ships" | { "en": ..., "de": ... }, "description": ...,
 //       "image": "card.png" (the card's art, like the campaign cards: 290 x 448 or a multiple), "imageHover": ... (while
-//       selected), "showTitle": true (the name on a plate at the card's foot), "default": true } ]
+//       selected), "showTitle": true (the name on a plate at the card's foot), "default": true,
+//       "flightStyle": "free" | "original" (while the option is on, the game flies so: ModFlight) } ]
 // The choice is the game's (Session.ModGameOptions, saved): conditions ask for it with option(mod_id:option_id) (the
 // mod's "available" fields, quests' "Starts when", event graphs; EventRunner.Condition). The last choice per option is
 // remembered for the next new game (PlayerPrefs newgame_modopt_<key>). A multiplayer session plays with every option at its
@@ -22,7 +23,7 @@ namespace GoF2Remake.Modding
     {
         public const string File = "gameoptions.json";
 
-        static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "id", "name", "description", "image", "imageHover", "showTitle", "default" };
+        static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "id", "name", "description", "image", "imageHover", "showTitle", "default", "flightStyle" };
 
         public sealed class Def
         {
@@ -31,6 +32,7 @@ namespace GoF2Remake.Modding
             public bool showTitle = true;
             public Dictionary<string, string> name, description;
             public bool defaultOn;
+            public int flightStyle = -1;   // "flightStyle": while the option is on the game flies so (ModFlight), -1 = no say
             public string Key => mod.Id + ":" + localId;
             public string Name => ModManifest.Pick(name) ?? localId;
             public string Description => ModManifest.Pick(description) ?? "";
@@ -77,6 +79,7 @@ namespace GoF2Remake.Modding
                 if (string.IsNullOrEmpty(d.localId) || !ModManifest.ValidId(d.localId))
                     throw new ModJsonException($"{where}: \"id\" is missing or uses more than a-z, 0-9, _ and -");
                 if (!ids.Add(d.localId)) throw new ModJsonException($"{where}: the id \"{d.localId}\" is used twice");
+                d.flightStyle = ModFlight.ReadStyle(o, where);
                 if (!string.IsNullOrEmpty(d.image) && !mod.Source.Exists(d.image)) Warn(mod, $"{where}: the image \"{d.image}\" isn't in the mod");
                 into.Add(d);
             }

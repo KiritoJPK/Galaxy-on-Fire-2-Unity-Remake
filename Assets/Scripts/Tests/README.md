@@ -13,10 +13,10 @@ Regression tests for the remake: run them after a change to see that nothing els
 
 | Area | Covers |
 |---|---|
-| `Flight` | FlightModel (handling, turns, boost, brake, strafe, level-out, autopilot bank, heavy hulls), the dodge, Hitpoints, Cloak, CollisionVolume, MiningGame / MiningBeamExtraction, HackingGame, AutofireLatch, HapticMixer, Aspect, JavaRandom, Standing, Route |
+| `Flight` | FlightModel (handling, turns, boost, brake, strafe, level-out, autopilot bank, heavy hulls), the dodge, the shared turret (TurretCore, TurretTargeting, mounts), Hitpoints, Cloak, CollisionVolume, MiningGame / MiningBeamExtraction, HackingGame, AutofireLatch, HapticMixer, Aspect, JavaRandom, Standing, Route |
 | `Universe` | OrbitLayout's seeded orbits (gates, skies, suns, planets, asteroids) against `space_backdrop_sim.py`, empty / alien / supernova orbits, ore odds, GalaxyMap (routes, energy cells, visibility), SpacePoints, coordinates, the universe data |
 | `Economy` | Shop prices against `prices.py`, stock and dealer ships, Hangar trading / mounting / ships / Kaamo storage, Blueprints against `blueprint_table.py`, KaamoClub, Database and the two economies, Cheats |
-| `Npc` | NpcTables (hulls, guns, reloads), fighter pools, TrafficPlan against `npc_tables.py` (counts and every special orbit), capital ships, pirate events and tiers, Gun |
+| `Npc` | NpcTables (hulls, guns, reloads), fighter pools, TrafficPlan against `npc_tables.py` (counts and every special orbit), capital ships, pirate events and tiers, Gun (missile homing), turret items on NPC ships and in the hangar |
 | `Story` | Story steps 0-162 against `campaign_flow.md` (missions, side effects, rules, mission select), StoryTable, Freelance against `mission_tables.py`, AgentGenerator, Wingmen, WantedBoard, PirateReports, PirateBases, medals, New Game+, GameNames |
 | `SavesMods` | SaveGame round trips, old versions, TryParse's refusals, SaveTransfer, the mod system (manifests, zips and CRCs, ModManager, items / ships / systems / stations, the registry, ModSaves, unlocks, blueprints, campaigns, characters), ImageImport's decoders |
 | `Events` | the built-in event graphs and templates compiling, the graph compiler, the line form, expressions, ship orders, cutscene shots, speakers |

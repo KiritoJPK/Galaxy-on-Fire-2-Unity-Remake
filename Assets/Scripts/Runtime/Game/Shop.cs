@@ -91,7 +91,7 @@ namespace GoF2Remake.Data
         }
 
         /// <summary>Ship::getBaseHP: the hull (+40 per mod 0).</summary>
-        public static int BaseHp(Database db) => (db.Ship(Session.ShipIndex)?.armor ?? 0) + 40 * Session.ModLevel(0);
+        public static int BaseHp(Database db) => Modding.KitRules.Armor(db.Ship(Session.ShipIndex), 0) + 40 * Session.ModLevel(0);   // a kit ship's build too
 
         /// <summary>Ship::getCombinedHP: the hull + the shield (attr 18) + the armor (attr 20).</summary>
         public static int CombinedHp(Database db)
@@ -105,7 +105,7 @@ namespace GoF2Remake.Data
         /// compression (attr 22, category 12) % / 100).</summary>
         public static int MaxLoad(Database db)
         {
-            int b = (db.Ship(Session.ShipIndex)?.cargo ?? 0) + 30 * Session.ModLevel(1), pct = 0;
+            int b = Modding.KitRules.Cargo(db.Ship(Session.ShipIndex), 0) + 30 * Session.ModLevel(1), pct = 0;   // a kit ship's build too
             foreach (var e in Session.Equipment) { var it = db.Item(e.item); if (it != null && it.categoryId == 12) pct += it.Attr(22); }
             return b + (int)(b * pct / 100f);
         }
@@ -171,12 +171,18 @@ namespace GoF2Remake.Data
 
         // ---- prices ------------------------------------------------------------------------------------------
 
-        /// <summary>Status::calcCargoPrices: the prices of 'items' at 'station', in list order with a fresh
-        /// java.util.Random(station) (so the same list always gets the same prices).</summary>
+        /// <summary>Status::calcCargoPrices: the prices of 'items' at 'station': min + the distance factor x (max - min),
+        /// +- 2 %. The original draws the +- 2 % in list order from a fresh java.util.Random(station), so an item's price
+        /// depended on its place in the list: the hold's, the mounted items' and the stock's lists priced it differently,
+        /// and a unit bought from the stock sold for more once it was the hold's (players' report, multiplayer: Garuda
+        /// missiles bought at Thynome for 724, sold for 746, again and again). Remake, in a multiplayer session only: the
+        /// +- 2 % comes from java.util.Random(station x 10007 + item), the same for an item at a station whatever list it is
+        /// in. Single player keeps the original's prices (Reference/tools/shop/prices.py; a docking's prices are pinned
+        /// there, Hangar.PinPrices).</summary>
         public static int[] PriceList(Database db, int station, IList<int> items)
         {
             int system = SystemOf(db, station);
-            var rnd = new JavaRandom(station);
+            var rnd = NetSession.Active ? null : new JavaRandom(station);
             var prices = new int[items.Count];
             for (int n = 0; n < items.Count; n++)
             {
@@ -189,7 +195,7 @@ namespace GoF2Remake.Data
                 if (!(f < 1f)) f = 1f;
                 int b = it.minPrice + (int)(f * (it.maxPrice - it.minPrice));
                 int d = Mathf.Max(1, (int)(b * 0.02f));
-                prices[n] = b - d + rnd.NextInt(2 * d + 1);
+                prices[n] = b - d + (rnd ?? new JavaRandom(station * 10007L + items[n])).NextInt(2 * d + 1);
             }
             return prices;
         }
@@ -205,20 +211,36 @@ namespace GoF2Remake.Data
 
         // ---- docking: stock kept for the last 3 stations ------------------------------------------------------
 
+        /// <summary>Status::departStation on arriving in an orbit (StarMap::depart, the jump scenes, MGame's level
+        /// switches): the station goes on the 3-station stack (addStationToStack: one already on it keeps its place), its
+        /// stock, dealer and lounge made when it is new to it. The remake only pushed on docking, so a station's stock (an
+        /// empty dealer, getShipBuyList's 1 in 6) stayed until the player had docked at 3 other stations; flying through
+        /// orbits counts in the original (a player's report: Katashán's dealer never refreshed). Not in a multiplayer session,
+        /// whose stock the host keeps (NetStock).</summary>
+        public static void ArriveInOrbit(Database db, int station)
+        {
+            if (station < 0 || NetSession.Active || Session.RecentStations.Exists(s => s.station == station)) return;
+            PushStation(db, station);
+        }
+
+        /// <summary>A station new to the stack: its stock (getItemBuyList / getShipBuyList / createAgents); the oldest goes.</summary>
+        static StationStock PushStation(Database db, int station)
+        {
+            var recent = Session.RecentStations;
+            var stock = new StationStock { station = station, items = GenerateItems(db, station), ships = GenerateShips(db, station),
+                                           agents = AgentGenerator.CreateAgents(db, station) };
+            recent.Add(stock);
+            while (recent.Count > RecentStationCount) recent.RemoveAt(0);
+            return stock;
+        }
+
         /// <summary>Status::departStation (on arrival) + ModStation::OnInitialize: the station's stock, generated when the
         /// station isn't among the last 3 visited, otherwise nibbled by computerTradeGoods after > 30 s away.</summary>
         public static StationStock EnterStation(Database db, int station)
         {
             Modding.ModBlueprints.UnlockAvailable();   // remake mods: blueprints.json "unlocked": known once available
-            var recent = Session.RecentStations;
-            var stock = recent.Find(s => s.station == station);
-            if (stock == null)
-            {
-                stock = new StationStock { station = station, items = GenerateItems(db, station), ships = GenerateShips(db, station),
-                                               agents = AgentGenerator.CreateAgents(db, station) };
-                recent.Add(stock);
-                while (recent.Count > RecentStationCount) recent.RemoveAt(0);
-            }
+            var stock = Session.RecentStations.Find(s => s.station == station);
+            if (stock == null) stock = PushStation(db, station);
             else if (Session.LastDepartureTime >= 0f && Time.realtimeSinceStartup - Session.LastDepartureTime > TradeGoodsDelaySeconds
                      && station != 108 && !(GameHooks.StockShared?.Invoke(station) ?? false))   // multiplayer: the host's stock resets instead
             {
@@ -274,7 +296,12 @@ namespace GoF2Remake.Data
                 int idx = it.index, type = it.TypeId, sort = it.categoryId, techI = it.techLevel, occ = it.occurrence;
                 bool specialty = idx >= 132 && idx <= 153;
                 bool exclusive = it.Attr(61, -1) == station && !((idx == 196 || (idx >= 198 && idx <= 200)) && mission < 142);
-                if (station == 106 && !(SaoPerulaGoods.Contains(idx) || specialty)) continue;
+                // Remake mods: a mod item's "alwaysSoldAt" station always stocks it, also where the original's station filters
+                // below allow only one kind (Var Destro 105 weapons, Quineros 107 equipment, Valkyrie 101 no equipment, Sao
+                // Perula 106 goods). getItemBuyList applies them to its own attr-61 items too; a player's report: a mod's 13
+                // shields, cloaks and gear at Var Destro were never sold.
+                bool modAlways = exclusive && it.modded;
+                if (station == 106 && !modAlways && !(SaoPerulaGoods.Contains(idx) || specialty)) continue;
 
                 // Owned add-ons give items without an occurrence one (Valkyrie for idx < 196, Supernova above); a mod item's 0 means never.
                 if (occ == 0 && !it.modded && !exclusive && type != 4 && idx != 85 && it.blueprint.Count == 0 && !(idx == 181 && mission < 59)
@@ -290,10 +317,13 @@ namespace GoF2Remake.Data
                     if (specialty && idx != 132 + system && station != 106) continue;       // one specialty per system
                 }
                 if (hardcore && (sort == 23 || sort == 24)) continue;
-                if (station == 107 && type != 3) continue;
-                if (station == 105 && !(type <= 2 || sort == 28)) continue;
-                if (station == 101 && type > 2) continue;
-                if (station == 106 && type != 4) continue;
+                if (!modAlways)
+                {
+                    if (station == 107 && type != 3) continue;
+                    if (station == 105 && !(type <= 2 || sort == 28)) continue;
+                    if (station == 101 && type > 2) continue;
+                    if (station == 106 && type != 4) continue;
+                }
 
                 if (!exclusive)
                 {

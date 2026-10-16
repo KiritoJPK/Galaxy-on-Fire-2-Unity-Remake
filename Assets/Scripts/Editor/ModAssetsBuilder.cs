@@ -1,6 +1,7 @@
 // ModAssetsBuilder.cs  (Editor only)
 // "GoF2 > Build > Mod Assets": Resources/GoF2Mods/ModAssets (Modding.ModAssets) and its URP Lit template materials
-// (Resources/GoF2Mods/ModLit_*.mat), and the tintable engine glow (ModEngineGlowWhite.png + ModEngineGlowTint.mat): what
+// (Resources/GoF2Mods/ModLit_*.mat), the engine flame template (ModEngineFlame.mat) and the tintable engine glow
+// (ModEngineGlowWhite.png + ModEngineGlowTint.mat): what
 // the game builds mods' ships from at run time.
 
 using System.IO;
@@ -42,9 +43,41 @@ namespace GoF2Remake.EditorTools
             var mr = AssetDatabase.LoadAssetAtPath<Material>(mrPath);
             if (mr == null && shader != null) { mr = new Material(shader); AssetDatabase.CreateAsset(mr, mrPath); }
             a.metallicRoughness = mr;
+            var flameShader = Shader.Find("GoF2/ModEngineFlame");
+            string flamePath = Dir + "/ModEngineFlame.mat";
+            var flame = AssetDatabase.LoadAssetAtPath<Material>(flamePath);
+            if (flame == null && flameShader != null) { flame = new Material(flameShader); AssetDatabase.CreateAsset(flame, flamePath); }
+            else if (flame != null && flameShader != null)
+            {
+                // The template carries the shader's defaults (a material keeps the values it was saved with).
+                var fresh = new Material(flameShader);
+                flame.shader = flameShader;
+                flame.CopyPropertiesFromMaterial(fresh);
+                Object.DestroyImmediate(fresh);
+                EditorUtility.SetDirty(flame);
+            }
+            if (flameShader == null) Debug.LogWarning("GoF2: shader GoF2/ModEngineFlame missing");
+            a.engineFlame = flame;
+            a.hologram = Template("GoF2/ModHologram", Dir + "/ModHologram.mat");
+            a.nozzleShimmer = Template("GoF2/ModNozzleShimmer", Dir + "/ModNozzleShimmer.mat");
             EditorUtility.SetDirty(a);
             AssetDatabase.SaveAssets();
             Debug.Log("GoF2: Resources/GoF2Mods/ModAssets built.");
+        }
+
+        /// <summary>A shader's template material, reset to the shader's defaults (made when missing).</summary>
+        static Material Template(string shaderName, string path)
+        {
+            var shader = Shader.Find(shaderName);
+            if (shader == null) { Debug.LogWarning("GoF2: shader " + shaderName + " missing"); return AssetDatabase.LoadAssetAtPath<Material>(path); }
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null) { m = new Material(shader); AssetDatabase.CreateAsset(m, path); return m; }
+            var fresh = new Material(shader);
+            m.shader = shader;
+            m.CopyPropertiesFromMaterial(fresh);
+            Object.DestroyImmediate(fresh);
+            EditorUtility.SetDirty(m);
+            return m;
         }
 
         /// <summary>The engine glow on a white copy of its texture (each texel's brightest channel, alpha kept; the glow sprite
@@ -196,7 +229,10 @@ namespace GoF2Remake.EditorTools
             }
             m.SetTexture("_DetailAlbedoMap", detail ? Tex("ModGrey") : null);
             m.SetTexture("_DetailNormalMap", detail ? Tex("ModFlatNormal") : null);
-            if (detail) m.EnableKeyword("_DETAIL_MULX2"); else m.DisableKeyword("_DETAIL_MULX2");
+            // _DETAIL_SCALED (not MULX2): the same at scale 1, and it honours _DetailAlbedoMapScale (DamageEmbers' charring
+            // fades the detail layer in by it); a build keeps only the template's variant.
+            m.DisableKeyword("_DETAIL_MULX2");
+            if (detail) m.EnableKeyword("_DETAIL_SCALED"); else m.DisableKeyword("_DETAIL_SCALED");
             if (create) AssetDatabase.CreateAsset(m, path); else EditorUtility.SetDirty(m);
             return m;
         }

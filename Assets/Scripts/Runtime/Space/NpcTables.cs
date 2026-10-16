@@ -26,10 +26,11 @@ namespace GoF2Remake.Flight
         public const float FireCone = 0.0076294f;   // PlayerFighter+0x1a4, 0x3bf9fff6
 
         /// <summary>Globals::getRandomEnemyFighter (FighterPool, in GoF2.Game for the shop and the ticker).</summary>
-        public static int RandomFighter(int race) => FighterPool.Random(race);
+        public static int RandomFighter(int race) => Modding.ModTraffic.Pick(race, FighterPool.Random(race));   // remake mods: now and then a mod's (ModTraffic)
 
-        /// <summary>One of the dearer half of the race's fighters (FighterPool.Strong).</summary>
-        public static int StrongFighter(Database db, int race) => FighterPool.Strong(db, race);
+        /// <summary>One of the dearer half of the race's fighters (FighterPool.Strong); remake mods: now and then a mod's
+        /// (ModTraffic).</summary>
+        public static int StrongFighter(Database db, int race) => Modding.ModTraffic.Pick(race, FighterPool.Strong(db, race), strong: true);
 
         /// <summary>Freighter ship index and its race (30 % Nivelian in Terran systems and the other way round).</summary>
         public static (int ship, int race) RandomFreighter(int systemRace)

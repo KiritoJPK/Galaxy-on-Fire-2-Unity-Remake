@@ -122,6 +122,14 @@ namespace GoF2Remake.Modding
             return rt;
         }
 
+        /// <summary>Whether a texture of the mod is loaded (Texture returns it without reading the file; also true for a file
+        /// that failed, which Texture answers with null).</summary>
+        public static bool Has(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
+        {
+            Check();
+            return mod == null || string.IsNullOrEmpty(path) || textures.ContainsKey(Key(mod, path, linear, readable, normal));
+        }
+
         /// <summary>A PNG / JPG of the mod (null = none or unreadable); linear for data (normal, metallic, masks); normal for a
         /// normal map (its Android layout).</summary>
         public static Texture2D Texture(ModInfo mod, string path, bool linear, bool readable = false, bool normal = false)
@@ -419,6 +427,9 @@ namespace GoF2Remake.Modding
             return solids[k] = t;
         }
 
+        /// <summary>A copy of a template material, released with the rest when the mods change (EngineFx's).</summary>
+        internal static Material CopyOf(Material template, string name) => template != null ? Copy(template, name) : null;
+
         static Material Copy(Material template, string name)
         {
             Check();
@@ -434,10 +445,16 @@ namespace GoF2Remake.Modding
         {
             var a = ModAssets.Get();
             if (a == null) return null;
+            if (e.flame) return Flame(mod, e, name, a);
+            if (e.hologram) return Hologram(mod, e, name, a);
+            if (e.shimmer) return Shimmer(mod, e, name, a);
             bool clip = e.alphaClip > 0f, glass = e.opacity > 0f && e.opacity < 1f;
             var dAlb = Texture(mod, e.detailAlbedo, true);
             var dNrm = Texture(mod, e.detailNormal, true, normal: true);
-            var m = Copy(a.Lit(clip && !glass, glass, dAlb != null || dNrm != null), name);
+            // Battle damage charring takes the detail layer when the entry has no detail maps of its own.
+            var cAlb = dAlb == null && dNrm == null ? Texture(mod, e.damageDetail, false) : null;
+            var cNrm = cAlb != null ? Texture(mod, e.damageNormal, true, normal: true) : null;
+            var m = Copy(a.Lit(clip && !glass, glass, dAlb != null || dNrm != null || cAlb != null), name);
             m.SetTexture("_DetailAlbedoMap", null);
             m.SetTexture("_DetailNormalMap", null);
             var diffuse = Texture(mod, e.diffuse, false);
@@ -462,6 +479,12 @@ namespace GoF2Remake.Modding
                 m.SetColor("_EmissionColor", ec);
             }
             else m.SetColor("_EmissionColor", Color.black);
+            if (em == null && !emColor && !string.IsNullOrEmpty(e.damageEmission))
+            {
+                // Battle damage embers: dark until DamageEmbers lights them with the hull damage.
+                var dmg = Texture(mod, e.damageEmission, false);
+                if (dmg != null) { m.SetTexture("_EmissionMap", dmg); m.EnableKeyword("_EMISSION"); m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None; }
+            }
             if (clip && !glass) m.SetFloat("_Cutoff", e.alphaClip);
             m.SetFloat("_Cull", e.doubleSided ? (float)CullMode.Off : (float)CullMode.Back);
             if (dAlb != null || dNrm != null)
@@ -474,6 +497,66 @@ namespace GoF2Remake.Modding
                 m.SetTextureScale("_DetailAlbedoMap", tiling);
                 m.SetTextureScale("_DetailNormalMap", tiling);
             }
+            else if (cAlb != null)
+            {
+                // Charring: off until DamageEmbers raises the strength with the hull damage.
+                m.SetTexture("_DetailAlbedoMap", cAlb);
+                m.SetTexture("_DetailMask", cAlb);
+                m.SetTexture("_DetailNormalMap", cNrm);
+                m.SetFloat("_DetailAlbedoMapScale", 0f);
+                m.SetFloat("_DetailNormalMapScale", 0f);
+                m.DisableKeyword("_DETAIL_MULX2");
+                m.EnableKeyword("_DETAIL_SCALED");   // (MULX2 ignores the scale)
+            }
+            return m;
+        }
+
+        /// <summary>A "flame" entry: a copy of GoF2/ModEngineFlame (EngineFlame drives it per ship) in the entry's colour
+        /// (emissionColor x emissionIntensity, the kit colour slots' emission target too), boost colour, length and noise.</summary>
+        static Material Flame(ModInfo mod, CustomShipMaterial e, string name, ModAssets a)
+        {
+            if (a.engineFlame == null) { Debug.LogWarning("Mods: no engine flame template (GoF2 > Build > Mod Assets)"); return null; }
+            var m = Copy(a.engineFlame, name);
+            float k = e.emissionIntensity > 0f ? e.emissionIntensity : 1f;
+            var c = Rgb(e.emissionColor, new Color(1f, 0.4f, 0.1f)) * k; c.a = 1f;
+            m.SetColor("_EmissionColor", c);
+            var b = Rgb(e.boostColor, new Color(0.2f, 0.6f, 1f)) * k; b.a = 1f;
+            m.SetColor("_BoostColor", b);
+            m.SetFloat("_Length", e.flameLength > 0f ? e.flameLength : 5f);
+            m.SetFloat("_IdleLength", Mathf.Clamp01(e.flameIdle));
+            var noise = Texture(mod, e.flameNoise, true);
+            if (noise != null) { noise.wrapMode = TextureWrapMode.Repeat; m.SetTexture("_NoiseMap", noise); }
+            else m.SetFloat("_NoiseStrength", 0f);
+            return m;
+        }
+
+        /// <summary>A "hologram" entry: a copy of GoF2/ModHologram in the entry's colour (emissionColor x emissionIntensity, the
+        /// kit colour slots' emission target too) with its pattern (emission).</summary>
+        static Material Hologram(ModInfo mod, CustomShipMaterial e, string name, ModAssets a)
+        {
+            if (a.hologram == null) { Debug.LogWarning("Mods: no hologram template (GoF2 > Build > Mod Assets)"); return null; }
+            var m = Copy(a.hologram, name);
+            float k = e.emissionIntensity > 0f ? e.emissionIntensity : 1f;
+            var c = Rgb(e.emissionColor, new Color(0.05f, 0.525f, 1f)) * k; c.a = 1f;
+            m.SetColor("_EmissionColor", c);
+            var pattern = Texture(mod, e.emission, false);
+            if (pattern != null) m.SetTexture("_EmissionMap", pattern);
+            return m;
+        }
+
+        /// <summary>A "shimmer" entry: a copy of GoF2/ModNozzleShimmer in the entry's colour (emissionColor x emissionIntensity,
+        /// the kit colour slots' emission target too), its glow pattern (emission) and noise (flameNoise).</summary>
+        static Material Shimmer(ModInfo mod, CustomShipMaterial e, string name, ModAssets a)
+        {
+            if (a.nozzleShimmer == null) { Debug.LogWarning("Mods: no nozzle shimmer template (GoF2 > Build > Mod Assets)"); return null; }
+            var m = Copy(a.nozzleShimmer, name);
+            float k = e.emissionIntensity > 0f ? e.emissionIntensity : 1f;
+            var c = Rgb(e.emissionColor, new Color(1f, 0.3f, 0.05f)) * k; c.a = 1f;
+            m.SetColor("_EmissionColor", c);
+            var pattern = Texture(mod, e.emission, false);
+            if (pattern != null) m.SetTexture("_EmissionMap", pattern);
+            var noise = Texture(mod, e.flameNoise, true);
+            if (noise != null) { noise.wrapMode = TextureWrapMode.Repeat; m.SetTexture("_NoiseMap", noise); }
             return m;
         }
 

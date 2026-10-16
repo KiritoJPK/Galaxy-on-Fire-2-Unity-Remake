@@ -32,8 +32,14 @@ MESH[19080] = next(m for m in res['meshes'] if m['id'] == 19080 and 'mining_plan
 
 # Remake: the contributed Midorian hangar (Reference/contrib/immersive_hangars, contrib_immersive_hangars.py) puts its sixth
 # prop set in x6. The original registers x5 again under 14401/14402 (rules/aem_ids_from_disasm.json) and never loads x6.
+# Remake: the Vossk bar's bartender arms (bar_vossk_bot_a/b/c_anim_alpha) have no resource id: the original never loads
+# them (CutScene::process's Vossk branch times two slots that are never filled). 99001-99003 are remake-only ids for them;
+# their per-mesh prefabs (Prefabs/main/bars/bar_vossk_bot_*) were made by hand with the room's material 20059.
 MODEL_OVERRIDE = {14401: 'Models/main/hangars/hangar_midorian_x6.fbx',
-                  14402: 'Models/main/hangars/hangar_midorian_x6_shadow_alpha.fbx'}
+                  14402: 'Models/main/hangars/hangar_midorian_x6_shadow_alpha.fbx',
+                  99001: 'Models/main/bars/bar_vossk_bot_a_anim_alpha.fbx',
+                  99002: 'Models/main/bars/bar_vossk_bot_b_anim_alpha.fbx',
+                  99003: 'Models/main/bars/bar_vossk_bot_c_anim_alpha.fbx'}
 
 def model_of(mid):
     if mid in MODEL_OVERRIDE: return MODEL_OVERRIDE[mid]

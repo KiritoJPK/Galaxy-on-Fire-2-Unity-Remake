@@ -9,7 +9,9 @@
 //       "available": "condition"               (EventRunner.Condition: before any source offers it),
 //       "unlocked": false                      (true: known as soon as it is available),
 //       "lounge": { "chance": 10, "price": 250000, "systemRace": -1 }   (a Space Lounge visitor sells it),
-//       "derelict": { "chance": 5, "race": "terran" }                    (a hackable freighter wreck in an orbit holds it),
+//       "derelict": { "chance": 5, "race": "terran" }                    (a hackable freighter wreck in an orbit holds it;
+//                   "stations": [ 78, "mod:id" ]  only in those orbits (then the chance defaults to 100),
+//                   "position": [ x, y, z ]       there, in game units like /pos, instead of somewhere out in front),
 //       "drops": [ { "race": "pirate", "chance": 1.5 } ]                 (a ship of that race the player destroys drops it) } ]
 // A ship product is a hidden "blueprint item" of its own (registered like a mod item, key "<mod>:blueprint:<id>"), so the
 // Blueprints tab, saving (Session.UnlockedBlueprints / Blueprints) and the data crates work on it as on any product. Its
@@ -19,6 +21,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using GoF2Remake.Data;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
@@ -34,6 +37,7 @@ namespace GoF2Remake.Modding
         {
             "id", "ship", "item", "ingredients", "requiresShip", "autocomplete", "available", "unlocked", "lounge", "derelict", "drops",
         };
+        static readonly HashSet<string> DerelictFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "chance", "race", "stations", "position" };
 
         public sealed class Def
         {
@@ -44,6 +48,11 @@ namespace GoF2Remake.Modding
             public int autocompletePrice = -1;          // -1: the original's formula
             public float loungeChance, derelictChance;  // 0: no such source
             public int loungePrice, loungeRace = -1, derelictRace = -1;
+            /// <summary>"derelict" "stations" as written (empty: any orbit) and resolved (ModBlueprints.Apply).</summary>
+            public readonly List<string> derelictStationRefs = new List<string>();
+            public readonly List<int> derelictStations = new List<int>();
+            /// <summary>"derelict" "position": game units in the orbit (null: somewhere out in front of the station).</summary>
+            public Vector3? derelictPosition;
             public readonly List<(int race, float chance)> drops = new List<(int, float)>();
             // The current numbering's (ModContent.EnsureMapping / Apply):
             public int product = -1, ship = -1, requiresShip = -1;
@@ -100,7 +109,16 @@ namespace GoF2Remake.Modding
                 }
                 if (ModJson.Get(o, "derelict") is JObject de)
                 {
-                    d.derelictChance = ModJson.Float(de, "chance", 5f, File);
+                    foreach (var prop in de.Properties())
+                        if (!DerelictFields.Contains(prop.Name)) mod.Warnings.Add($"{ModJson.Where(prop, File)}: unknown field \"{prop.Name}\" (ignored)");
+                    d.derelictStationRefs.AddRange(ModJson.Strings(de, "stations"));
+                    d.derelictChance = ModJson.Float(de, "chance", d.derelictStationRefs.Count > 0 ? 100f : 5f, File);
+                    if (ModJson.Get(de, "position") is JToken pos)
+                    {
+                        if (!(pos is JArray pa) || pa.Count != 3 || pa.Any(v => v.Type != JTokenType.Integer && v.Type != JTokenType.Float))
+                            throw new ModJsonException($"{ModJson.Where(pos, File)}: \"position\" is [ x, y, z ] in game units (/pos shows yours)");
+                        d.derelictPosition = new Vector3((float)pa[0], (float)pa[1], (float)pa[2]);
+                    }
                     string race = ModJson.Str(de, "race", "any");
                     d.derelictRace = RaceOf(race);
                     if (d.derelictRace == -2) throw new ModJsonException($"{ModJson.Where(de, File)}: unknown race \"{race}\" (terran, vossk, nivelian, midorian, any)");
@@ -189,6 +207,12 @@ namespace GoF2Remake.Modding
                         parts.Add(new BlueprintPart { item = ii, name = db.Item(ii).name, amount = amount });
                     }
                     if (parts == null) continue;
+                    d.derelictStations.Clear();
+                    foreach (string st in d.derelictStationRefs)
+                        if (ModWorld.TryResolveStation(st, out int si)) d.derelictStations.Add(si);
+                        else Warn(d, $"\"derelict\" \"stations\": {st} is no station");
+                    // Every station it names unknown: none at all, not everywhere.
+                    if (d.derelictStationRefs.Count > 0 && d.derelictStations.Count == 0) d.derelictChance = 0f;
                     product.blueprint = parts;
                     byProduct[d.product] = d;
                 }
@@ -252,14 +276,17 @@ namespace GoF2Remake.Modding
             return -1;
         }
 
-        /// <summary>TrafficPlan.Build: the mod blueprint whose derelict this orbit visit holds (the first to roll its chance),
-        /// null for none.</summary>
-        public static Def RollDerelict()
+        /// <summary>TrafficPlan.Build: the mod blueprint whose derelict this orbit visit holds (the first to roll its chance
+        /// among those allowed at 'station'), null for none.</summary>
+        public static Def RollDerelict(int station)
         {
-            foreach (var d in Offerable(b => b.derelictChance > 0f))
+            foreach (var d in Offerable(b => b.derelictChance > 0f && DerelictAllowedAt(b, station)))
                 if (UnityEngine.Random.value * 100f < d.derelictChance) return d;
             return null;
         }
+
+        /// <summary>The derelict may lie in this orbit: its "stations" name it, or it names none.</summary>
+        public static bool DerelictAllowedAt(Def d, int station) => d.derelictStationRefs.Count == 0 || d.derelictStations.Contains(station);
 
         /// <summary>The blueprints a source may offer now: resolved, available and not known yet.</summary>
         public static List<Def> Offerable(Func<Def, bool> source)

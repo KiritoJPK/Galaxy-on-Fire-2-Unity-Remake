@@ -23,7 +23,6 @@ namespace GoF2Remake.Flight
 {
     public class PlayerCloak : MonoBehaviour
     {
-        const int IntegratedCloakItem = 95;
         /// <summary>Remake-only item attribute (Modding.ItemStats "phaseCloak").</summary>
         public const int PhaseAttr = 104;
         static readonly int AnimValueId = Shader.PropertyToID("_AnimValue"), CloakRateId = Shader.PropertyToID("_CloakRate");
@@ -46,12 +45,12 @@ namespace GoF2Remake.Flight
         bool swapped;
 
         public static bool HasCloak(Database db, int ship) =>
-            ship == 44 || ship == 49 || Shop.FirstMounted(db, 21) != null;
+            db.IntegratedCloak(ship) >= 0 || Shop.FirstMounted(db, 21) != null;
 
         /// <summary>PlayerEgo::PlayerEgo (cloak part): null when the ship has no cloak.</summary>
         public static PlayerCloak Attach(GameObject player, Database db, int ship, Target target, Transform model)
         {
-            var item = Shop.FirstMounted(db, 21) ?? (ship == 44 || ship == 49 ? db.Item(IntegratedCloakItem) : null);
+            var item = Shop.FirstMounted(db, 21) ?? (db.IntegratedCloak(ship) >= 0 ? db.Item(db.IntegratedCloak(ship)) : null);
             if (item == null) return null;
             var c = player.AddComponent<PlayerCloak>();
             c.Rules = new Cloak(item.index, item.Attr(35, 10000), item.Attr(36, 2000), item.Attr(38, 1), Session.Difficulty);

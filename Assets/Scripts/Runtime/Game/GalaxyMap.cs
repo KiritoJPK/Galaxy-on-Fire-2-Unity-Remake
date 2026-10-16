@@ -144,8 +144,8 @@ namespace GoF2Remake.Data
             if (stack.amount <= 0) Session.Cargo.Remove(stack);
         }
 
-        /// <summary>Ship::hasJumpDriveIntegrated.</summary>
-        public static bool HasIntegratedDrive(int ship) => ship == 37 || ship == 38 || ship == 40;
+        /// <summary>Ship::hasJumpDriveIntegrated (37 / 38 / 40, and a mod ship's "integrated": "khadorDrive").</summary>
+        public static bool HasIntegratedDrive(int ship) => Database.Shared.HasIntegratedDrive(ship);
 
         /// <summary>Ship::hasJumpDrive, plus the remake's free-play rule for gateless systems (see the file header).</summary>
         public static bool HasJumpDrive(Database db)

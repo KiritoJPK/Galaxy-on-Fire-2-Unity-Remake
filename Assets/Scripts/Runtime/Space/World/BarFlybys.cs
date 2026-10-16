@@ -153,6 +153,7 @@ namespace GoF2Remake.World
         }
 
         /// <summary>The flybys over the bar camera's image after its transparents, against its depth, without the fog.</summary>
+        [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]   // read-only tables
         sealed class FlybyPass : ScriptableRenderPass
         {
             static readonly int FogParams = Shader.PropertyToID("unity_FogParams");

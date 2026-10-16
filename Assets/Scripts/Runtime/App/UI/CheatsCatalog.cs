@@ -399,7 +399,7 @@ namespace GoF2Remake.UI
 
         // ---- spawn any ship or object (the pause menu, in flight) ---------------------------------------------------
 
-        static int shipRace, shipPick, behaviourPick, objectCategory, objectPick, capitalPick;
+        static int shipRace, shipPick, behaviourPick, objectCategory, objectPick, capitalPick, turretPick;
         static readonly int[] Races = { 0, 1, 2, 3, Flight.Standing.Pirate, Flight.Standing.Void, Flight.Standing.Specter };
 
         static string RaceName(int race)
@@ -430,6 +430,18 @@ namespace GoF2Remake.UI
             ships.Sort();
             var categories = ObjectCategories(db);
             List<AssemblyData> Objects() => ObjectsOf(db, categories[Math.Clamp(objectCategory, 0, categories.Count - 1)]);
+            // Remake (generic turrets, Flight.TurretCore): any turret item on the spawned ship's turret mounts or on a capital
+            // ship's turret objects; 0 = their own.
+            var turrets = db.Items.FindAll(it => (it.categoryId == 8 || it.categoryId == 35) && !Modding.ModContent.IsMissingItem(it.index)).ConvertAll(it => it.index);
+            int TurretItem() => turretPick <= 0 || turrets.Count == 0 ? -1 : turrets[Math.Clamp(turretPick - 1, 0, turrets.Count - 1)];
+            List<int> ShipTurrets(int ship)
+            {
+                int item = TurretItem();
+                if (item < 0) return null;
+                var list = new List<int>();
+                for (int m = db.MountsOf(ship, 2).Count; m > 0; m--) list.Add(item);
+                return list;
+            }
             return new List<OptionDef>
             {
                 Choice("debugShipRace", () => X("debugShipRace", "Ship race"), false,
@@ -440,16 +452,26 @@ namespace GoF2Remake.UI
                 Choice("debugBehaviour", () => X("debugBehaviour", "Behaviour"), false,
                     () => new[] { X("debugHostile", "Hostile"), X("debugNormal", "By standing"), X("debugFriendly", "Friendly"), X("debugNeutral", "Neutral") },
                     () => behaviourPick, i => behaviourPick = i),
+                Choice("debugTurret", () => X("debugTurret", "Turrets"), false,
+                    () =>
+                    {
+                        var names = new List<string> { X("debugTurretOwn", "Their own") };
+                        foreach (int i in turrets) names.Add($"{i} · {UI.ItemInfo.ItemName(i)}");
+                        return names.ToArray();
+                    }, () => turretPick, i => turretPick = i),
                 Button("debugSpawnShip", () => X("debugSpawnShip", "Spawn ship"), () =>
-                    notify?.Invoke(World.DebugSpawner.SpawnShip(level, Races[shipRace], ships[Math.Clamp(shipPick, 0, ships.Count - 1)],
-                                                                (World.DebugSpawner.Behaviour)behaviourPick))),
+                {
+                    int ship = ships[Math.Clamp(shipPick, 0, ships.Count - 1)];
+                    notify?.Invoke(World.DebugSpawner.SpawnShip(level, Races[shipRace], ship, (World.DebugSpawner.Behaviour)behaviourPick,
+                                                                turrets: ShipTurrets(ship)));
+                }),
                 // Remake (World.CapitalShips): a capital ship with its enhancements, or a whole fleet battle, to test them.
                 Choice("debugCapital", () => X("debugCapital", "Capital ship"), false,
                     () => new[] { World.DebugSpawner.CapitalName(Flight.SpawnSpec.CapitalBattleship), World.DebugSpawner.CapitalName(Flight.SpawnSpec.CapitalCarrier),
                                   World.DebugSpawner.CapitalName(Flight.SpawnSpec.CapitalVossk) },
                     () => capitalPick, i => capitalPick = i),
                 Button("debugSpawnCapital", () => X("debugSpawnCapital", "Spawn capital ship"), () =>
-                    notify?.Invoke(World.DebugSpawner.SpawnCapital(level, capitalPick + 1))),
+                    notify?.Invoke(World.DebugSpawner.SpawnCapital(level, capitalPick + 1, TurretItem()))),
                 Button("debugSpawnBattle", () => X("debugSpawnBattle", "Spawn fleet battle"), () =>
                     notify?.Invoke(World.DebugSpawner.SpawnFleetBattle(level))),
                 Choice("debugObjectCategory", () => X("debugObjectCategory", "Object type"), false,

@@ -290,17 +290,18 @@ namespace GoF2Remake.Tests
         public void PirateAmbushOnArrival()
         {
             // initStreamOutPosition: arriving by travel, nextInt(100) < rank + 20 moves the pirates' point toward the player
-            // (the remake: half the way). Player at z 400000 -> the point at z 200000 instead of 50000..100000.
+            // (the remake: a quarter of the way). Player at z 800000 -> the point at z 200000 instead of 50000..100000.
+            Assert.AreEqual(0.25f, TrafficPlan.AmbushShare);
             InFreePlay(20);
             Session.ArrivedByTravel = true;
-            var player = new Vector3(0f, 0f, 400000f);
+            var player = new Vector3(0f, 0f, 800000f);
             int pirateGroups = 0, ambushed = 0;
             Repeat(20, N, 21, list =>
             {
                 var raiders = list.Where(x => x.group == NpcGroup.Raider).ToList();
                 if (raiders.Count == 0 || raiders[0].race != Standing.Pirate) return;
                 pirateGroups++;
-                if (raiders[0].position.z > 150000f) ambushed++;
+                if (raiders[0].position.z > 150000f) { ambushed++; Assert.AreEqual(200000f, raiders[0].position.z, 20000f); }
             }, player);
             Assert.AreEqual(0.40, ambushed / (double)pirateGroups, 0.04);
             Session.ArrivedByTravel = false;

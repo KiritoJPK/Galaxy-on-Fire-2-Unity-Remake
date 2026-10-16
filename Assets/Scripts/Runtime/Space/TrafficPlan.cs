@@ -52,11 +52,15 @@ namespace GoF2Remake.Flight
         // PlayerFixedObject::setDeadButSelectable 0x180248 (the Supernova wrecks with a hidden blueprint): a fixedObject
         // freighter ('ship' 13 / 15 of 'race') shown as its wreck held at the animation's end, invulnerable, still lockable.
         public bool deadButSelectable;
+        public bool eventWreck;            // remake: an event's / quest's hackable wreck ("spawn ... wreck"): hacked once
         public float explosionScale = 1f;
         // Capital-ship turrets (PlayerTurret, npc_combat_specials.md 1): a static turret object.
         public string turretAssembly;  // turret_002_static (Terran) / turret_003_static (Vossk)
         public Vector3 rotation;       // game Euler (radians, Rx*Ry*Rz) of the root
         public float scale = 1f;       // setScaling (turrets 6)
+        // Remake (generic turrets, Flight.TurretCore): any turret item on an NPC.
+        public int turretItem = -1;    // a turret object built from this turret item: its model, aim and gun (-1 = turretAssembly's)
+        public List<int> turretItems;  // turret items on the ship's turret mounts (null = its type's, Database.NpcTurrets; empty = none)
         public bool guard;             // PlayerFighter+0x12b: waking calls Level::pirateStationAction(true)
         public int lootItem = -1, lootAmount;   // a fixed crate (the pirate outposts, DAT_002543e0)
         public List<ItemStack> extraLoot;       // remake: more stacks in that crate (a pirate outpost by tier)
@@ -79,7 +83,7 @@ namespace GoF2Remake.Flight
         public int pirateEvent;            // remake: EventOutpost / EventBoss / EventTurret (TrafficPlan.AddPirateEvent), 0 = none
         public int eventTier = 3;          // ... its threat tier 1-5 (PirateReports.TierName): its strength and bounty
         public int sightingId = -1;        // ... a Pirate activity report's (PirateReports): its bounty, its name
-        public const int EventOutpost = 1, EventBoss = 2, EventTurret = 3;
+        public const int EventOutpost = 1, EventBoss = 2, EventTurret = 3, EventGuard = 4;   // EventGuard: an outpost's guard, a boss's escort
         // Remake (Settings.CapitalShips, World.CapitalShips): the capital ship enhancements.
         public int capital;                // the host: CapitalBattleship / CapitalCarrier / CapitalVossk, 0 = none
         public bool capitalPart;           // one of its turrets or escorts (its turrets go with it: Traffic.DestroyCapitalTurrets)
@@ -108,6 +112,21 @@ namespace GoF2Remake.Flight
         };
 
         static Vector3 Jitter() => new Vector3(Random.Range(0, 40000) - 20000, Random.Range(0, 40000) - 20000, Random.Range(0, 40000) - 20000);
+
+        /// <summary>Remake: a hackable freighter wreck like the hidden blueprints' (Level::createMission's block below): race 0-3
+        /// (-1 any: rolled), its race's freighter (the Vossk 13, else 15) held at its wreck pose, docking type 3 with that wreck's
+        /// docking point set (11-14), at 'gamePosition'. The mods' derelicts and the events' "spawn ... wreck".</summary>
+        public static SpawnSpec HackableWreck(int race, Vector3 gamePosition)
+        {
+            if (race < 0 || race > 3) race = Random.Range(0, 4);
+            return new SpawnSpec
+            {
+                group = NpcGroup.Special, race = race, ship = race == 1 ? 13 : 15, position = gamePosition,
+                fixedObject = NpcTables.FreighterAssembly(race), deadButSelectable = true, stationary = true, alwaysFriend = true,
+                hitpoints = 9999999, noLoot = true, nameText = 3211, dockingType = 3, spacePoints = race == 1 ? 14 : race == 3 ? 11 : race == 2 ? 12 : 13,
+                hitRadius = 4000f,
+            };
+        }
 
         /// <summary>'playerGame': the player's start (game units), where freelance escorts gather.</summary>
         /// <param name="wormholeGame">The orbit's visible wormhole (game units), where a Void raid comes from; null = none.</param>
@@ -234,9 +253,10 @@ namespace GoF2Remake.Flight
             if (terran || vossk) freighters--;
             // A pirate raid on a traveller (initStreamOutPosition): rnd(100) < rank + 20 (40 Extreme) moves the pirates'
             // point toward the arriving player (Route::setNewCoords(player position / f); f is lost in the decompile,
-            // the remake takes half the way).
+            // the remake takes a quarter of the way: half the way put up to 19 Extreme pirates on a player just arrived within
+            // a minute, players' report 2026-10-16).
             if (raidersOn && raiderRace == Standing.Pirate && Session.ArrivedByTravel && !lootOrbit && Random.Range(0, 100) < rank + (hardcore ? 40 : 20))
-                raiderSpawn = playerGame / 2f;
+                raiderSpawn = playerGame * AmbushShare;
 
             // Campaign step 59 (type 0xa3) at one of its target stations still to do (Status+0x90): the rival arms convoy
             // and the local fighters instead of the rest of the traffic.
@@ -313,20 +333,15 @@ namespace GoF2Remake.Flight
             }
             // Remake mods: a mod blueprint's derelict (blueprints.json "derelict"), at most one per visit: a hackable freighter
             // wreck like the hidden blueprints' (its race's: the Vossk freighter 13, else 15, docking point sets 11-14),
-            // somewhere out in front of the station; the hack leaves the blueprint in a data crate (Traffic.OnHackWon).
-            var derelict = Modding.ModBlueprints.RollDerelict();
+            // somewhere out in front of the station, or in the orbits / at the spot its "stations" / "position" name; the hack
+            // leaves the blueprint in a data crate (Traffic.OnHackWon).
+            var derelict = Modding.ModBlueprints.RollDerelict(station);
             if (derelict != null)
             {
-                int race = derelict.derelictRace >= 0 ? derelict.derelictRace : Random.Range(0, 4);
-                int points = race == 1 ? 14 : race == 3 ? 11 : race == 2 ? 12 : 13;
-                var at = new Vector3(Random.Range(-80000f, 80000f), Random.Range(-40000f, 40000f), Random.Range(60000f, 140000f));
-                list.Add(new SpawnSpec
-                {
-                    group = NpcGroup.Special, race = race, ship = race == 1 ? 13 : 15, position = at,
-                    fixedObject = NpcTables.FreighterAssembly(race), deadButSelectable = true, stationary = true, alwaysFriend = true,
-                    hitpoints = 9999999, noLoot = true, nameText = 3211, dockingType = 3, spacePoints = points,
-                    modBlueprint = derelict.product, hitRadius = 4000f,
-                });
+                var at = derelict.derelictPosition ?? new Vector3(Random.Range(-80000f, 80000f), Random.Range(-40000f, 40000f), Random.Range(60000f, 140000f));
+                var wreck = HackableWreck(derelict.derelictRace, at);
+                wreck.modBlueprint = derelict.product;
+                list.Add(wreck);
             }
             // 7 Specters, always enemy: one point near the player, each at it + createShip's +-20000 jitter.
             if (specters > 0)
@@ -336,7 +351,7 @@ namespace GoF2Remake.Flight
                 for (int i = 0; i < specters; i++)
                     list.Add(new SpawnSpec { group = NpcGroup.Special, race = Standing.Specter, ship = 44, alwaysEnemy = true, position = sp + Jitter() });
             }
-            AddPirateEvent(list, db, station, system, secEff, story, cm, baseSystem);
+            AddPirateEvent(list, db, station, system, secEff, story, cm, baseSystem, raiders > 0);
             return list;
         }
 
@@ -377,13 +392,21 @@ namespace GoF2Remake.Flight
         /// more escorts and more of the costlier goods, and the bounty is half as much again. Not below rank 2, at a station
         /// any campaign step sends the player to, in Mido before Keith leaves it (campaign 0x10), the special orbits (Loma, the
         /// empty ones, the supernova system, the pirates' own systems), a pirate base's system or the Kaamo siege.</summary>
-        static void AddPirateEvent(List<SpawnSpec> list, Database db, int station, SystemData system, int secEff, bool story, int cm, bool baseSystem)
+        /// <summary>The arrival ambush's raider point: this share of the way from the station to the arriving player.</summary>
+        public const float AmbushShare = 0.25f;
+
+        /// <param name="hasRaiders">The orbit already has a raider group: no unreported event on top of it (a reported
+        /// sighting still comes; players' report 2026-10-16: on Extreme the two together overwhelmed a pilot on arrival).</param>
+        static void AddPirateEvent(List<SpawnSpec> list, Database db, int station, SystemData system, int secEff, bool story, int cm, bool baseSystem, bool hasRaiders = false)
         {
             // A reported sighting here (the Missions window's Pirate activity): its outpost or named boss, whatever this pilot's
             // rank (the rank only decides which reports are made: a session's board is the server's, its pilots start at 0).
+            // Not in an Informer orbit (a player's report): the original's is the spy and the police alone, and any other death there spoils
+            // the mission (Traffic.OnShipDied); a report waits for a later visit.
+            if (InformerOrbit(station)) return;
             var sighting = PirateReports.At(station);
             if (sighting != null && PirateEventAllowed(db, station, system, true)) { AddPirateEventShips(list, !sighting.boss, sighting.tier, sighting); return; }
-            if (!PirateEventAllowed(db, station, system)) return;
+            if (hasRaiders || !PirateEventAllowed(db, station, system)) return;
             int sec = system.securityLevel;
             var chance = PirateReports.Enabled ? UnreportedChance : EventChance;
             if (Random.Range(0, 100) >= chance[sec]) return;
@@ -432,6 +455,21 @@ namespace GoF2Remake.Flight
                                             tier == 5 ? Random.Range(8, 13) : Random.Range(3, 7)));
                 }
                 else if (tier == 3) extra.Add(new ItemStack(BossLoot[Random.Range(0, BossLoot.Length)], Random.Range(2, 5)));
+                // Remake (a player's report 2026-10-16: an outpost gave 1 t of something, less than a freighter): the pirates' stash,
+                // freighter cargo rolls by tier (NpcTables.RollLoot) after the tier's own stacks, each kind once (a kind the tier
+                // already gives is left out).
+                int tierStacks = extra.Count;
+                for (int rolls = OutpostStashRolls[t], tries = 0; rolls > 0 && tries < 30; tries++)
+                {
+                    var hold = NpcTables.RollLoot(db, true);
+                    if (hold.Count == 0) continue;
+                    rolls--;
+                    foreach (var s in hold)
+                    {
+                        if (s.item == loot.item || extra.FindIndex(x => x.item == s.item) is int found && found >= 0 && found < tierStacks) continue;
+                        GoF2Remake.World.CapitalShips.Add(extra, s.item, s.amount);
+                    }
+                }
                 list.Add(new SpawnSpec
                 {
                     group = NpcGroup.Outpost, race = Standing.Pirate, ship = -1, position = at,
@@ -448,7 +486,7 @@ namespace GoF2Remake.Flight
                     float S() => Random.value < 0.5f ? -1f : 1f;
                     list.Add(new SpawnSpec
                     {
-                        group = NpcGroup.Guard, race = Standing.Pirate, ship = Fighter(), asleep = true, guard = true,
+                        group = NpcGroup.Guard, race = Standing.Pirate, ship = Fighter(), asleep = true, guard = true, pirateEvent = SpawnSpec.EventGuard,
                         position = at + new Vector3(S() * Random.Range(0, 20000) + 10000, S() * Random.Range(0, 20000) + 10000, S() * Random.Range(0, 20000) + 10000),
                     });
                 }
@@ -478,13 +516,14 @@ namespace GoF2Remake.Flight
             });
             int escorts = Random.Range(BossEscortsMin[t], BossEscortsMax[t] + 1);
             for (int i = 0; i < escorts; i++)
-                list.Add(new SpawnSpec { group = NpcGroup.Special, race = Standing.Pirate, ship = Fighter(), position = spawn + Jitter(), alwaysEnemy = true });
+                list.Add(new SpawnSpec { group = NpcGroup.Special, race = Standing.Pirate, ship = Fighter(), position = spawn + Jitter(), alwaysEnemy = true, pirateEvent = SpawnSpec.EventGuard });
         }
 
         // The tiers' numbers (index = tier - 1: Minor, Low, Moderate, High, Extremely dangerous).
         static readonly float[] OutpostHullFactor = { 0.4f, 0.7f, 1f, 1.4f, 2f };
         static readonly int[] OutpostGuardsAdd = { -3, -1, 0, 3, 6 };
         static readonly int[] OutpostTurretCount = { 0, 0, 2, 4, 6 };
+        public static readonly int[] OutpostStashRolls = { 1, 2, 2, 3, 4 };
         static readonly float[] BossHullFactor = { 0.35f, 0.6f, 1f, 1.5f, 2.4f };
         static readonly float[] BossGunFactor = { 1f, 1.5f, 2f, 2.4f, 3f };
         static readonly int[] BossEscortsMin = { 0, 1, 2, 4, 6 }, BossEscortsMax = { 0, 1, 3, 5, 7 };
@@ -627,10 +666,15 @@ namespace GoF2Remake.Flight
 
         /// <summary>A fleet battle in this orbit: the option on, a Terran or Vossk system (the two at war), past step 103 (the
         /// carrier's era; the finished game's world too), 3 % per visit; not in the special orbits, a pirate base system, the
-        /// Kaamo siege or a storyline's orbit while a story runs.</summary>
+        /// Kaamo siege or a storyline's orbit while a story runs; not in a Secure system (a player's report 2026-10-16: a war
+        /// broke out in the safe orbits).</summary>
+        /// <summary>SystemData.securityLevel of a Secure system (text 405).</summary>
+        public const int SecureSystem = 3;
+
         static bool FleetBattleHere(int station, SystemData system, int sysRace, bool baseSystem, bool story)
         {
             if (!Settings.CapitalShips || (sysRace != 0 && sysRace != 1) || Session.CampaignMission <= 0x67) return false;
+            if (system.securityLevel >= SecureSystem) return false;
             if (Session.FreePlay && !Session.CompletedWorld) return false;
             if (baseSystem || KaamoClub.SiegeAt(station) || (story && InStoryline(station))) return false;
             if (station == 100 || station == 101 || station == 108 || station == 10 || (station >= 102 && station <= 104)) return false;

@@ -117,8 +117,18 @@ namespace GoF2Remake.EditorTools
             if (type == typeof(float)) { if (option.TryGetValue(out float v)) text = v.ToString("R", CultureInfo.InvariantCulture); }
             else if (type == typeof(bool)) { if (option.TryGetValue(out bool v)) text = v ? "1" : "0"; }
             else if (type == typeof(string)) { if (option.TryGetValue(out string v)) text = v ?? ""; }
-            else if (type != null && type.IsEnum) { if (option.TryGetValue(out Enum v) && v != null) text = Convert.ToInt32(v).ToString(CultureInfo.InvariantCulture); }
+            else if (type != null && type.IsEnum) { if (TryGetEnum(option, type, out var v)) text = Convert.ToInt32(v).ToString(CultureInfo.InvariantCulture); }
             return text != null;
+        }
+
+        // TryGetValue<T> with the option's own enum type: Graph Toolkit (Unity 7000.0.0a9) converts the stored value with
+        // typeof(T), so asking for System.Enum throws "Type provided must be an Enum".
+        static bool TryGetEnum(INodeOption option, Type type, out object value)
+        {
+            var method = typeof(INodeOption).GetMethod(nameof(INodeOption.TryGetValue)).MakeGenericMethod(type);
+            var args = new object[] { null };
+            value = (bool)method.Invoke(option, args) ? args[0] : null;
+            return value != null;
         }
     }
 }

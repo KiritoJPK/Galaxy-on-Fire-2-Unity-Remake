@@ -170,7 +170,7 @@ namespace GoF2Remake.UI
             // Where the ship stands: below its turning axis (the model's origin, which the yaw keeps) at its lowest point.
             footWorld = new Vector3(model.position.x, bounds.min.y, model.position.z);
             hasFoot = true;
-            rt = new RenderTexture(rtWidth, rtHeight, 24, RenderTextureFormat.ARGB32) { antiAliasing = Application.isMobilePlatform ? 2 : 4 };
+            rt = new RenderTexture(rtWidth, rtHeight, 24, RenderTextureFormat.ARGB32) { antiAliasing = UnityEngine.Device.Application.isMobilePlatform ? 2 : 4 };
             cam.targetTexture = rt;
             var lightGo = new GameObject("Ship preview light");
             lightGo.transform.SetParent(stage.transform, false);
@@ -200,7 +200,7 @@ namespace GoF2Remake.UI
             // screen's own detail (a big box at only ~1.5x read half of it from the half-size level, the item window's view
             // looked low-resolution).
             float panelH = Element.panel != null ? Element.panel.visualTree.layout.height : float.NaN;
-            bool mobile = Application.isMobilePlatform;
+            bool mobile = UnityEngine.Device.Application.isMobilePlatform;   // the Device Simulator's phone too
             if (mobile)
             {
                 // Remake: on phones the box at its own size on screen times the game's render scale (the Mobile asset's 0.8

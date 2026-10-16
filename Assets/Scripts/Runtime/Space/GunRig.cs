@@ -12,6 +12,7 @@
 // Projectiles, muzzle flashes and impacts fade by their `extra` (opacity) channel: without it an impact's big glow part
 // (radius ~3600 units, meant at 20 % and gone after 267 ms) stayed at full brightness and the impact looked far too big.
 
+using System.Collections.Generic;
 using GoF2Remake.Visuals;
 using UnityEngine;
 
@@ -38,6 +39,8 @@ namespace GoF2Remake.Flight
         readonly Transform fxRoot;
         RocketTrail[] trails;
         ParticleSystem[] flames;   // bombs: record 12, fireworks 47 (RocketTrail.MissileTrail)
+        Color? tint;   // the weapon colour (WeaponTint), null = the weapon's own look
+        readonly Dictionary<Renderer, Material[]> ownMaterials = new Dictionary<Renderer, Material[]>();
 
         /// <param name="fxRoot">Parent of the projectiles and impacts (world space).</param>
         /// <param name="muzzleParent">The ship (null = no muzzle flash).</param>
@@ -111,12 +114,38 @@ namespace GoF2Remake.Flight
                 flames = new ParticleSystem[gun.bullets.Length];
                 for (int i = 0; i < flames.Length; i++) flames[i] = RocketTrail.MissileTrail(gun, fxRoot);
             }
-            var rec = RocketTrail.For(gun);
+            var look = fx != null ? fx.trail : null;   // a mod's trail (items.json fx "trail")
+            var rec = look != null && (look.none || look.width > 0f || look.lifeMs > 0f || look.color != Color.white) ? RocketTrail.For(gun, look) : RocketTrail.For(gun);
             if (rec == null || trails != null) return;
             var mat = RocketTrail.MaterialFor(gun);
             if (mat == null) return;
+            if (tint.HasValue) mat = WeaponTint.Tinted(mat, tint.Value);   // a thermo gun's trail in the weapon colour
             trails = new RocketTrail[gun.bullets.Length];
-            for (int i = 0; i < trails.Length; i++) trails[i] = new RocketTrail(rec, fxRoot, mat);
+            for (int i = 0; i < trails.Length; i++) trails[i] = new RocketTrail(rec, fxRoot, mat, look != null ? look.color : (Color?)null);
+        }
+
+        /// <summary>The weapon colour (WeaponTint; null = the weapon's own look) on the projectiles, the muzzle flash, the
+        /// impacts and (when called before EnableTrails) the trails: tinted copies of their materials, the fades re-read.</summary>
+        public void Tint(Color? color)
+        {
+            if (tint == color) return;
+            tint = color;
+            void On(GameObject go)
+            {
+                if (go == null) return;
+                foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (!ownMaterials.TryGetValue(r, out var own)) ownMaterials[r] = own = r.sharedMaterials;
+                    var mats = (Material[])own.Clone();
+                    if (color.HasValue) for (int i = 0; i < mats.Length; i++) mats[i] = WeaponTint.Tinted(mats[i], color.Value);
+                    r.sharedMaterials = mats;
+                    r.SetPropertyBlock(null);
+                }
+                foreach (var a in go.GetComponentsInChildren<PartAnimation>(true)) a.RefreshMaterials();
+            }
+            foreach (var p in projectiles) if (p != null) On(p.gameObject);
+            On(muzzle);
+            if (impacts != null) foreach (var i in impacts) On(i);
         }
 
         // The muzzle's, each impact's and the beam's animated parts, collected once (PlayOnce per shot / hit walked them).
@@ -169,7 +198,7 @@ namespace GoF2Remake.Flight
         {
             // Gun::calcCharacterCollision: rockets, missiles and cluster missiles have no impact mesh; a hit emits record 11
             // SET_EXPLOSION_MANUALLY_BIG at the bullet (one sprite_explosion particle, 1500 ms, 2000..3000 units, +500/s).
-            if (gun.kind == Gun.Kind.Rocket || gun.kind == Gun.Kind.Missile || gun.kind == Gun.Kind.ClusterMissile)
+            if (gun.IsMissile)
             {
                 ShipBurn.ManualBurst(point, 1.5f, 2000f, 3000f, 500f);
                 return;

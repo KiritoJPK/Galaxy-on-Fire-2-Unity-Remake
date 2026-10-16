@@ -129,9 +129,10 @@ namespace GoF2Remake.Data
         {
             if (mod >= 0 && (!ShipMods.Contains(mod) || (Settings.KaamoStacking && ModLevel(mod) < MaxModLevel))) ShipMods.Add(mod);
         }
-        /// <summary>Remake: the highest level of one Kaamo upgrade with stacking (players' feedback, 2026-10: 45 equipment slots
-        /// on a Cronus); levels fitted before the cap stay.</summary>
-        public const int MaxModLevel = 10;
+        /// <summary>Remake: the highest level of one Kaamo upgrade with stacking: Settings.KaamoMaxLevel (default 5; players'
+        /// feedback 2026-10: uncapped, a Cronus reached 45 equipment slots), the session's in multiplayer, where a server with
+        /// profiles cuts them back to it (NetProfiles.ClampMods). Levels fitted before a lower limit stay in single player.</summary>
+        public static int MaxModLevel => Settings.KaamoMaxLevel;
         public static bool HasMod(int mod) => ShipMods.Contains(mod);
         /// <summary>How many times the mod is fitted (its level; 0 = none).</summary>
         public static int ModLevel(int mod)
@@ -207,6 +208,9 @@ namespace GoF2Remake.Data
         public static int VoidReturnStation = 10;
         /// <summary>Level::comingFromAlienWorld: the next level starts with a wormhole closing behind the player.</summary>
         public static bool ComingFromVoid;
+        /// <summary>Level::initStreamOutPositionAfterCutscene: index 143 won in space at Var Lupra, so the 144 cutscene's reload
+        /// into the 145 attack is a stream-out arrival (LevelScript::process 0x90). Not saved, like the original's static.</summary>
+        public static bool StreamOutAfterCutscene;
         /// <summary>Level::lastMissionFreighterHitpoints: Errkt's freighter's hull carried from index 40 into 41 (-1 none).</summary>
         public static int LastFreighterHull = -1;
         /// <summary>Globals::lastCampaignMissionFailed / FailCount: the campaign index that failed and how often in a row (globals:
@@ -234,6 +238,10 @@ namespace GoF2Remake.Data
         /// <summary>Remake mods: the mods' new-game options switched on for this game ("mod_id:option_id",
         /// Modding.ModGameOptions; saved).</summary>
         public static HashSet<string> ModGameOptions = new HashSet<string>();
+
+        /// <summary>Remake mods: the player's build of each customizable ship (Modding.ModShipKits), by the ship's "mod_id:ship_id"
+        /// key; build text "slot=part;...;tier=N". Saved.</summary>
+        public static Dictionary<string, string> ShipBuilds = new Dictionary<string, string>();
         public const int FreePlayMission = 20;
 
         /// <summary>
@@ -261,6 +269,11 @@ namespace GoF2Remake.Data
 
         /// <summary>Status' station stack [1]: where the player came from (the planet-jump arrival point), -1 = none.</summary>
         public static int PreviousStationIndex = -1;
+
+        /// <summary>Remake: the station the player last docked at (StationLevel), -1 = none yet. Multiplayer starts a signed-in
+        /// pilot and respawns a destroyed one there (it was the faction's home: a free trip home, saving energy cells and
+        /// time).</summary>
+        public static int LastDockedStation = -1;
 
         /// <summary>Player ship index (ships.json), Status+0x18c.</summary>
         public static int ShipIndex = 10;
@@ -328,6 +341,21 @@ namespace GoF2Remake.Data
         /// hostile local fighters wait there.</summary>
         public static HashSet<int> AttackedStations = new HashSet<int>();
 
+        /// <summary>Status+0x19c as a stack of orbits (Status::departStation / addStationToStack): the last 3 stations flown
+        /// to, oldest first; one already on it keeps its place. A station pushed off is loaded afresh on the next visit, its
+        /// attacked-friends flag (Station::setAttackedFriends) gone. Not saved: after a load it fills up again.</summary>
+        public static List<int> RecentOrbits = new List<int>();
+
+        /// <summary>Status::departStation on arrival in an orbit (SpaceLevel): pushes the station; the attacks on stations no
+        /// longer on the stack are forgotten (only once it is full, so a load's empty stack forgets nothing early).</summary>
+        public static void ArriveInOrbit(int station)
+        {
+            if (station < 0 || RecentOrbits.Contains(station)) return;
+            RecentOrbits.Add(station);
+            while (RecentOrbits.Count > Shop.RecentStationCount) RecentOrbits.RemoveAt(0);
+            if (RecentOrbits.Count >= Shop.RecentStationCount) AttackedStations.RemoveWhere(s => !RecentOrbits.Contains(s));
+        }
+
         /// <summary>Status+0x1c0 kills (also XP), +0x1d8 pirate kills.</summary>
         public static int Kills, PirateKills;
 
@@ -386,6 +414,7 @@ namespace GoF2Remake.Data
             PlaySeconds = 0f;
             StationIndex = 78;
             PreviousStationIndex = -1;
+            LastDockedStation = -1;
             ShipIndex = 10;
             Equipment = StartEquipment();
             Cargo = new List<ItemStack>();
@@ -412,6 +441,7 @@ namespace GoF2Remake.Data
             Hardcore = false;
             RunId = System.Guid.NewGuid().ToString("N");
             ModGameOptions = new HashSet<string>();
+            ShipBuilds = new Dictionary<string, string>();
             GraphQuestsDone = new HashSet<string>();
             GameHooks.ResetLocalEvents?.Invoke();   // single player's graph runs go with the game
             Blueprints = new List<BlueprintState>();
@@ -455,6 +485,7 @@ namespace GoF2Remake.Data
             InvasionDepartures = 0;
             VoidReturnStation = 10;
             ComingFromVoid = false;
+            StreamOutAfterCutscene = false;
             LastFreighterHull = -1;
             EndingPending = false;
             Unsaleable = new HashSet<int>();
@@ -477,6 +508,7 @@ namespace GoF2Remake.Data
             JumpgatesUsed = 0;
             Standing = new[] { 30, 0 };
             AttackedStations = new HashSet<int>();
+            RecentOrbits = new List<int>();
             Kills = PirateKills = 0;
             PlayerHull = PlayerArmor = -1;
             PlayerShield = -1f;

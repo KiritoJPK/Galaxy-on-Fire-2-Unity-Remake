@@ -33,6 +33,7 @@ Shader "GoF2/Backdrop"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             TEXTURE2D(_MainTex); SAMPLER(sampler_MainTex);
@@ -43,12 +44,14 @@ Shader "GoF2/Backdrop"
                 float _CoreGlow;
             CBUFFER_END
 
-            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; };
+            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; UNITY_VERTEX_OUTPUT_STEREO };
 
             Varyings vert(Attributes i)
             {
                 Varyings o;
+                UNITY_SETUP_INSTANCE_ID(i);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
                 o.positionCS = TransformObjectToHClip(i.positionOS.xyz);
                 #if UNITY_REVERSED_Z
                     o.positionCS.z = o.positionCS.w * 1e-6;
@@ -61,6 +64,7 @@ Shader "GoF2/Backdrop"
 
             half4 frag(Varyings i) : SV_Target
             {
+                UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 half4 t = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, i.uv);
                 half core = smoothstep(0.7, 1.0, max(t.r, max(t.g, t.b)));
                 return half4((t.rgb + _Tint.rgb) * _Color.rgb * lerp(1.0, _CoreGlow, core), t.a * _Color.a);

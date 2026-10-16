@@ -14,6 +14,12 @@
 //                                        optional lowest version; their content can be used by its key ("ship_pack:falcon":
 //                                        an item's / ship's "override" or "base", the event graphs' ship, item and station
 //                                        names), the same whatever number it got in this game
+//     "multiplayerIgnore": ["parts/", "maps/*.png", "preview.png"]
+//                                        files multiplayer doesn't compare (ModInfo.NetHash): what only changes how the mod
+//                                        looks (models, textures, icons) or isn't read by the game (sources, notes), so a
+//                                        lighter phone build plays with the PC one; "folder/" = everything in it, "*" any
+//                                        characters. The data always counts: mod.json's id / version / dependencies / this
+//                                        list, the .json files at the mod's root and everything in events/
 //   }
 
 using System;
@@ -32,6 +38,9 @@ namespace GoF2Remake.Modding
         public string id, version = "1.0", author, website, preview = "preview.png";
         public Dictionary<string, string> name, description, credits;
         public List<string> dependencies = new List<string>();
+        /// <summary>Files left out of the multiplayer check (see the header): "folder/", or a pattern with "*".</summary>
+        public List<string> multiplayerIgnore = new List<string>();
+        Regex ignorePattern;
         /// <summary>The lowest version a dependency must have (by id; only those that give one).</summary>
         public Dictionary<string, string> dependencyVersions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -69,6 +78,29 @@ namespace GoF2Remake.Modding
             return VersionAtLeast(mod.Version, need) ? null : need;
         }
 
+        /// <summary>Whether multiplayer leaves a file out of its check (a path inside the mod, '/' separated). Never the data:
+        /// mod.json (its id / version / dependencies count by themselves), the .json files at the root, anything in events/.</summary>
+        public bool MultiplayerIgnores(string file)
+        {
+            if (multiplayerIgnore == null || multiplayerIgnore.Count == 0) return false;
+            string f = file.Replace('\\', '/').TrimStart('/').ToLowerInvariant();
+            if (f.StartsWith("events/", StringComparison.Ordinal)) return false;
+            if (f.IndexOf('/') < 0 && f.EndsWith(".json", StringComparison.Ordinal)) return false;
+            if (ignorePattern == null)
+            {
+                var alts = new List<string>();
+                foreach (var raw in multiplayerIgnore)
+                {
+                    string p = (raw ?? "").Replace('\\', '/').Trim().TrimStart('/').ToLowerInvariant();
+                    if (p.Length == 0) continue;
+                    if (p.EndsWith("/")) p += "*";
+                    alts.Add(Regex.Escape(p).Replace("\\*", ".*"));
+                }
+                ignorePattern = new Regex(alts.Count == 0 ? "(?!)" : "^(?:" + string.Join("|", alts) + ")$", RegexOptions.CultureInvariant);
+            }
+            return ignorePattern.IsMatch(f);
+        }
+
         public static bool ValidId(string id) => !string.IsNullOrEmpty(id) && id.Length <= MaxIdLength && IdPattern.IsMatch(id);
 
         /// <summary>mod.json read; throws ModJsonException on a broken file or a missing / invalid id.</summary>
@@ -86,6 +118,7 @@ namespace GoF2Remake.Modding
                 website = ModJson.Str(o, "website"),
                 preview = ModJson.Str(o, "preview", "preview.png"),
                 dependencies = ModJson.Strings(o, "dependencies"),
+                multiplayerIgnore = ModJson.Strings(o, "multiplayerIgnore"),
             };
             // "id>=version": the id in the list, the version aside.
             for (int i = 0; i < m.dependencies.Count; i++)

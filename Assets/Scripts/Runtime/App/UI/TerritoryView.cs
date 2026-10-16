@@ -4,7 +4,8 @@
 //     arrival camera is over, the HUD's ChoiceWindow asks for the toll (NetState.Toll; Traffic.Ask). Paid: the station's
 //     fighters spare this pilot for the visit (NetFactionsClient.TollStation, reset on the next orbit); refused: they
 //     attack (NetOrbit's territory rule). Not in an arena;
-//   the siege banner: in a besieged orbit, top centre: the two factions, the time to the start or the end, the control;
+//   the siege banner: in a besieged orbit, top centre: the two factions, the phase (armed in; waiting for both sides with the
+//   station defenders and the time to the round's end; the fight with its kills and time left);
 //   otherwise a squadmate's distress call (NetDistress): who, where, and how to answer (the actions menu's Help, the
 //     squad window's Help or /assist); pulsing.
 // Built in code with inline styles.
@@ -85,7 +86,7 @@ namespace GoF2Remake.UI
         void AskToll(int station)
         {
             if (tollAsked || !level.LaunchCameraOver || level.Traffic == null || NetPlayer.Local == null) return;
-            int toll = NetState.Instance != null ? NetState.Instance.Toll : 0;
+            int toll = NetFactionsClient.TollAmount;   // a percentage toll: its share of the credits now
             string tag = NetPlayer.Local.FactionTag;
             if (toll <= 0 || NetFactionsClient.Relation(station, tag, NetFactionsClient.TollStation) >= 0) { tollAsked = true; return; }
             tollAsked = true;
@@ -104,10 +105,16 @@ namespace GoF2Remake.UI
             var s = NetFactionsClient.SiegeAt(station);
             if (s == null) return null;
             int left = Mathf.Max(0, Mathf.CeilToInt(s.secondsLeft - (Time.unscaledTime - s.receivedAt)));
-            string time = $"{left / 60}:{left % 60:00}";
-            return s.started
-                ? string.Format(Localization.Extra("mpSiegeBanner", "SIEGE  [{0}] against [{1}]  ·  {2}% taken  ·  {3} left"), s.attacker, s.defender, s.control, time)
-                : string.Format(Localization.Extra("mpSiegeBannerSoon", "SIEGE  [{0}] against [{1}]  ·  starts in {2}"), s.attacker, s.defender, time);
+            string time = left >= 3600 ? $"{left / 3600}:{left / 60 % 60:00}:{left % 60:00}" : $"{left / 60}:{left % 60:00}";
+            string garrison = s.armed && s.garrisonAlive > 0
+                ? "  ·  " + string.Format(Localization.Extra("mpSiegeGarrison", "garrison {0} (level {1})"), s.garrisonAlive, s.garrisonLevel) : "";
+            if (s.started)
+                return string.Format(Localization.Extra("mpSiegeBannerFight", "SIEGE  [{0}] {2} : {3} [{1}]  ·  leaving alive = surrender  ·  {4} left"),
+                                     s.attacker, s.defender, s.attKills, s.defKills, time) + garrison;
+            if (s.armed)
+                return string.Format(Localization.Extra("mpSiegeBannerWait2", "SIEGE  [{0}] against [{1}]  ·  waiting for pilots of both factions  ·  {2} defenders (level {3})  ·  {4} left"),
+                                     s.attacker, s.defender, s.defenders, s.defenderLevel, time) + garrison;
+            return string.Format(Localization.Extra("mpSiegeBannerSoon", "SIEGE  [{0}] against [{1}]  ·  starts in {2}"), s.attacker, s.defender, time);
         }
 
         void Show(string text)

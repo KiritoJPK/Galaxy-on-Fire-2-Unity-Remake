@@ -184,7 +184,7 @@ Flow: in; out: Next.
 | option | Race | Choice: Maker / Terran / Vossk / Nivelian / Midorian / Pirate / Void / Specter |  | Maker: the ship maker's race (pirates for other makers). |
 | option | Behaviour | Choice: Enemy / Friendly / Neutral / Standing |  | Enemy (counts as "enemies"), friendly, neutral (neither side until shot), or by the standings. |
 | input | Players | Text | `@a` | Who: @a everyone, @r a random player, @alive, @space, @docked, @dead, @survivors (never destroyed since the fight began), or a player's name. |
-| input | Ship | Text | `Hiro` | A ship's number or name (or an object's name from assemblies.json, as scenery). |
+| input | Ship | Text | `Hiro` | A ship's number or name (or an object's name from assemblies.json, as scenery; "wreck": a hackable freighter wreck of the Race (Terran, Vossk, Nivelian, Midorian; else rolled), which fires On Wreck Hacked). |
 | input | Count | Number | `1` | Ships side by side, per player (1..10). |
 | input | Name | Text |  | Optional: the name on the HUD (a ship's lock plate, numbered "Name 1", "Name 2"... for several; an object gets a marker with it), at most 32 characters. Empty = the usual name. |
 | input | At | Text |  | Empty = ahead of each player; else game coordinates "x y z" in their orbit. |
@@ -396,6 +396,15 @@ Flow: in; out: Next.
 |---|---|---|---|---|
 | option | Show | Yes/No | `yes` | On: the scoreboard on every player's screen (by the Score mode, the top 10); off hides it. |
 | input | Title | Text |  | Its title (empty = Scoreboard). |
+
+### Set Flight Model
+
+Flow: in; out: Next.
+
+| Kind | Name | Type | Default | What it is |
+|---|---|---|---|---|
+| option | Model | Choice: FreeFlight / Original / PlayersChoice |  | Free flight (EVERSPACE 2 style) or the original's flight for these players, before their own option, their ship's or the mod campaign's; Players Choice gives it back. Undone when the event ends. |
+| input | Players | Text | `@a` | Who: @a everyone, @r a random player, @alive, @space, @docked, @dead, @survivors (never destroyed since the fight began), or a player's name. |
 
 ### Set Objective
 
@@ -699,13 +708,13 @@ Flow: no input (starts a flow of its own); out: Do.
 
 | Kind | Name | Type | Default | What it is |
 |---|---|---|---|---|
-| option | Trigger | Choice: PlayerDestroyed / PlayerDocked / PlayerLaunched / PlayerJoined / PlayerLeft / PlayerEntersOrbit / EventShipDestroyed / EnemiesCleared / PlayerKilledPlayer / PlayerRespawned / PlayerArrives |  | What starts Do (a flow of its own, each time, while the event runs): a player destroyed, docked, launched, joined or left the session, entered an orbit, destroyed one of the event's ships, destroyed another player (Player = the killer, Victim = the other's name), came back after being destroyed, or every enemy the event spawned is gone. |
+| option | Trigger | Choice: PlayerDestroyed / PlayerDocked / PlayerLaunched / PlayerJoined / PlayerLeft / PlayerEntersOrbit / EventShipDestroyed / EnemiesCleared / PlayerKilledPlayer / PlayerRespawned / PlayerArrives / WreckHacked |  | What starts Do (a flow of its own, each time, while the event runs): a player destroyed, docked, launched, joined or left the session, entered an orbit, destroyed one of the event's ships, destroyed another player (Player = the killer, Victim = the other's name), came back after being destroyed, every enemy the event spawned is gone, or hacked a wreck (Spawn's "wreck", a mod's derelict; Victim = the wreck's name). |
 | input | Orbit | Orbit |  | Optional: only when it happens in this orbit (or at its station). Player Arrives needs it. |
 | input | At | Text |  | Player Arrives: the spot's game coordinates "x y z" in that orbit (/pos shows yours). |
 | input | Radius | Number | `1000` | Player Arrives: how close (metres) a player alive in space must come; again after leaving it. |
 | output | Player | Players |  | The player it happened to (the killer for Event Ship Destroyed): wire into a command's Players. |
 | output | Name | Text |  | That player's name: wire into a text ("X was destroyed"); or type %trigger% in a text. |
-| output | Victim | Text |  | Player Killed Player: the destroyed player's name; or type %victim% in a text. |
+| output | Victim | Text |  | Player Killed Player: the destroyed player's name; Wreck Hacked: the wreck's name; or type %victim% in a text. |
 
 ## Values
 
@@ -798,7 +807,7 @@ leading `/`, the dedicated server's console without it. `[players]` is a player'
 | /heal | [players] | admins: repairs hull, shield and armor (yourself by default) |
 | /give | [players] <item> [amount] [mount] | admins: items into the hold (an item's number or name) |
 | /credits | [players] <amount> | admins: gives credits (negative: takes them) |
-| /spawn | [players] <ship / object> [race] [count] [enemy / friendly / neutral / standing] [named <name>] [at x y z] | admins: NPC ships (a number or name; enemy by default) or an object (assemblies.json name), ahead or at x y z; named: their name on the HUD |
+| /spawn | [players] <ship / object / wreck> [race] [count] [enemy / friendly / neutral / standing] [turrets <item,item>] [named <name>] [at x y z] | admins: NPC ships (a number or name; enemy by default) or an object (assemblies.json name), ahead or at x y z; named: their name on the HUD |
 | /ship | [players] <ship / own> | admins: flies any ship of the debug Ships tab (its number or name; own = back) |
 | /ammo | [players] | admins: every mounted secondary to 50 |
 | /reveal | [players] | admins: every system on the star map |
@@ -811,6 +820,7 @@ leading `/`, the dedicated server's console without it. `[players]` is a player'
 | /pvp | <on / off> | admins: free for all, every pilot an enemy of every other (squadmates excepted) |
 | /respawn | [players] <station [x y z] [spread <units>] [delay <seconds>] / off> | admins: where destroyed ships come back in space (not docked), until off |
 | /restrict | [players] <jumps / docking / all / off> | admins: no jumps (planet, gate, Khador) and / or no docking, until off |
+| /flightstyle | [players] <es2 / gof2 / player> | admins: some players' flight model (es2 or gof2) for now, over the session's /flightmodel; player gives it back |
 | /provoke | [players] [race] [within <metres>] | admins: the NPC ships around them turn on them and their squad (a race, a distance) |
 | /radio | [players] <speaker> : <text> | admins: a radio call in flight (a face, a name, gone by itself); speakers as /dialog |
 | /waypoint | [players] <station x y z / off> | admins: a waypoint to fly to (game coordinates in a station's orbit; /pos shows yours) |
@@ -822,6 +832,7 @@ leading `/`, the dedicated server's console without it. `[players]` is a player'
 | /sound | [players] <sound> | admins: plays a sound (alarm, warning, success, explosion...) |
 | /music | [players] <track / stop> | admins: plays a music track instead of the game's (battle, boss, void...), stop ends it |
 | /event | <name [setting=value ...] / stop / list> | admins: runs an event (game modes like waves), stops it or lists them |
+| /motd | [reload / set <text> / clear] | shows the server's message of the day; admins: reload motd.txt, set or clear it |
 | /news | <text / clear> | admins: a GalNet item on every station's news ticker ("clear" empties the news) |
 | /mute | <players> [minutes] | admins: blocks a player's chat (for the session or some minutes) |
 | /unmute | <players> | admins: lets a muted player chat again |
@@ -837,6 +848,7 @@ leading `/`, the dedicated server's console without it. `[players]` is a player'
 | /say | <text> | admins: an announcement under your role |
 | /disband | <TAG> | admins: ends a faction |
 | /deleteprofile | <profile> | master: deletes an offline pilot's profile |
+| /flightmodel | [gof2 / es2 / player] | admins: the flight model everyone flies: gof2 (the game's, the default), es2 (EVERSPACE 2 style) or player (each player's own option) |
 | /settings |  | admins: the server's settings |
 | /set | <key> <value> | admins: changes a server setting (saved) |
 | /web |  | ops: a one-time login code for the server's web admin |

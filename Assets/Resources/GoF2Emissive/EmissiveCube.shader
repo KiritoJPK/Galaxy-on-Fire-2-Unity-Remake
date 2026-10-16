@@ -5,7 +5,7 @@
 // material that shares the emissive layer's atlas lends its normal map and specular). The emissive layers cover parts
 // of the hull (a station's lit panels, a gate's inner ring), and drawn unlit they hid the reflection the hull shows
 // around them. Same globals as GoF2/Hull: _GoF2HullReflection (strength), _GoF2HullRimColor; the cubemap is the
-// environment reflection (unity_SpecCube0: the system's cubemap, SkyReflection).
+// global _GoF2ReflectionCube (the system's cubemap, or a hangar's own: SkyReflection).
 // Remake: the GoF2/AlphaTest layers too (a wrecked station's torn panels, *_alpha_emissive): _ALPHATEST_ON clips as
 // Assets/Shaders/AlphaTest.shadergraph does (alpha of the same product below 0.5, both faces drawn: _Cull 0).
 

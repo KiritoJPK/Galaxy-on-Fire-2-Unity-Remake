@@ -59,6 +59,8 @@ namespace GoF2Remake.Flight
             public float fadeLeft, fadeTotal;
             /// <summary>Secondaries: the mounted stack this gun draws its ammo from (Gun+0xf4).</summary>
             public ItemStack stack;
+            /// <summary>Remake mods: the kit hardpoint's sound for this weapon (Modding.ModShipSounds), null = the weapon's own.</summary>
+            public GoF2Remake.Modding.ModShipSounds.WeaponSound modSound;
         }
 
         readonly List<Rig> rigs = new List<Rig>();
@@ -86,7 +88,8 @@ namespace GoF2Remake.Flight
             if (!r.releasing)
             {
                 r.releasing = true;
-                var (playToEnd, fadeMs) = LoopRelease.TryGetValue(r.gun.lookIndex, out var rule) ? rule : (true, 100f);
+                var (playToEnd, fadeMs) = r.modSound != null ? (false, r.modSound.releaseMs)
+                                        : LoopRelease.TryGetValue(r.gun.lookIndex, out var rule) ? rule : (true, 100f);
                 src.loop = !playToEnd;   // play to end: this pass is the last one
                 r.fadeLeft = playToEnd ? -1f : fadeMs;
                 r.fadeTotal = Mathf.Max(1f, fadeMs);
@@ -95,7 +98,7 @@ namespace GoF2Remake.Flight
             }
             if (r.fadeLeft < 0f) return;   // playing out; the fade-out itself is the clip's own tail
             r.fadeLeft -= dtMs;
-            src.volume = shotVolume * Settings.SfxVolume * Mathf.Clamp01(r.fadeLeft / r.fadeTotal);
+            src.volume = LoopVolume(r) * Mathf.Clamp01(r.fadeLeft / r.fadeTotal);
             if (r.fadeLeft <= 0f) { src.Stop(); src.loop = true; r.releasing = false; }
         }
 
@@ -233,6 +236,9 @@ namespace GoF2Remake.Flight
             // Overcharge (-10 %) gives a negative value the original skips: no change (#76).
             primaryPitch = 1f - fireRate > 0f ? Mathf.Pow(2f, 4f * (1f - fireRate)) : 1f;
             int p = 0, s = 0;
+            // Remake mods (ModHardpoints): a mount showing a kit's weapon model fires from that model's muzzle.
+            var primaryItems = Modding.ModHardpoints.WeaponItems(db, equipment, false);
+            var secondaryItems = Modding.ModHardpoints.WeaponItems(db, equipment, true);
             for (int e = 0; e < equipment.Count; e++)
             {
                 var item = db.Item(equipment[e].item);
@@ -244,6 +250,11 @@ namespace GoF2Remake.Flight
                 // Remake: more weapons than the model has mounts (a mod's or a Kaamo upgrade's extra slots) reuse the mounts in
                 // turn, the ship's centre without any; they were skipped, so an extra secondary could be neither selected nor fired.
                 var at = mounts.Count > 0 ? MountToLocal(mounts[slot % mounts.Count]) : Vector3.zero;
+                if (mounts.Count > 0)
+                {
+                    var shown = (secondary ? secondaryItems : primaryItems)[slot % mounts.Count];   // the mount's model is its first weapon's
+                    at += Modding.ModHardpoints.MuzzleOffset(shipIndex, shown, secondary, mounts[slot % mounts.Count]);
+                }
                 var gun = new Gun(item, at, secondary);
                 gun.Ignores = t => t.playerProof;   // multiplayer: through squadmates
                 if (!secondary)
@@ -278,12 +289,16 @@ namespace GoF2Remake.Flight
         Rig BuildRig(Gun gun)
         {
             var rig = new Rig { visuals = new GunRig(gun, WeaponFx.Load(gun.itemIndex), fxRoot, FirePose) };
+            rig.visuals.Tint(WeaponTint.For(Database.Shared.Item(gun.itemIndex), WeaponTint.PlayerColor()));   // the build's weapon colour
             rig.visuals.EnableTrails();   // RocketGun::setRadar: the player's rockets / missiles / thermo shots trail smoke
             var fx = rig.fx;
-            if (fx != null && fx.shotLoops && fx.shot != null)
+            // Remake mods: a kit ship's weapon model may bring its own sound (its shots, or a loop while held).
+            rig.modSound = GoF2Remake.Modding.ModShipSounds.Weapon(Session.ShipIndex, Database.Shared.Item(gun.itemIndex));
+            var ownLoop = rig.modSound?.loop?.Clip;
+            if (ownLoop != null || (rig.modSound == null && fx != null && fx.shotLoops && fx.shot != null))
             {
                 rig.loop = gameObject.AddComponent<AudioSource>();
-                rig.loop.clip = GoF2Remake.Modding.ModSounds.Get(fx.Shot);
+                rig.loop.clip = ownLoop != null ? ownLoop : GoF2Remake.Modding.ModSounds.Get(fx.Shot);
                 rig.loop.loop = true;
                 rig.loop.playOnAwake = false;
                 rig.loop.spatialBlend = 0f;
@@ -339,7 +354,7 @@ namespace GoF2Remake.Flight
             {
                 if (!r.gun.isSecondary || r.gun.itemIndex != SelectedSecondary || r.stack == null || r.stack.amount <= 0) continue;
                 if (r.gun.kind == Gun.Kind.Sentry && !SentryGun.CanDeploy) return false;   // Level+0x6c > 2: refused, no cost
-                if (Cheats.NoSecondaryCooldown) r.gun.reloadAcc = r.gun.reloadMs + 1f;   // remake debug: reloaded at once
+                if (Cheats.NoSecondaryCooldown) r.gun.reloadAcc = r.gun.WaitMs + 1f;   // remake debug: reloaded at once
                 int b = Fire(r.gun);
                 if (b < 0) continue;
                 if (r.gun.kind == Gun.Kind.Sentry)
@@ -426,7 +441,8 @@ namespace GoF2Remake.Flight
                 var gun = r.gun;
                 if (!gun.isSecondary && primaryHeld)
                 {
-                    if (Cheats.NoPrimaryCooldown) gun.reloadAcc = gun.reloadMs + 1f;   // remake debug: reloaded at once
+                    // Remake debug: reloaded as fast as the bullet pool sustains (every frame emptied it in a burst).
+                    if (Cheats.NoPrimaryCooldown && gun.reloadAcc >= gun.SustainedReloadMs) gun.reloadAcc = gun.WaitMs + 1f;
                     int b = Fire(gun);
                     if (b >= 0) OnShot(r, Sounds(r));
                 }
@@ -440,8 +456,12 @@ namespace GoF2Remake.Flight
                         // Held again while ending: it just carries on.
                         r.releasing = false;
                         r.loop.loop = true;
-                        r.loop.volume = shotVolume * Settings.SfxVolume;
-                        if (!r.loop.isPlaying) r.loop.Play();
+                        r.loop.volume = LoopVolume(r);
+                        if (!r.loop.isPlaying)
+                        {
+                            r.loop.Play();
+                            if (r.modSound?.shot != null) PlayShot(r);   // a mod loop's start (a beam's ignition)
+                        }
                     }
                     else if (r.loop.isPlaying || r.releasing) UpdateLoopRelease(r, Time.unscaledDeltaTime * 1000f);
                 }
@@ -513,17 +533,32 @@ namespace GoF2Remake.Flight
             if (chaseCam != null && chaseCam.enabled) chaseCam.Shake(50f, 2f);
         }
 
+        /// <summary>A shot loop's volume: the weapon's, or a mod hardpoint loop's own.</summary>
+        float LoopVolume(Rig r) => (r.modSound?.loop != null ? r.modSound.loop.vol0 : shotVolume) * Settings.SfxVolume;
+
         void PlayShot(Rig r)
         {
+            if (r.modSound?.shot is GoF2Remake.Modding.ModShipSounds.Sound own)
+            {
+                // Remake mods: the kit hardpoint's shot (one of its files, a random pitch in its range).
+                if (own.Clip is AudioClip ownClip)
+                    ShotVoices.Play(ownClip, own.vol0 * Settings.SfxVolume, own.RandomPitch * (r.gun.isSecondary ? 1f : primaryPitch));
+                return;
+            }
             var clip = r.fx != null ? r.fx.Shot : null;
             // Two voices per shot sound (FEV max_playbacks); the primaries at the weapon mod's pitch (pitchAllPrimaryGuns).
             if (clip != null) ShotVoices.Play(clip, shotVolume * Settings.SfxVolume, r.gun.isSecondary ? 1f : primaryPitch);
         }
 
         /// <summary>Radar::draw's auto-aim flag (KIPlayer+0x6f) for the beams: the nearest target (to the player) on screen,
-        /// inside the +-w/16 box around the crosshair, within 60000 units (ships) or a +-24000 cube (other objects).</summary>
+        /// inside the +-w/16 box around the crosshair, within 60000 units (ships) or a +-24000 cube (other objects). Never an
+        /// asteroid (a player's report): Radar::draw sets the flag only in its loop over Level::getEnemies, its asteroid loop never does.
+        /// Remake (#100), with the Smart target lock (Settings.OriginalTargetLock off, the default): a friendly or neutral ship
+        /// only when it is the radar's lock (LockTarget); the beam snapped onto the nearest ship whatever its side, and a
+        /// friendly flying between the player and the enemy took the shots and turned its race.</summary>
         Target BeamTarget()
         {
+            bool smart = !Settings.OriginalTargetLock;
             var cam = Camera.main;
             if (cam == null) return null;
             var aim = cam.WorldToScreenPoint(transform.position + transform.forward * 22000f * M);
@@ -532,6 +567,8 @@ namespace GoF2Remake.Flight
             foreach (var t in Target.All)
             {
                 if (t == null || t == owner || !t.Alive || t.untargetable || !t.isActiveAndEnabled || t.playerProof) continue;   // multiplayer: squadmates
+                if (t.isAsteroid) continue;   // the remake's beams took a rock near the crosshair while fighting
+                if (smart && t.isShip && !t.hostileToPlayer && t != LockTarget) continue;
                 var d = t.transform.position - transform.position;
                 if (t.isShip ? d.magnitude >= BeamRangeUnits * M
                              : Mathf.Abs(d.x) >= BeamObjectCubeUnits * M || Mathf.Abs(d.y) >= BeamObjectCubeUnits * M || Mathf.Abs(d.z) >= BeamObjectCubeUnits * M) continue;
@@ -551,7 +588,7 @@ namespace GoF2Remake.Flight
             target.lastPlayerWeapon = r.gun.itemIndex;
             float damage = missile && target.isAsteroid ? 9999f : r.gun.damage;
             if (Cheats.OneHitKills && !target.isPlayer) damage = 99999999f;
-            target.Damage(damage, false, r.gun.bullets[bullet].velocity);
+            target.Damage(damage, false, r.gun.bullets[bullet].velocity, r.gun.shieldFactor);
             if (wasAlive && !target.Alive && target.isAsteroid) { Session.AsteroidsDestroyed++; CountAsteroidMedals(r.gun); }   // Status+0xd8
             ApplyEmp(target, (int)r.gun.emp);
             r.visuals.ShowImpact(point);

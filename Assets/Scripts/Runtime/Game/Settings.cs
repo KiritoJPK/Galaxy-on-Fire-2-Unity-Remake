@@ -17,6 +17,20 @@ namespace GoF2Remake.Data
     /// <summary>Window mode option (desktop only).</summary>
     public enum DisplayMode { Borderless, Fullscreen, Windowed }
 
+    /// <summary>Settings.FlightStyle's values.</summary>
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
+    public static class FlightStyles
+    {
+        public const int Original = 0, Free = 1;
+
+        /// <summary>The style the game flies with now: what a mod or an event sets (Modding.ModFlight: an event, the ship
+        /// flown, the mod campaign, a new-game option), else the player's option (Settings.FlightStyle).</summary>
+        public static int Current { get { int f = Modding.ModFlight.ForcedStyle; return f >= 0 ? f : Settings.FlightStyle; } }
+
+        /// <summary>A mod or an event decides the style (the option's choice doesn't apply now).</summary>
+        public static bool Forced => Modding.ModFlight.ForcedStyle >= 0;
+    }
+
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class Settings
     {
@@ -138,8 +152,16 @@ namespace GoF2Remake.Data
         public static bool MouseSteering { get => GetBool("mouseSteering", true); set => SetBool("mouseSteering", value); }
         /// <summary>Remake: mouse steering's dead zone, a fraction of the steering range around the centre (0 = none, the
         /// original's: PlayerEgo::update steers by the raw offset).</summary>
+        /// <summary>Remake: the controller hints' button icons (InputMode.Style): 0 Auto (the controller last used: Sony's
+        /// PlayStation, any other Xbox), 1 always Xbox, 2 always PlayStation.</summary>
+        public static int PadGlyphs { get => Mathf.Clamp(Mathf.RoundToInt(Get("padGlyphs", PadGlyphsAuto)), 0, 2); set => Set("padGlyphs", Mathf.Clamp(value, 0, 2)); }
+        public const int PadGlyphsAuto = 0, PadGlyphsXbox = 1, PadGlyphsPlayStation = 2;
         public static float MouseDeadzone { get => Get("mouseDeadzone", DefaultMouseDeadzone); set => Set("mouseDeadzone", Mathf.Clamp(value, 0f, 0.3f)); }
         public const float DefaultMouseDeadzone = 0.08f;
+        /// <summary>Remake: how the player's ship flies (FlightStyles): the original's (a throttle, the ship always flying
+        /// forward) or free flight after EVERSPACE 2 (thrust, strafe and up / down held, inertial dampeners, the mouse aiming
+        /// through a virtual joystick; Flight.FlightModel's free mode). It also switches the key layout (GameControls).</summary>
+        public static int FlightStyle { get => Mathf.Clamp(Mathf.RoundToInt(Get("flightStyle", FlightStyles.Original)), 0, 1); set => Set("flightStyle", Mathf.Clamp(value, 0, 1)); }
         /// <summary>Remake: Discord Rich Presence (DiscordPresence, desktop).</summary>
         public static bool DiscordPresence { get => GetBool("discordPresence", true); set => SetBool("discordPresence", value); }
         /// <summary>options[0x11] = 0: the accelerometer steers (MGame::handleAccelerometer).</summary>
@@ -191,6 +213,10 @@ namespace GoF2Remake.Data
         /// <summary>The ship lock as the original picks it (Radar::draw: the first ship of the list in the box, any faction,
         /// and any completed lock replaces the old one); off (default) = the remake's smarter lock (CombatRadar).</summary>
         public static bool OriginalTargetLock { get => GetBool("originalTargetLock", false); set => SetBool("originalTargetLock", value); }
+        /// <summary>Remake mods: how often an NPC fighter flies one of the mods' ships of its race (Modding.ModTraffic): 0 off,
+        /// 1 10 %, 2 25 % (default), 3 50 %.</summary>
+        public static int ModShipTraffic { get => Mathf.Clamp(Mathf.RoundToInt(Get("modShipTraffic", 2)), 0, 3); set => Set("modShipTraffic", Mathf.Clamp(value, 0, 3)); }
+        public static float ModShipTrafficChance => ModShipTraffic switch { 1 => 0.1f, 2 => 0.25f, 3 => 0.5f, _ => 0f };
         /// <summary>The crate markers on a ship dying with cargo (Radar::draw, the original's; NpcShip.DyingWithCargo). Off
         /// (players' suggestion, for realism): no markers; aimed at, it is still salvage for the tractor beam.</summary>
         public static bool DyingCargoMarkers { get => GetBool("dyingCargoMarkers", true); set => SetBool("dyingCargoMarkers", value); }
@@ -204,6 +230,21 @@ namespace GoF2Remake.Data
         /// level (LoungeChat.ModPrice); off = the original's one of each. Levels already fitted stay either way. A session
         /// rule.</summary>
         public static bool KaamoStacking { get => Rule(R.KaamoStacking, "kaamoStacking", true); set => SetRule(R.KaamoStacking, "kaamoStacking", value); }
+        /// <summary>Remake: with KaamoStacking, how many times one upgrade can be fitted to a ship (Session.MaxModLevel;
+        /// 2..20, default 5). A session rule: the host's or the server's value in multiplayer (-kaamomaxlevel,
+        /// "/set kaamomaxlevel").</summary>
+        public static int KaamoMaxLevel
+        {
+            get => GameHooks.SessionKaamoLevel != null && GameHooks.SessionKaamoLevel(out int n) ? R.ClampKaamoLevel(n) : LocalKaamoLevel();
+            set
+            {
+                int v = R.ClampKaamoLevel(value);
+                Set("kaamoMaxLevel", v);
+                GameHooks.KaamoLevelChangedByHost?.Invoke(v);
+            }
+        }
+        /// <summary>The player's own Kaamo upgrade limit (a player host's start, NetRules).</summary>
+        public static int LocalKaamoLevel() => R.ClampKaamoLevel(Mathf.RoundToInt(Get("kaamoMaxLevel", R.DefaultKaamoLevel)));
         /// <summary>Remake (players' suggestion): a hull stored in the Kaamo Club keeps the items mounted on it (Hangar). A
         /// session rule.</summary>
         public static bool KaamoKeepsEquipment { get => Rule(R.KaamoKeepsEquipment, "kaamoKeepsEquipment", true); set => SetRule(R.KaamoKeepsEquipment, "kaamoKeepsEquipment", value); }
@@ -298,12 +339,12 @@ namespace GoF2Remake.Data
         {
             "tiltSteering", "tiltSensitivity", "sensitivity", "keyAutofire", "levelPitch", "invertPitch", "invertYaw", "invertDrillY",
             "invertDrillX", "gyroSteering", "gyroSensitivity", "mouseSteering", "mouseDeadzone", "vrGrabControls", "haptics", "stickDeadzone",
-            "touchLeftHeight", "touchRightHeight",
+            "touchLeftHeight", "touchRightHeight", "flightStyle", "padGlyphs",
         };
         public static readonly string[] GameplayKeys =
         {
-            "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoKeepsEquipment", "cloakBay", "informerOriginalRule",
-            "originalTargetLock", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "discordPresence",
+            "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoMaxLevel", "kaamoKeepsEquipment", "cloakBay", "informerOriginalRule",
+            "originalTargetLock", "modShipTraffic", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "discordPresence",
         };
         public static readonly string[] LanguageKeys = { "voiceLanguage" };
 

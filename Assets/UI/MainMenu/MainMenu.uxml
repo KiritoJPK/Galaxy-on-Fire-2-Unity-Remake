@@ -111,10 +111,15 @@
                     <ui:Label name="loadTitle" class="panel-title gof-semibold" />
                     <ui:VisualElement class="panel-accent" />
                     <ui:ScrollView name="slotList" class="slot-list" />
-                    <!-- Remake: Export / Import saves (SaveTransfer); the delete hint (SaveSlotRow.AttachHint) goes above. -->
+                    <!-- Remake: Import / Export saves (SaveTransfer); the exports on the right in both rows; the delete hint (SaveSlotRow.AttachHint) goes above. -->
                     <ui:VisualElement name="saveTransferRow" class="mods-actions save-transfer-row">
-                        <ui:Button name="exportSavesButton" class="mods-action gof-semibold" />
                         <ui:Button name="importSavesButton" class="mods-action gof-semibold" />
+                        <ui:Button name="exportSavesButton" class="mods-action gof-semibold" />
+                    </ui:VisualElement>
+                    <!-- Remake: the original game's saves in and out (OriginalSaveTransfer). -->
+                    <ui:VisualElement name="originalSaveRow" class="mods-actions save-transfer-row">
+                        <ui:Button name="importOriginalButton" class="mods-action gof-semibold" />
+                        <ui:Button name="exportOriginalButton" class="mods-action gof-semibold" />
                     </ui:VisualElement>
                     <ui:Label name="saveTransferNote" class="save-transfer-note" />
                     <ui:Button name="loadBack" class="menu-button back-button gof-semibold" />

@@ -268,8 +268,12 @@ namespace GoF2Remake.World
             if (shipIndex == Session.ShipIndex)
             {
                 var h = Current(db);
-                if (h != null) return db.AssemblyByName(h.assembly);
+                if (h != null && !h.own) return db.AssemblyByName(h.assembly);   // a debug pick of another hull
             }
+            // Remake mods: a customizable ship shows the player's build of it (Modding.ModShipKits, Session.ShipBuilds).
+            var build = Modding.ModShipKits.PlayerBuild(shipIndex);
+            if (build != null) return Modding.ModShipKits.VariantAssembly(shipIndex, build);
+            if (shipIndex == Session.ShipIndex) { var h = Current(db); if (h != null) return db.AssemblyByName(h.assembly); }
             return db.ShipAssembly(shipIndex);
         }
 

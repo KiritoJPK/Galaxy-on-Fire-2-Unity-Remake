@@ -7,7 +7,7 @@ there is also a server-only build without the game's graphics and sound (see
 
 This guide covers setting the server up, its command-line options, the settings you can change while it runs, the
 server console, the files it keeps, and running it as a Linux service. For what players can do in a session (factions,
-arenas, distress calls and their chat commands), see the [README](README.md).
+arenas, distress calls and their chat commands), see [Playing together](docs/MULTIPLAYER.md).
 
 ## Contents
 
@@ -17,6 +17,7 @@ arenas, distress calls and their chat commands), see the [README](README.md).
 - [Online or local network](#online-or-local-network)
 - [Command-line options](#command-line-options)
 - [Settings you can change while the server runs](#settings-you-can-change-while-the-server-runs)
+- [Message of the day](#message-of-the-day)
 - [Becoming the server's admin](#becoming-the-servers-admin)
 - [The server console](#the-server-console)
 - [The web admin](#the-web-admin)
@@ -35,6 +36,7 @@ arenas, distress calls and their chat commands), see the [README](README.md).
    - `PASSWORD`: leave it empty for no password.
    - `MAXPLAYERS`: the player limit, at most 100.
    - `ALLOWDEBUG`: `1` lets players use the Debug menu (cheats, items, spawns); `0` (the default) turns it off.
+   - `FLIGHT`: the flight model everyone flies: `gof2` (the default), `es2` (EVERSPACE 2 style) or `player` (each player's own).
 2. Save the file and double-click it. A console window opens. The game itself runs without a window and without sound.
 3. The console shows the **join code**, and the game appears in every player's server browser.
 
@@ -140,12 +142,14 @@ Players on a different game version are turned away with a message saying which 
 | `-maxplayers N` | The player limit, 2 to 100 (default 16). |
 | `-allowdebug` | Players may use the Debug menu (cheats, items, spawns). Off without it. |
 | `-freepvp` | Players may fight each other anywhere, not only in arena matches and faction sieges. |
+| `-flightmodel M` | The flight model everyone flies: `gof2` (the game's own, the default), `es2` (EVERSPACE 2 style) or `player` (each player's own Options choice). One model for everyone keeps PvP fair. Admins change it in the game with `/flightmodel`. |
 | **Gameplay rules** | The game's Gameplay options that change how it plays are one rule for everyone on the server. Each flag turns one the other way from its default. |
 | `-cloakhides` | NPC ships lose track of a cloaked player (they fly to where they last saw them, then back to their patrol). Off by default: as in the original, they keep chasing a cloaked player without firing. |
 | `-capitalships` | Capital ship enhancements (escorts, stronger turrets, a killable carrier and Vossk battleship, fleet battles). Off by default. |
 | `-informeroriginal` | Informer missions use the original's rule (any other ship destroyed before docking fails it). Off by default. |
 | `-nopirateevents` | No pirate outposts and bosses (on by default). |
 | `-nokaamostacking` | The Kaamo Club's upgrades only once each, as in the original (stackable by default). |
+| `-kaamomaxlevel N` | With stacking: how many times each Kaamo Club upgrade can be fitted to one ship, 2 to 20 (default 5). Profiles above it are cut back when they sign in. |
 | `-nokaamoequipment` | Ships stored in the Kaamo Club hand their equipment over, as in the original (they keep it by default). |
 | `-nocloakbay` | A cloak mounted on the Specter or the Scimitar takes an equipment slot, as in the original (by default it goes into their integrated cloak's bay). |
 | `-noempcloak` | EMP hits don't break cloaks, as in the original (by default an EMP hit drops a cloak at once). |
@@ -163,8 +167,8 @@ Players on a different game version are turned away with a message saying which 
 | `-claimcost N` | What a faction pays from its bank to claim a station (default 500 000). |
 | `-maxclaims N` | Stations per faction (default 3). |
 | `-claimdays N` | Days without a member docking before a claim is lost (default 14). |
-| `-siegecost N` | What a faction pays from its bank for a siege (default 250 000). |
-| `-toll N` | The toll other factions' pilots pay at a faction's station (default 10 000, 0 = none). |
+| `-siegecost N` | A siege's stake, paid from the attacking faction's bank (default 250 000): the winner's bank gets it (the defenders' when nobody fought within the 2 days and 4 extra days); back to the attacker when the claim is given up or the defenders disband. |
+| `-toll N` or `-toll N%` | The toll other factions' pilots pay at a faction's station: N credits, or N % (0-100) of the pilot's credits (default 10 000, 0 = none). |
 
 The environment variable `GOF2_ADMIN_TOKEN` can replace `-admintoken`.
 
@@ -181,13 +185,34 @@ window, **Admin** tab, **Server settings**. You can also type `/set <key> <value
 | `maxplayers` | The player limit | Lowering it works at once. Online, raising it above the start's limit needs a restart. |
 | `allowdebug` | Players may use the Debug menu (`on` / `off`) | At once. |
 | `freepvp` | Players may fight anywhere (`on` / `off`) | At once. |
+| `flightmodel` | The flight model above (`gof2`, `es2` or `player`; also `/flightmodel`) | At once. |
 | `cloakhides`, `pirateevents`, `capitalships`, `informeroriginal`, `kaamostacking`, `kaamoequipment`, `cloakbay`, `empcloak` | The gameplay rules above (`on` / `off`; `on` = the option on) | At once (new orbits get the spawns that depend on them). |
+| `kaamomaxlevel` | The Kaamo Club upgrade limit above (2-20) | At once for new upgrades; profiles above a lowered limit are cut back at their next sign-in or upload. |
 | `maxearn` | Worth a profile may gain per minute | At once. |
 | `claimcost`, `maxclaims`, `claimdays`, `siegecost`, `toll` | The faction settings above | At once. |
 
 A change is saved in `server_settings.json` and kept after a restart. **An option given on the command line wins at
 every start.** The launchers always pass `-name` and `-maxplayers`, so a change of those in the game only lasts until
 the next restart, unless you also change the launcher. The Admin tab marks these settings "set by the launcher".
+
+## Message of the day
+
+Players see the message of the day (MOTD) when they join: a window with the server's name and the text in a monospace
+font, so ASCII art lines up. A player sees it again only when it changes, or with `/motd` in the chat.
+
+The text is the file `motd.txt` in the server's data folder (see [Files the server keeps](#files-the-server-keeps)). Edit
+it with any text editor (UTF-8) and type `/motd reload` in the game or `motd reload` in the console. Every line and
+space is kept; tabs become 4 spaces; at most 60 lines and 4000 bytes. These placeholders are filled in for each player:
+
+| Placeholder | Becomes |
+|---|---|
+| `%player%` | The player's pilot name |
+| `%players%` | How many players are online |
+| `%server%` | The server's name |
+
+For a short message there is no need to edit the file: `/motd set Welcome, %player%!\nBe nice.` (`\n` starts a new
+line) writes it, `/motd clear` empties it. Admins and the console only. A hosted game (not a dedicated server) reads
+`motd.txt` from the game's own data folder.
 
 ## Becoming the server's admin
 
@@ -238,13 +263,18 @@ server can use the console; players use the chat commands above.
 | `token` | The admin token for `/claimadmin`. |
 | `settings`, `set <key> <value>` | The settings that change while the server runs. |
 | `profiles` | The player profiles: id, name, devices, worth, who is online. |
-| `profile delete <id>` | Deletes a profile (not while it is online; its file is kept as `.bak`). |
+| `profile info <id or name>` | One profile: role, devices, worth, play time, last seen, online, blocked. |
+| `profile delete <id or name> [force]` | Deletes a profile; its file is kept as `.bak`. Online it is refused unless `force`: its devices are dropped first ("Your profile on this server was deleted."). |
+| `profile block <id or name> [reason]` | Bans the profile and every device it signed in from, for good (the same as `ban`); an online player is dropped. A new profile from those devices is turned away too. |
+| `profile unblock <id or name>` | Lifts the block (`unban`). `profile blocked` lists the bans (`bans`). |
 | `profile restore <id>` | Brings back a profile pruned after 30 days unused (from `Pruned/`). |
 | `factions`, `faction disband <TAG>`, `sieges` | The factions; end one; the sieges. |
 | `arenas` | The arena matches and queues. |
 | `stop` | Tells the players and shuts the server down. Ctrl+C or closing the window does the same. |
 
-A server running as a Linux service has no console you can type into. Use the in-game Admin tab instead.
+A server running as a Linux service has no console you can type into. Use the in-game Admin tab, or the web admin's
+console (below): its `/api/command` runs these same commands, so a control panel can call `profile delete` /
+`profile block` there.
 
 ## The web admin
 
@@ -289,6 +319,7 @@ The server's data folder is `ServerProfiles` in the game's data folder, or the f
 | `server_settings.json` | The settings changed while the server ran. |
 | `news.json` | The sector news on the stations' tickers (the last 40 items, at most 3 days old). |
 | `admin_token.txt` | The token for `/claimadmin`. |
+| `motd.txt` | The message of the day (you write it; see [Message of the day](#message-of-the-day)). |
 
 Every file is written through a temporary file, and the previous version is kept as `.bak`. To back the server up,
 copy the whole folder while the server is stopped.
@@ -369,6 +400,8 @@ Players can only join a server running the same game version. To update:
 | "This game runs version X" | The player's game and the server are different versions. Update both. |
 | Local network: nobody can connect | Open the UDP port (default 7777) in the server's firewall. From outside the network, forward it on the router. |
 | The process ends right after starting | Read the log: `journalctl -u gof2 -n 100`, or `Player.log` in the game's data folder. A local server stops when its port is in use; try another `-port`. |
-| A player's progress isn't saved | Without `-allowdebug` the server turns away progress that grows faster than `maxearn`; the log says "upload not saved". |
+| A player's progress isn't saved | Without `-allowdebug` the server turns away progress that grows faster than `maxearn`; the log says "upload not saved" (once per profile every 10 minutes, with how many were refused since), and the ops, admins and masters online get a chat notice as often. |
+| "signed in more than 8 times in 10 minutes" | A player (or device) in a reconnect loop: the server turns them away for 10 minutes ("You reconnected too often"). Their joins and leaves don't show in the chat either: a join is told after 15 s in the game, and not when the player left under 2 minutes before. |
+| "Kaamo upgrade level(s) ... removed" | A profile had more levels of one Kaamo upgrade on a hull than the server's limit (`kaamomaxlevel`, default 5; builds from 2026-10-08 had no cap). The server cuts it back at sign-in and on every upload. |
 | A player's progress is gone | Profiles nobody has signed in to for 30 days are pruned. The last 50 pruned profiles are in `Pruned/` (see [Files](#files-the-server-keeps)). |
 | Lost admin access | Read the token from the log, or delete `admin_token.txt` and restart, then use `/claimadmin` again. |

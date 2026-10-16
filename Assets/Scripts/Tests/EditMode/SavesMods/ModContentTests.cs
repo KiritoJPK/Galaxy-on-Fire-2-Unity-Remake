@@ -459,6 +459,101 @@ namespace GoF2Remake.Tests
             Assert.IsTrue(ModContent.AnyShipModels());
         }
 
+        // ---- npcTurrets (remake, generic turrets: World.NpcMountedTurrets, the hangar's parked ships) ---------------------
+
+        [Test]
+        public void NpcTurretsGiveAShipTypesNpcsTurretItems()
+        {
+            Assert.IsEmpty(Database.Load().NpcTurretsOf(28), "the original's NPC ships carry none");
+            WriteMod("turrets", "t_turrets", "1.0", "", ("ships.json", "[ { 'override': 28, 'npcTurrets': [ 48 ] }, { 'override': 51, 'npcTurrets': [ '181' ] } ]"));
+            ScanAndEnable("t_turrets");
+            Assert.IsFalse(Installed("t_turrets").Broken, AllMessages(Installed("t_turrets")));
+            var db = Database.Load();
+            CollectionAssert.AreEqual(new[] { 48 }, db.NpcTurretsOf(28), "the Veteran's NPCs: a Hammerhead on its turret mount");
+            CollectionAssert.AreEqual(new[] { 181 }, db.NpcTurretsOf(51));
+            Assert.IsEmpty(db.NpcTurretsOf(22), "other ships none");
+        }
+
+        [Test]
+        public void NpcTurretsMustBeTurrets()
+        {
+            WriteMod("turrets", "t_turrets2", "1.0", "", ("ships.json", "[ { 'override': 28, 'npcTurrets': [ 12, 48, 47 ] } ]"));
+            ScanAndEnable("t_turrets2");
+            var db = Database.Load();
+            CollectionAssert.AreEqual(new[] { 48, 47 }, db.NpcTurretsOf(28), "the N'saan (a primary) is left out");
+            StringAssert.Contains("is no turret", AllMessages(Installed("t_turrets2")));
+            StringAssert.Contains("1 turret mounts", AllMessages(Installed("t_turrets2")), "more turrets than mounts: a warning");
+        }
+
+        [Test] public void NpcTurretsMustBeAList() => StringAssert.Contains("\"npcTurrets\" must be a list", ParseError("[ { 'override': 28, 'npcTurrets': 48 } ]", "ships.json"));
+
+        // ---- integrated (a modder's request: a built-in Khador Drive / cloak like the Kothar ships' and the Specter's) ------
+
+        [Test]
+        public void IntegratedItemsAreTheOriginalsWithoutMods()
+        {
+            var db = Database.Load();
+            foreach (int ship in new[] { 37, 38, 40 }) Assert.IsTrue(db.HasIntegratedDrive(ship), "ship " + ship);
+            Assert.IsFalse(db.HasIntegratedDrive(10));
+            Assert.AreEqual(95, db.IntegratedCloak(44));
+            Assert.AreEqual(95, db.IntegratedCloak(49));
+            Assert.AreEqual(-1, db.IntegratedCloak(10));
+        }
+
+        [Test]
+        public void IntegratedGivesAndTakesADriveAndACloak()
+        {
+            WriteMod("integrated", "t_integrated", "1.0", "", ("ships.json",
+                "[ { 'override': 22, 'integrated': { 'khadorDrive': true, 'cloak': 96 } }, { 'override': 28, 'integrated': { 'cloak': true } }," +
+                "  { 'override': 37, 'integrated': { 'khadorDrive': false } }, { 'override': 44, 'integrated': { 'cloak': false } } ]"));
+            ScanAndEnable("t_integrated");
+            Assert.IsFalse(Installed("t_integrated").Broken, AllMessages(Installed("t_integrated")));
+            var db = Database.Load();
+            Assert.IsTrue(db.HasIntegratedDrive(22), "the Groza: a Khador Drive built in");
+            Assert.AreEqual(96, db.IntegratedCloak(22), "and the cloak it names");
+            Assert.AreEqual(95, db.IntegratedCloak(28), "true: the U'tool's stats");
+            Assert.IsFalse(db.HasIntegratedDrive(37), "the Cronus' taken away");
+            Assert.AreEqual(-1, db.IntegratedCloak(44), "the Specter's taken away");
+            Assert.AreEqual(95, db.IntegratedCloak(49), "the rest stay");
+            Assert.IsTrue(GalaxyMap.HasIntegratedDrive(22), "the game's checks read it (Database.Shared)");
+        }
+
+        [Test]
+        public void AnIntegratedCloakMustBeACloak()
+        {
+            WriteMod("integrated", "t_integrated2", "1.0", "", ("ships.json",
+                "[ { 'override': 22, 'integrated': { 'cloak': 12, 'shield': true } } ]"));
+            ScanAndEnable("t_integrated2");
+            Assert.AreEqual(-1, Database.Load().IntegratedCloak(22));
+            StringAssert.Contains("is no cloak", AllMessages(Installed("t_integrated2")));
+            StringAssert.Contains("unknown field \"shield\"", AllMessages(Installed("t_integrated2")));
+        }
+
+        [Test] public void IntegratedMustBeAnObject() => StringAssert.Contains("\"integrated\" must be an object", ParseError("[ { 'override': 22, 'integrated': true } ]", "ships.json"));
+
+        // ---- a steady engine glow (a modder's request: dark parked, lit through the take-off and all flight) -------------
+
+        [Test]
+        public void EngineMaterialsTakeAnIdleShare()
+        {
+            Assert.AreEqual(0f, Modding.EngineMaterialGlow.Target(0f, 0f, false), "default: dark at throttle 0");
+            Assert.AreEqual(0.5f, Modding.EngineMaterialGlow.Target(0.5f, 0f, false), 1e-5f, "following the throttle");
+            Assert.AreEqual(1f, Modding.EngineMaterialGlow.Target(0f, 1f, false), "engineIdle 1: steady at throttle 0");
+            Assert.AreEqual(1f, Modding.EngineMaterialGlow.Target(2f, 1f, false), "and while boosting");
+            Assert.AreEqual(0f, Modding.EngineMaterialGlow.Target(1f, 1f, true), "dark while the engines are off (parked)");
+            Assert.AreEqual(0.625f, Modding.EngineMaterialGlow.Target(0.5f, 0.25f, false), 1e-5f);
+        }
+
+        [Test]
+        public void ShipsJsonReadsTheSteadyGlowFields()
+        {
+            var c = UnityEngine.JsonUtility.FromJson<CustomShipData>("{ \"materials\": [ { \"engine\": true, \"engineIdle\": 1 } ], \"throttleGlow\": { \"idle\": 4, \"full\": 4, \"off\": 0 } }");
+            Assert.AreEqual(1f, c.materials[0].engineIdle);
+            Assert.AreEqual(0f, c.throttleGlow.off);
+            Assert.AreEqual(-1f, new CustomThrottleGlow().off, "default: parked at 'idle' as before");
+            Assert.AreEqual(0f, new CustomShipMaterial().engineIdle, "default: follows the throttle as before");
+        }
+
         [Test] public void ANewShipNeedsAModel() => StringAssert.Contains("needs \"model\"", ParseError("[ { 'id': 'x' } ]", "ships.json"));
         [Test] public void AShipsModelMustBeInTheMod() => StringAssert.Contains("isn't in the mod", ParseError("[ { 'id': 'x', 'model': 'nope.glb' } ]", "ships.json"));
         [Test] public void AShipNeedsIdOrOverride() => StringAssert.Contains("either \"id\"", ParseError("[ { 'armor': 5 } ]", "ships.json"));

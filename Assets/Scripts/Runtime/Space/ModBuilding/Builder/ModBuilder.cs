@@ -65,25 +65,163 @@ namespace GoF2Remake.Modding
         public static bool Active { get => ModManager.BuilderOpen; private set => ModManager.BuilderOpen = value; }
         /// <summary>The open project.</summary>
         public static ModProject Project { get; private set; }
+        /// <summary>The open project's undo / redo steps (null while none is open).</summary>
+        public static ModProjectHistory History { get; private set; }
         /// <summary>The ship being worked on (null = the project has none yet).</summary>
         public static ProjectShip Ship { get; set; }
         /// <summary>The kinds of content the builder edits (its top tabs).</summary>
-        public enum Kind { Ships, Items, Characters, Skins }
+        /// <summary>The kinds of content (and AiTools: the MCP server's tab, ModBuilderScreen; shown wherever the builder is).</summary>
+        public enum Kind { Ships, Items, Characters, Skins, WeaponFx, Systems, Stations, Interiors, Quests, Campaigns, Audio, Blueprints, Kits, AiTools }
+        public const int KindCount = 14;
+
+        /// <summary>Where a kind is edited: in the game's own place for it.</summary>
+        public enum Place { Hangar, Lounge, Map, Space }
+
+        /// <summary>The place of a kind (Interiors: the hangar or the lounge by the room picked, InteriorIsBar).</summary>
+        public static Place PlaceOf(Kind k) => k switch
+        {
+            Kind.Characters or Kind.Quests or Kind.Audio => Place.Lounge,
+            Kind.Systems => Place.Map,
+            Kind.Stations or Kind.WeaponFx => Place.Space,
+            Kind.Interiors => InteriorIsBar ? Place.Lounge : Place.Hangar,
+            _ => Place.Hangar,
+        };
+
         /// <summary>The kind the builder opens on (the projects page's tile; kept through test flights).</summary>
         public static Kind OpenKind { get; set; }
+
+        /// <summary>The Interiors kind shows a bar room (else a hangar room).</summary>
+        public static bool InteriorIsBar { get; set; }
+        /// <summary>The project's room the Interiors kind previews (its interiors.json key), null = none: the station's own.</summary>
+        public static string PreviewInterior { get; set; }
+        /// <summary>The rooms editor's free camera (kept through the scene reloads that rebuild a room): the point it orbits
+        /// and (yaw, pitch, distance); RoomViewSet false = none yet.</summary>
+        public static Vector3 RoomPivot, RoomOrbit;
+        public static bool RoomViewSet;
+
+        /// <summary>The builder works in space (Stations, Weapon fx): the Space scene in the builder's station orbit, nothing
+        /// flying, the builder's own camera (not a test flight).</summary>
+        public static bool InSpace { get; private set; }
+        /// <summary>The station whose orbit the space kinds show (a project station's), -1 = the builder's station.</summary>
+        public static int SpaceStation { get; set; } = -1;
+        /// <summary>The project's station to pick there (its Ref), null = the first.</summary>
+        public static string SpaceStationRef { get; set; }
+
+        /// <summary>The builder moves to the scene a kind is edited in (the Station scene's hangar / lounge / map, or the
+        /// Space scene); false when it is there already (the caller only switches its panels).</summary>
+        public static bool GoTo(Kind k)
+        {
+            if (Project == null) return false;
+            OpenKind = k;
+            bool space = PlaceOf(k) == Place.Space;
+            if (space == InSpace && !(space && SpaceStationChanged)) return false;
+            Project.Save();
+            InSpace = space;
+            Session.LaunchedFromStation = false;
+            Session.DockedFromSpace = false;
+            if (space)
+            {
+                int st = SpaceStation >= 0 && SpaceStation < Database.Shared.Stations.Count && !ModWorld.IsMissingStation(SpaceStation) ? SpaceStation : Station;
+                shownSpaceStation = st;
+                Session.StationIndex = st;
+                Session.ArrivedByTravel = false;
+                SceneManager.LoadScene("Space");
+            }
+            else
+            {
+                Session.StationIndex = Station;
+                SceneManager.LoadScene("Station");
+            }
+            return true;
+        }
+
+        static int shownSpaceStation = -1;
+        /// <summary>The space kinds show another orbit than the one loaded (a station picked there).</summary>
+        static bool SpaceStationChanged => InSpace && SpaceStation >= 0 && SpaceStation != shownSpaceStation;
+
+        /// <summary>The Station scene again (an interior picked: its room is built when the scene loads).</summary>
+        public static void ReloadStation()
+        {
+            if (Project == null) return;
+            Project.Save();
+            Session.StationIndex = Station;
+            Session.LaunchedFromStation = false;
+            Session.DockedFromSpace = false;
+            SceneManager.LoadScene("Station");
+        }
+
+        /// <summary>The Space scene again, in 'station''s orbit (a station's model changed, or another station picked).</summary>
+        public static void ReloadSpace(int station)
+        {
+            if (Project == null) return;
+            Project.Save();
+            SpaceStation = station;
+            int st = station >= 0 && station < Database.Shared.Stations.Count && !ModWorld.IsMissingStation(station) ? station : Station;
+            shownSpaceStation = st;
+            InSpace = true;
+            Session.StationIndex = st;
+            Session.LaunchedFromStation = false;
+            Session.ArrivedByTravel = false;
+            SceneManager.LoadScene("Space");
+        }
         /// <summary>The game ship the Skins kind shows (its turntable and test flights), -1 = none.</summary>
         public static int SkinShip { get; set; } = -1;
         /// <summary>The Skins kind shows a game ship instead of the project's own.</summary>
         static bool ShowingSkin => OpenKind == Kind.Skins && SkinShip >= 0;
 
+        /// <summary>The ship the Blueprints and Campaign kinds put on the turntable (a blueprint's product, the campaign's
+        /// start ship: a game number in this game), -1 = none; PreviewLoadout its equipment (null = a default one).</summary>
+        public static int PreviewShip { get; set; } = -1;
+        public static List<ItemStack> PreviewLoadout { get; set; }
+        static bool ShowingPreview => (OpenKind == Kind.Blueprints || OpenKind == Kind.Campaigns) && PreviewShip >= 0 && Database.Shared.Ship(PreviewShip) != null;
+
+        /// <summary>The build the turntable and test flights show of a customizable ship in the Kits kind (the part being
+        /// edited in place of the default build's), build text; null = its default build (Session.ShipBuilds is cleared for
+        /// the builder's ships, ApplyShip).</summary>
+        public static string PreviewBuild { get; set; }
+
+        /// <summary>A reference (a game number or a key) as this game's ship / item / station number, -1 = not in this game.</summary>
+        public static int ShipNumber(string r) => string.IsNullOrEmpty(r) ? -1 : int.TryParse(r, out int n) ? n : ModContent.ShipIndexOf(r);
+        public static int ItemNumber(string r) => string.IsNullOrEmpty(r) ? -1 : int.TryParse(r, out int n) ? n : ModContent.ItemIndexOf(r);
+        public static int StationNumber(string r) => string.IsNullOrEmpty(r) ? -1 : int.TryParse(r, out int n) ? n : ModWorld.StationIndexOf(r);
+        public static int SystemNumber(string r) => string.IsNullOrEmpty(r) ? -1 : int.TryParse(r, out int n) ? n : ModWorld.SystemIndexOf(r);
+
         /// <summary>A test flight runs (between Test fly and landing back in the builder).</summary>
         public static bool TestFlying { get; private set; }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { Active = TestFlying = false; Project = null; Ship = null; OpenKind = Kind.Ships; SkinShip = -1; }
+        static void ResetStatics()
+        {
+            Active = TestFlying = InSpace = PlayTesting = false; Project = null; Ship = null; History = null; OpenKind = Kind.Ships; SkinShip = -1;
+            InteriorIsBar = false; PreviewInterior = null; SpaceStation = -1; shownSpaceStation = -1; PreviewShip = -1; PreviewLoadout = null; RoomViewSet = false; SpaceStationRef = null; PreviewBuild = null;
+        }
 
         /// <summary>Opens 'project': the builder's game; the caller loads the Station scene (after the mods have loaded).</summary>
         public static void Begin(ModProject project)
+        {
+            ResetGame(project);
+            Project = project;
+            Active = true;
+            TestFlying = false;
+            InSpace = false;
+            SpaceStation = shownSpaceStation = -1;
+            PreviewInterior = null;
+            ModManager.SetBuilderProject(project.Folder);
+            var db = Database.Shared;
+            foreach (var s in project.Ships) if (s.IsOverride) s.FillFromGame(db.Ship(s.OverrideIndex));
+            Ship = project.Ships.FirstOrDefault(s => s.Ref == project.LastShip) ?? project.Ships.FirstOrDefault();
+            var skins = project.SkinShips();
+            SkinShip = skins.Count > 0 ? skins[0] : -1;
+            ApplyShip();
+            History?.Dispose();
+            ModProjectHistory.PruneStores();
+            History = new ModProjectHistory(project);
+            Debug.Log($"Mod Builder: opened \"{project.Name}\" ({project.Folder}), {project.Ships.Count} ship(s)");
+        }
+
+        /// <summary>The builder's throwaway game as it starts: free play in the finished game's world, docked at the project's
+        /// station, no money, no cheats.</summary>
+        static void ResetGame(ModProject project)
         {
             Session.ResetNewGame();
             Session.UseCompletedWorld();   // free play: every original ship and item exists, no story
@@ -94,31 +232,75 @@ namespace GoF2Remake.Modding
             Session.DockedFromSpace = false;
             Session.Credits = 0;
             Cheats.ClearGranted();
-            Project = project;
-            Active = true;
-            TestFlying = false;
-            ModManager.SetBuilderProject(project.Folder);
-            var db = Database.Shared;
-            foreach (var s in project.Ships) if (s.IsOverride) s.FillFromGame(db.Ship(s.OverrideIndex));
-            Ship = project.Ships.FirstOrDefault(s => s.Ref == project.LastShip) ?? project.Ships.FirstOrDefault();
-            var skins = project.SkinShips();
-            SkinShip = skins.Count > 0 ? skins[0] : -1;
+        }
+
+        // ---- play tests -----------------------------------------------------------------------------------------
+
+        /// <summary>A play test runs: the game as a player has it, with the project on (its quests, stations, systems...), the
+        /// station menu instead of the builder's screen, traffic in the orbits; the pause menu / the station's Menu go back to
+        /// the builder (EndPlayTest), and so does a death or a failed quest. Nothing is saved.</summary>
+        public static bool PlayTesting { get; private set; }
+
+        /// <summary>Starts a play test from the builder's station (the caller sets up what it tests: a quest started, a
+        /// campaign's start, then loads the Station scene).</summary>
+        public static void BeginPlayTest()
+        {
+            Project.Save();
+            PlayTesting = true;
+            TestFlying = InSpace = false;
+            PreviewInterior = null;
+            Cheats.ClearGranted();
+            Session.Credits = Mathf.Max(Session.Credits, 100000);
+            Session.LaunchedFromStation = false;
+            Session.DockedFromSpace = false;
+            Debug.Log("Mod Builder: play test");
+        }
+
+        /// <summary>Back in the builder from a play test: the game's state as it was when the project opened (the caller has
+        /// ended the quests the test ran), the builder's hangar.</summary>
+        public static void EndPlayTest()
+        {
+            if (!PlayTesting) return;
+            PlayTesting = false;
+            ResetGame(Project);
             ApplyShip();
-            Debug.Log($"Mod Builder: opened \"{project.Name}\" ({project.Folder}), {project.Ships.Count} ship(s)");
+            Debug.Log("Mod Builder: play test over");
+            SceneManager.LoadScene("Station");
         }
 
         /// <summary>Closes the project and returns to the main menu's project list.</summary>
         public static void End()
         {
+            PlayTesting = false;
             if (Project != null) Project.Save();
-            Active = TestFlying = false;
+            History?.Dispose();
+            History = null;
+            Active = TestFlying = InSpace = false;
             Project = null;
             Ship = null;
+            PreviewInterior = null;
             Cheats.ClearGranted();
             ModManager.SetBuilderProject(null);
             Session.ResetNewGame();
             GoF2Remake.Data.MenuRequest.OpenPanelOnStart = ProjectsPanel;
             SceneManager.LoadScene("MainMenu");
+        }
+
+        /// <summary>The builder's session dropped without a scene change (the Editor leaving Play mode with a project open:
+        /// Play mode runs without a domain reload, and these statics would otherwise keep the project as the active mod and
+        /// saving refused until the next Play, which the edit-mode tests then saw).</summary>
+        public static void CloseAfterPlayMode()
+        {
+            if (!Active && Project == null) return;
+            Project?.Save();
+            History?.Dispose();
+            History = null;
+            Active = TestFlying = InSpace = PlayTesting = false;
+            Project = null;
+            Ship = null;
+            PreviewInterior = null;
+            Cheats.ClearGranted();
+            ModManager.SetBuilderProject(null);
         }
 
         /// <summary>The game's ship number of a project ship: an override's original, a new ship's mod number (-1 while the
@@ -137,6 +319,7 @@ namespace GoF2Remake.Modding
             get
             {
                 if (ShowingSkin) return SkinShip;
+                if (ShowingPreview) return PreviewShip;
                 int i = IndexOf(Ship);
                 return i >= 0 && Database.Shared.Ship(i) != null ? i : PlaceholderShip;
             }
@@ -147,6 +330,7 @@ namespace GoF2Remake.Modding
         {
             if (Project == null) return;
             Project.Save();
+            History?.Commit();
             ModManager.SetBuilderProject(Project.Folder);
         }
 
@@ -155,8 +339,17 @@ namespace GoF2Remake.Modding
         {
             var db = Database.Shared;
             Session.ShipIndex = CurrentIndex;
+            // A customizable ship shows its default build, or in the Kits kind the build with the part being edited.
+            string buildKey = ModShipKits.BuildKey(Session.ShipIndex);
+            if (buildKey != null)
+            {
+                if (OpenKind == Kind.Kits && !string.IsNullOrEmpty(PreviewBuild)) Session.ShipBuilds[buildKey] = PreviewBuild;
+                else Session.ShipBuilds.Remove(buildKey);
+            }
             // A skinned game ship flies with a loadout of its own slots (it has none saved).
-            var loadout = ShowingSkin ? DefaultLoadout(db, Session.ShipIndex) : Ship != null ? Project.Loadout(Ship) : null;
+            var loadout = ShowingSkin ? DefaultLoadout(db, Session.ShipIndex)
+                        : ShowingPreview ? PreviewLoadout ?? DefaultLoadout(db, Session.ShipIndex)
+                        : Ship != null ? Project.Loadout(Ship) : null;
             if (loadout == null && Ship != null) { loadout = DefaultLoadout(db, Session.ShipIndex); Project.SetLoadout(Ship, loadout); }
             Session.Equipment = (loadout ?? new List<ItemStack>()).Where(i => db.Item(i.item) != null).Select(i => i.Clone()).ToList();
             Session.Cargo = new List<ItemStack>();
