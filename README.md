@@ -17,7 +17,8 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
 
 - **Story:** the full main campaign with the prologue, the Void and the ending, plus the Valkyrie and Supernova add-ons.
   Dialogue is voiced (English or German), with portraits, radio chatter and cutscenes.
-- **Flight:** the original flight model and chase camera. The station orbits are rebuilt exactly like the original,
+- **Flight:** the original flight model and chase camera, plus a cockpit view and an optional free flight mode in the
+  style of EVERSPACE 2 (thrust, strafe, inertial dampeners). The station orbits are rebuilt exactly like the original,
   with their skies, planets, suns, lens flare and asteroid fields. Travel covers the autopilot, planet jumps,
   fast-forward, the star map, jumpgates, the Khador Drive and the Void's wormhole.
 - **Combat:** every weapon, including missiles, beams, EMP, mines, turrets, sentry guns, the Liberator and the other
@@ -33,9 +34,11 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
   sieges and keep a bank. Everyone shares the NPC traffic, the crates, the asteroids and the shop stock. Local and
   global chat, chat commands, admin tools, a web admin page and event game modes (node graphs: waves of pirates,
   survival, races, quizzes...) with on-screen titles, timers, dialogs and rewards.
-- **Mods:** new and changed items (with their own weapon effects and sounds), ships from 3D models, star systems and
-  stations with their own models, planets, suns, skies, hangars and bars, characters with portraits, voice-over, music
-  and sound effects, quests and bar missions, and whole campaigns that show up under New Game. See [Mods](#mods).
+- **Mods:** new and changed items (with their own weapon effects and sounds), ships from 3D models or the game's own
+  models, customizable ships built from parts, star systems and stations with their own models, planets, suns, skies,
+  hangars and bars, characters with portraits, voice-over, music and sound effects, quests and bar missions, and whole
+  campaigns that show up under New Game. The in-game **Mod Builder** makes all of it without leaving the game. See
+  [Mods](#mods).
 - **VR (experimental):** PC VR through OpenXR with the `-vr` launch option: a cockpit in flight with the instruments on
   its displays, standing in the hangars and the bars, the menus on a floating screen with a laser pointer.
 - **Remake extras:**
@@ -43,20 +46,27 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
     **Inspect ship** (an orbit camera around it), animated dialogue text, and the original-style bloom as an option.
   - **Capital ship enhancements** (an option): escorts, stronger turrets and missile salvos; the carrier and the Vossk
     battleship can be destroyed, rare fleet battles between them, and the carrier sells supplies to pilots it trusts.
-  - **Pirate events** (an option): in Risky and Dangerous systems an orbit may hold a pirate outpost or a pirate boss
-    with a bounty.
+  - **Pirate events** (an option): in Risky and Dangerous systems an orbit may hold a pirate outpost or a named pirate
+    boss with a bounty and a threat tier, reported on the Missions window's Pirate activity board.
+  - **Smarter NPC targeting** (an option, on by default): enemy fighters attack the nearest hostile ship instead of all
+    going for you. **EMP breaks cloaks**, and the Disruptor does double damage to shields, as its description says.
   - A **missile warning**, and boosting or cloaking shakes off homing missiles.
   - **New Game+:** with a finished game in your saves, start again with its credits, blueprints, medals and ships.
   - A new game's **Game options**: the Kaamo Club from the start, **Hardcore** (permadeath: dying deletes the run's
     saves) and the tutorial popups (off by default).
   - Kaamo Club: stored ships keep their equipment and the mechanics' upgrades stack (both options, on by default).
-  - Sell all / Buy all in the shop, a smart target lock (hostile ships first; the original rule is an option), hold a
-    save slot to delete it, and the Missions window's map can travel to the mission's target.
+  - Sell all / Buy all in the shop, a smart target lock (hostile ships first; the original rule is an option) with an
+    Unlock target control, hold a save slot to delete it, and the Missions window's map can travel to the mission's
+    target.
+  - Flight HUD: Full / Minimal / Off (F1), far ship markers that don't hide the ship, the distance under every marker,
+    cooldown icons for the booster, cloak and time extender.
   - A full-map overview on the star map, and new medals as a short toast instead of a window.
   - Four difficulties (Easy, Normal, Hard, Extreme) that can be changed during a game, and a choice between the PC
     and Android economies for a new game.
-  - Other ships' engines like the player's (an option), photo mode, screenshots, an FPS counter, and every weapon's
-    own shot sound (an option; the original only plays the first gun's).
+  - Other ships' engines like the player's (an option), an FPS counter, and every weapon's own shot sound (an option;
+    the original only plays the first gun's).
+  - Photo modes (Action Freeze in flight, Inspect ship in the hangar) with a free camera and camera settings: field of
+    view, roll, depth of field, exposure, colour, frames, and screenshots up to 4x the screen size.
   - Upscaling: FSR 1 and STP everywhere they are supported, NVIDIA DLSS and AMD FSR 2 / 3 / 4 on Windows, MetalFX on
     macOS and iOS.
   - Discord Rich Presence on Windows: your Discord status shows what you are doing in the game.
@@ -68,15 +78,19 @@ through yet. Multiplayer and VR are experimental. A build's version is the date 
     bug shows where it happened.
   - Export and import of all save games as one file (the buttons under Load game in the main menu), to move your games to
     another PC or phone. Importing checks the file first and replaces every existing save.
+  - Saves from the original game: import an Android or PC save of Galaxy on Fire 2 into a slot, or export your saves
+    for the original (the community builds).
+  - A **save folder** of your choice (Options > Gameplay in the main menu): your saves and ship presets are also kept
+    there, where file managers and sync tools such as Syncthing reach them.
 - **Controls and screens:** touch, tilt, keyboard and mouse (with the PC version's clickable on-screen buttons when
-  mouse steering is off), and controllers (shown with Xbox buttons), all rebindable.
+  mouse steering is off), and controllers (shown with Xbox or PlayStation buttons, picked automatically), all rebindable.
   Gyro steering with a DualSense, DualShock 4 or Switch Pro Controller on Windows. Haptic feedback on controllers and
   Android phones (hits, collisions, explosions, weapons, boost, jumps and mining) with an intensity setting. Landscape
   screens from 4:3 up to 32:9, phones included.
 
 ## Getting started
 
-1. Install **Unity 7000.0.0a7** with Unity Hub. Add Android Build Support if you want phone builds.
+1. Install **Unity 7000.0.0a10** with Unity Hub. Add Android Build Support if you want phone builds.
 2. Clone the repository with Git LFS installed. The assets are about 2.1 GB in LFS.
 3. Open the project in Unity and open `Assets/Scenes/MainMenu.unity`, then press Play.
 
@@ -92,7 +106,9 @@ date and time as its version; for a release, set the Editor process's `GOF2_BUIL
 platforms get the same one.
 
 Windows builds use IL2CPP, which needs Visual Studio 2022 (or newer) with the **Desktop development with C++** workload
-and a Windows 10 / 11 SDK. Android and Linux builds don't need it.
+and a Windows 10 / 11 SDK. Android and Linux builds don't need it. The UWP build also needs Visual Studio's
+**C++ Universal Windows Platform tools** (see `CLAUDE.md`, UWP), and the Linux dedicated server the Hub module
+**Linux Dedicated Server Build Support** (GoF2 > Build > Linux Dedicated Server).
 
 #### Scene lighting (environment reflections)
 
@@ -104,14 +120,15 @@ for the scenes: a baked probe is one fixed sky for every system.
 
 Multiplayer is experimental. Everyone in a session shares one universe: you see each other in space and in the
 hangars, form squads, fly bar missions together, share the shops, found factions that own stations, and fight in arena
-matches. Sessions take place in the finished game's world: a new pilot starts docked at Dis in a Betty with 10 000
+matches. Players docked together can trade credits and cargo. Sessions take place in the finished game's world: a new pilot starts docked at Dis in a Betty with 10 000
 credits. A dedicated server (or a host's persistent world) keeps each player's progress; your single-player saves are
 never touched. Only the **exact same game version** can play together.
 
 - **[Playing together](docs/MULTIPLAYER.md)**: joining and hosting, chat, squads, missions, shops, factions, owning
   stations, arena fights, admins and every chat command.
-- **[Running a dedicated server](SERVER.md)**: setting one up, its options and console, the message of the day,
-  becoming its admin, its files.
+- **[Running a dedicated server](SERVER.md)**: setting one up (each release also has a Linux server download and a
+  Docker image, `ghcr.io/joppietoppie/gof2-server`), its options and console, the message of the day, becoming its
+  admin, its files.
 - **[How multiplayer works](docs/MULTIPLAYER-DEV.md)**: the code, for programmers.
 
 ## Mods
@@ -136,7 +153,13 @@ The Mods screen's **Open mods folder** button opens it. A save made with mods re
 them removes their items (refunded). In multiplayer the host decides whether mods are allowed; joining players need the
 same mods installed.
 
-To make a mod, see the modders' guide [Modding/README.md](Modding/README.md), with two example mods in
+The easiest way to make one is the **Mod Builder** (Mods > Mod Builder, experimental): it makes ships, items, skins,
+characters, quests (with a node graph), systems, stations, hangars and bars, weapon effects, audio, blueprints,
+campaigns and ship kits inside the game, each edited where it lives in the game, with undo, test flights and play tests,
+and exports the finished mod. Your own AI assistant can work in it too, through its local MCP server (the AI tools
+button), with permissions you choose.
+
+To make a mod by hand, see the modders' guide [Modding/README.md](Modding/README.md), with two example mods in
 [Modding/Examples](Modding/Examples). [Modding/ai](Modding/ai) has a guide to making mods with Claude or ChatGPT.
 
 ## VR (experimental)
@@ -173,10 +196,12 @@ The cockpit is the same for every ship for now. VR has only been tested without 
 | Q | Autopilot menu |
 | E | Actions menu (secondary weapons, wingmen, cloak, Khador Drive) |
 | Tab | Fast-forward |
-| T | Camera / turret view |
+| T | Camera: chase, cockpit, turret view, free look |
 | V / K / C / X | Wingmen / Khador Drive / cloak / time extender |
 | M or middle mouse | Toggle mouse steering |
-| B | Chat (multiplayer) |
+| U | Unlock target |
+| B / N | Chat / multiplayer window (multiplayer) |
+| F1 | Flight HUD: full, minimal, off |
 | F12 | Screenshot |
 | Esc | Pause |
 
