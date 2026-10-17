@@ -8,6 +8,9 @@
 // stored under the texture's exact name), Save original (the game's texture as a PNG to paint over, into the project's
 // templates/ folder, which Export leaves out) and ✕ (back to the game's). The turntable and Test fly show the skinned ship
 // (ModBuilder.SkinShip). A change makes the game read the project again (the turntable ship is rebuilt with it).
+// The project's new ships on a game model ("+ Skin a game ship" lists them too; the Ships page's "Its own textures…") take
+// textures of their own: each Replace goes to textures/ships/<id>/ (ModProject.ShipSkinScope), so the game's ship of that
+// model keeps its look (Modding.ModTextures, Database.ShipOwnTextures).
 
 using System;
 using System.Collections.Generic;
@@ -116,11 +119,16 @@ namespace GoF2Remake.UI
             var list = new List<SkinTexture>();
             var entry = Database.Shared.ShipAssembly(ship);
             var prefab = entry != null ? AssembledObject.LoadPrefab(entry) : null;
+            // The project's new ship on a game model: its replacements are its own (textures/ships/<id>/).
+            string shipScope = ModProject.ShipSkinScope(Project?.OwnSkinShip(ship));
             if (prefab != null)
             {
                 var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                // The hull's own texture names start with its model's ("ship_028_terran"); anything else is shared.
+                // The hull's own texture names start with its model's ("ship_028_terran"; a copy's "<model>#ship=N" too);
+                // anything else is shared.
                 string own = entry.name;
+                int hash = own.IndexOf(ModShipKits.VariantSeparator);
+                if (hash > 0) own = own.Substring(0, hash);
                 string ownUnnumbered = System.Text.RegularExpressions.Regex.Replace(own, "_[0-9]{3}_", "_");   // cargo_003_terran: cargo_terran_*
                 var combat = GoF2Remake.Flight.CombatAssets.Load();
                 var mats = new List<(Material m, bool wreck)>();
@@ -148,7 +156,7 @@ namespace GoF2Remake.UI
                                     : t.name.Contains("_emissive") || t.name.Contains("_lights") ? "Lights" : role;
                         if (wreck) what = "Wreck " + what.ToLowerInvariant();
                         bool shared = !t.name.StartsWith(own, StringComparison.OrdinalIgnoreCase) && !t.name.StartsWith(ownUnnumbered, StringComparison.OrdinalIgnoreCase);
-                        list.Add(new SkinTexture { name = t.name, role = what, scope = own, texture = t, linear = linear, normal = normal, shared = shared });
+                        list.Add(new SkinTexture { name = t.name, role = what, scope = shipScope ?? own, texture = t, linear = linear, normal = normal, shared = shared });
                     }
                 }
                 int Order(SkinTexture s) => (s.role.StartsWith("Wreck") ? 10 : 0) + (s.role.Replace("Wreck ", "").ToLowerInvariant() switch
@@ -224,7 +232,11 @@ namespace GoF2Remake.UI
             int ship = ModBuilder.SkinShip;
             if (ship < 0) { Note(skinPage, T("mbPickSkin", "Add a skin on the left to start.")); return; }
             Heading(skinPage, string.Format(T("mbSkinOf", "Skin of the {0}"), GameNames.Ship(ship)));
-            Note(skinPage, T("mbSkinNote", "A texture you replace changes every ship of this model: yours, the NPCs' and the shops'. Keep the original's layout: save the original, paint over it, then replace it with your image (PNG, JPG, TGA, BMP, DDS or the game's .aei; 2048 x 2048 like the originals looks best)."));
+            // The project's new ship on a game model: every texture is replaced on it alone.
+            bool ownShip = ModProject.ShipSkinScope(Project.OwnSkinShip(ship)) != null;
+            Note(skinPage, ownShip
+                ? T("mbSkinNoteOwnShip", "This ship flies one of the game's models: a texture you replace here changes this ship only, the game's ship of that model and the other ships on it keep theirs. Keep the original's layout: save the original, paint over it, then replace it with your image (PNG, JPG, TGA, BMP, DDS or the game's .aei; 2048 x 2048 like the originals looks best).")
+                : T("mbSkinNote", "A texture you replace changes every ship of this model: yours, the NPCs' and the shops'. Keep the original's layout: save the original, paint over it, then replace it with your image (PNG, JPG, TGA, BMP, DDS or the game's .aei; 2048 x 2048 like the originals looks best)."));
             var list = SkinTexturesOf(ship);
             if (list.Count == 0) { Note(skinPage, T("mbNoTextures", "This ship has no textures that can be replaced.")); return; }
             foreach (var t in list)
@@ -239,13 +251,15 @@ namespace GoF2Remake.UI
                 if (shown != null) thumb.style.backgroundImage = Background.FromTexture2D((Texture2D)shown);
                 var info = Add(row, new VisualElement(), "mbv-skin-info");
                 string group = SharedBy(t.name), shipName = GameNames.Ship(ship);
-                string state = own == null ? "" : !t.shared ? T("mbReplaced", "replaced")
+                string state = own == null ? "" : ownShip ? (onlyThis ? string.Format(T("mbReplacedOnly", "replaced for the {0} only"), shipName)
+                                                                      : T("mbReplacedEveryShip", "replaced for every ship (the project's own file)"))
+                             : !t.shared ? T("mbReplaced", "replaced")
                              : onlyThis ? string.Format(T("mbReplacedOnly", "replaced for the {0} only"), shipName)
                              : string.Format(T("mbReplacedAllOf", "replaced for all {0}"), group);
                 Add(info, new Label((T("mbTexRole_" + t.role, t.role) + (own != null ? "  ·  " + state : "")).ToUpperInvariant()), "mbv-skin-role", "gof-semibold")
                     .EnableInClassList("mbv-skin-role--on", own != null);
                 Add(info, new Label(t.name), "mbv-skin-name");
-                if (t.shared)
+                if (t.shared && !ownShip)
                     Add(info, new Label(string.Format(T("mbSharedTextureOf", "Shared by all {0}. \"{1} only\" changes it on this ship alone; \"All {0}\" changes it on every one of them."),
                                                       group, shipName)), "mbv-note", "mbv-note--warn");
                 if (t.role.EndsWith("etallic / smoothness"))
@@ -261,7 +275,8 @@ namespace GoF2Remake.UI
                 });
                 if (ModImport.Available)
                 {
-                    if (t.shared)
+                    if (ownShip) Act(buttons, T("mbReplace", "Replace…"), () => Pick(tex.scope));   // this ship only
+                    else if (t.shared)
                     {
                         Act(buttons, string.Format(T("mbReplaceOnly", "{0} only…"), shipName), () => Pick(tex.scope));
                         Act(buttons, string.Format(T("mbReplaceAllOf", "All {0}…"), group), () => Pick(null));
@@ -269,7 +284,7 @@ namespace GoF2Remake.UI
                     else Act(buttons, T("mbReplace", "Replace…"), () => Pick(null));
                 }
                 Act(buttons, T("mbSaveOriginal", "Save original"), () => SaveTemplate(tex));   // its own status line
-                if (own != null)
+                if (own != null && (!ownShip || onlyThis))   // a new ship's page leaves the project's every-ship file alone
                     Act(buttons, "✕", () => { Project.RemoveSkinTexture(tex.name, onlyThis ? tex.scope : null); SkinChanged(); }, "mbv-step");
             }
             var foot = Add(skinPage, new VisualElement(), "mbv-row");
@@ -400,6 +415,19 @@ namespace GoF2Remake.UI
                     ShowSkin(index, true);
                 }));
             }
+            // The project's new ships on a game model: textures of their own (the game's ship of that model keeps its look).
+            foreach (var s in Project.Ships)
+            {
+                if (!ModProject.OwnsSkinOf(s)) continue;
+                int index = ModBuilder.IndexOf(s);
+                if (index < 0 || taken.Contains(index) || db.Ship(index) == null) continue;
+                choices.Add((string.Format(T("mbOwnShipSkin", "{0} (your ship, its own textures)"), GameNames.Ship(index)), ItemInfo.ShipIcon(index), () =>
+                {
+                    Project.AddSkin(index);
+                    SaveNow();
+                    ShowSkin(index, true);
+                }));
+            }
             ShowPicker(T("mbNewSkinTitle", "Skin a game ship"), choices);
         }
 
@@ -409,8 +437,10 @@ namespace GoF2Remake.UI
             if (ship < 0) return;
             Confirm(T("mbRemoveSkin", "Remove skin"), string.Format(T("mbRemoveSkinText", "Remove the {0}'s skin and its textures from the project?"), GameNames.Ship(ship)), () =>
             {
-                // the ship's own replacements; one for every ship stays unless it is one of this model's own textures
-                foreach (var t in SkinTexturesOf(ship)) { Project.RemoveSkinTexture(t.name, t.scope); if (!t.shared) Project.RemoveSkinTexture(t.name); }
+                // the ship's own replacements; one for every ship stays unless it is one of this model's own textures (a new
+                // ship on a game model only has its own: the game ship's skin stays)
+                bool ownShip = ModProject.ShipSkinScope(Project.OwnSkinShip(ship)) != null;
+                foreach (var t in SkinTexturesOf(ship)) { Project.RemoveSkinTexture(t.name, t.scope); if (!t.shared && !ownShip) Project.RemoveSkinTexture(t.name); }
                 Project.RemoveSkin(ship);
                 SaveNow();
                 RequestReload(false);

@@ -77,7 +77,9 @@ namespace GoF2Remake.World
             var s = ship.AddComponent<HangarShipShadow>();
             // A mod's ship never takes the set's map: its assembly name is a number this game's mod registry gave it, which
             // another game (or this one before) gave another ship.
-            var entry = ShipShadowBaker.IsModShip(ship) ? null : set.Find(assembly);
+            // A game model's copy for one ship ("<model>#ship=N...", a skin or a mod ship's own textures): the model's map.
+            int hash = assembly?.IndexOf(Modding.ModShipKits.VariantSeparator) ?? -1;
+            var entry = ShipShadowBaker.IsModShip(ship) ? null : set.Find(hash > 0 ? assembly.Substring(0, hash) : assembly);
             Texture2D tex = null;
             if (entry != null && entry.texture != null) tex = s.Use(entry);
             else if (ShipShadowBaker.Request(assembly, ship, out entry))

@@ -313,7 +313,8 @@ namespace GoF2Remake.Flight
                 var dir = (tr.forward + (toTarget.normalized - tr.forward) * (dtMs * turn / 4096f)).normalized;
                 tr.rotation = Quaternion.LookRotation(dir, Vector3.up);
                 // moveToPosition: dt * throttle (+0xbc, full while docking) * speed (+0xb8: a boost raises it).
-                float step = Mathf.Min(dtMs * ship.Model.Throttle * ship.Model.CurrentSpeed, d - dockDistance + 1f) * M;
+                // Remake, multiplayer: the held fast-forward is a cruise mode (Navigation.Cruise).
+                float step = Mathf.Min(dtMs * ship.Model.Throttle * ship.Model.CurrentSpeed * Navigation.CruiseFactor, d - dockDistance + 1f) * M;
                 tr.position += tr.forward * step;
                 ship.ExternalSpeedMetersPerSecond = Time.deltaTime > 0f ? step / Time.deltaTime : 0f;
             }

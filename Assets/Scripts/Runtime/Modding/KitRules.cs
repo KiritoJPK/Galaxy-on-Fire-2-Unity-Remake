@@ -25,6 +25,10 @@ namespace GoF2Remake.Modding
         /// <summary>A kit build's assembly name: "ship_NNN_mod#<build>" (ModShipKits.VariantAssembly).</summary>
         public const char VariantSeparator = '#';
 
+        /// <summary>A game model's copy for one ship: "&lt;model&gt;#ship=N" (a mod ship with its own textures,
+        /// Database.ShipAssembly), "&lt;model&gt;#ship=N;skin=id" (a skin of a ship without a kit, ModShipKits.VariantAssembly).</summary>
+        public const string ShipToken = "ship=";
+
         /// <summary>The build effect of the player's ship (null: not a kit ship); another ship: its default build.</summary>
         public static KitEffect BuildEffect(int ship) => GameHooks.KitBuildEffect?.Invoke(ship);
 

@@ -70,8 +70,8 @@ namespace GoF2Remake.EditorTools
             "set ALLOWDEBUG=0\n" +
             "rem 1 = PvP: players may fight anywhere; 0 = PvE: only in arena matches and faction sieges.\n" +
             "set PVP=0\n" +
-            "rem The flight model everyone flies: gof2 (the game's), es2 (EVERSPACE 2 style) or player (each player's own option).\n" +
-            "set FLIGHT=gof2\n" +
+            "rem The flight model: player (each player picks their own in Options), or gof2 (the game's) / es2 (EVERSPACE 2 style) for everyone.\n" +
+            "set FLIGHT=player\n" +
             "rem The web admin (a browser page: players, bans, settings, console, log): a port such as 8080, empty = off.\n" +
             "rem Log in with the admin token from the console, or a code from /web in the game.\n" +
             "set WEBPORT=\n" +
@@ -103,7 +103,7 @@ namespace GoF2Remake.EditorTools
             "MAXPLAYERS=16      # at most 100\n" +
             "ALLOWDEBUG=0       # 1 = the players may use the Debug menu (cheats, items, spawns)\n" +
             "PVP=0              # 1 = PvP: players may fight anywhere; 0 = PvE: only in arena matches and faction sieges\n" +
-            "FLIGHT=gof2        # the flight model everyone flies: gof2 (the game's), es2 (EVERSPACE 2 style), player (each one's own)\n" +
+            "FLIGHT=player      # the flight model: player (each one's own Options choice), or gof2 (the game's) / es2 (EVERSPACE 2) for all\n" +
             "WEBPORT=           # the web admin's port (e.g. 8080), empty = off; log in with the admin token or /web's code\n" +
             "WEBBIND=127.0.0.1  # 127.0.0.1 = this machine only; 0.0.0.0 = the network (plain HTTP: put a TLS proxy in front)\n" +
             "ALLOWMODS=0        # 1 = the session runs every mod in the Mods folder (players need the same files)\n" +

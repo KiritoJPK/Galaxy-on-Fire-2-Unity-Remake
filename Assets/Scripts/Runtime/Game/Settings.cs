@@ -269,6 +269,40 @@ namespace GoF2Remake.Data
         /// a killable carrier and Vossk battleship with loot, the carrier's Inflicts and its resupply dock. Off = the original.
         /// A session rule.</summary>
         public static bool CapitalShips { get => Rule(R.CapitalShips, "capitalShips", false); set => SetRule(R.CapitalShips, "capitalShips", value); }
+        /// <summary>Remake (players' report, 2026-10-17: since the mesh collision the fighters were hard to hit): Options >
+        /// Gameplay "Ship collision", SessionRules.CollisionExact / Mixed / Original. Exact: every hull on its real shape
+        /// (Flight.HullCollision). Mixed (default): the ships a player can fly on the original's hit cube and collision
+        /// sphere (HullBody.flyableShip), freighters, capital ships, stations, gates, turrets and objects on their real
+        /// shape. Original: no mesh collision at all, the original's boxes, spheres and cubes everywhere. A session rule (the
+        /// host's or the server's, -shipcollision; two rule bits, SessionRules.CollisionOf). The old toggle's key
+        /// (preciseShipCollision, on = Exact) is read until the mode is set.</summary>
+        public static int ShipCollision
+        {
+            get
+            {
+                if (GameHooks.SessionRule != null && GameHooks.SessionRule(R.PreciseShipCollision, out bool precise)
+                    && GameHooks.SessionRule(R.OriginalCollision, out bool original))
+                    return original ? R.CollisionOriginal : precise ? R.CollisionExact : R.CollisionMixed;
+                return LocalCollision;
+            }
+            set
+            {
+                int mode = Mathf.Clamp(value, R.CollisionExact, R.CollisionOriginal);
+                Set("shipCollision", mode);
+                GameHooks.RuleChangedByHost?.Invoke(R.PreciseShipCollision, mode == R.CollisionExact);
+                GameHooks.RuleChangedByHost?.Invoke(R.OriginalCollision, mode == R.CollisionOriginal);
+            }
+        }
+
+        static int LocalCollision
+        {
+            get
+            {
+                float v = Get("shipCollision", -1f);
+                if (v < -0.5f) return GetBool("preciseShipCollision", false) ? R.CollisionExact : R.DefaultCollision;
+                return Mathf.Clamp(Mathf.RoundToInt(v), R.CollisionExact, R.CollisionOriginal);
+            }
+        }
 
         /// <summary>The Gameplay options that change how the game plays are the session's in multiplayer (NetRules), else the
         /// player's own.</summary>
@@ -288,7 +322,7 @@ namespace GoF2Remake.Data
             if (GetBool("cloakBay", true)) m |= R.CloakBay;
             if (GetBool("empBreaksCloak", true)) m |= R.EmpBreaksCloak;
             if (GetBool("smarterNpcTargeting", true)) m |= R.SmarterNpcTargeting;
-            return m;
+            return R.WithCollision(m, LocalCollision);
         }
 
         /// <summary>DialogueWindow::update: with voice, turn the page once the line has ended.</summary>
@@ -367,7 +401,7 @@ namespace GoF2Remake.Data
         public static readonly string[] GameplayKeys =
         {
             "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoMaxLevel", "kaamoKeepsEquipment", "cloakBay", "informerOriginalRule",
-            "originalTargetLock", "keepEnemyLock", "modShipTraffic", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "smarterNpcTargeting", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "hudMode", "discordPresence",
+            "originalTargetLock", "keepEnemyLock", "modShipTraffic", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "smarterNpcTargeting", "shipCollision", "preciseShipCollision", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "hudMode", "discordPresence",
             "farShipMarkers", "markerDistance",
         };
         public static readonly string[] LanguageKeys = { "voiceLanguage" };

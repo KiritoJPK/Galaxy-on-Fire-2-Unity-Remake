@@ -131,7 +131,7 @@ namespace GoF2Remake.Flight
             if (constantRumble > 0f) rumble = Mathf.Max(rumble, constantRumble);
             // Remake: the same rumble on the controller / phone (Haptics; its own option, not the camera shake's): explosions,
             // the Liberator, the boost below; the boost's start as a pulse.
-            bool boosting = model.IsBoosting;
+            bool boosting = model.LooksBoosting;   // the multiplayer cruise mode too (FlightModel.CruiseVisual)
             if (boosting && !wasBoosting) Haptics.Play(Haptics.Boost);
             wasBoosting = boosting;
             float boostRumble = boosting ? model.BoostVisualPercent * Mathf.Clamp(model.CurrentSpeed, 2f, 8f) / 50f : 0f;

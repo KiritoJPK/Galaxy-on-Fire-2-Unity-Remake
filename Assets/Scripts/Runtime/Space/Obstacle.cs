@@ -37,7 +37,7 @@ namespace GoF2Remake.Flight
         /// fighters still steer by the volumes. Null = none.</summary>
         [System.NonSerialized] public HullBody hull;
         /// <summary>The player collides with the hull, not the volumes.</summary>
-        public bool UsesHull => hull != null && hull.Active;
+        public bool UsesHull => hull != null && hull.Collides;   // not taken by the ship collision mode (Mixed: another player's ship; Original: any): its volumes
 
         public bool Active => isActiveAndEnabled && volumes != null && volumes.Count > 0;
 

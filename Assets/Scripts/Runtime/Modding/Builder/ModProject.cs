@@ -554,11 +554,21 @@ namespace GoF2Remake.Modding
         static readonly string[] ImageExtensions = ImageImport.FileExtensions;   // every format the game reads
 
         /// <summary>The game ships the project re-skins: the ones added in the builder (builder.json "skins") and any whose
-        /// texture a file in textures/ replaces ("ship_028_terran_diffuse" is ship 28's; v_ / sn_ add-on ships too).</summary>
+        /// texture a file in textures/ replaces ("ship_028_terran_diffuse" is ship 28's; v_ / sn_ add-on ships too). Also the
+        /// project's new ships on a game model with textures of their own (textures/ships/&lt;id&gt;/, or their id in "skins"),
+        /// by the number the game gave them (none while the project can't be read).</summary>
         public List<int> SkinShips()
         {
             var set = new SortedSet<int>();
             if (builder["skins"] is JArray a) foreach (var t in a) if (t.Type == JTokenType.Integer) set.Add((int)t);
+            foreach (var s in Ships)
+            {
+                if (!OwnsSkinOf(s)) continue;
+                bool listed = builder["skins"] is JArray l && l.Any(t => t.Type == JTokenType.String && (string)t == s.LocalId);
+                if (!listed && SkinTextureFiles(ShipSkinScope(s)).Count == 0) continue;
+                int i = ModContent.ShipIndexOf(Key(s.LocalId));
+                if (i >= 0) set.Add(i);
+            }
             string dir = Path.Combine(Folder, ModContent.TexturesFolder);
             var shipName = new System.Text.RegularExpressions.Regex(@"^(?:v_|sn_)?ship_(\d{3})_");
             if (Directory.Exists(dir))
@@ -616,12 +626,41 @@ namespace GoF2Remake.Modding
         public void AddSkin(int ship)
         {
             if (!(builder["skins"] is JArray a)) builder["skins"] = a = new JArray();
+            // The project's own ship by its id (its number is only this run's).
+            if (OwnSkinShip(ship) is ProjectShip own) { if (!a.Any(t => t.Type == JTokenType.String && (string)t == own.LocalId)) a.Add(own.LocalId); return; }
             if (!a.Any(t => t.Type == JTokenType.Integer && (int)t == ship)) a.Add(ship);
         }
 
         public void RemoveSkin(int ship)
         {
-            if (builder["skins"] is JArray a) foreach (var t in a.Where(t => t.Type == JTokenType.Integer && (int)t == ship).ToList()) t.Remove();
+            if (!(builder["skins"] is JArray a)) return;
+            string id = OwnSkinShip(ship)?.LocalId;
+            foreach (var t in a.Where(t => t.Type == JTokenType.Integer && (int)t == ship || id != null && t.Type == JTokenType.String && (string)t == id).ToList())
+                t.Remove();
+        }
+
+        /// <summary>A new ship of the project that flies one of the game's models: it can have textures of its own.</summary>
+        public static bool OwnsSkinOf(ProjectShip s) => s != null && !s.IsOverride && s.HasGameModel && !string.IsNullOrEmpty(s.LocalId);
+
+        /// <summary>The project's new ship on a game model with game number 'ship' (null: none, or a game ship).</summary>
+        public ProjectShip OwnSkinShip(int ship) =>
+            ship < 0 ? null : Ships.FirstOrDefault(s => OwnsSkinOf(s) && ModContent.ShipIndexOf(Key(s.LocalId)) == ship);
+
+        /// <summary>Where a new ship's own textures go under textures/ ("ships/&lt;id&gt;", ModContent.ShipTexturesFolder; the
+        /// SkinTexture / SetSkinTexture scope), null when it can't have any.</summary>
+        public static string ShipSkinScope(ProjectShip s) =>
+            OwnsSkinOf(s) ? ModContent.ShipTexturesFolder.Substring(ModContent.TexturesFolder.Length + 1) + "/" + s.LocalId : null;
+
+        /// <summary>The pictures under textures/&lt;scope&gt;/ (texture names), empty for none.</summary>
+        public List<string> SkinTextureFiles(string scope)
+        {
+            var list = new List<string>();
+            if (string.IsNullOrEmpty(scope)) return list;
+            string dir = Path.Combine(Folder, ModContent.TexturesFolder, scope);
+            if (!Directory.Exists(dir)) return list;
+            foreach (var f in Directory.GetFiles(dir))
+                if (ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())) list.Add(Path.GetFileNameWithoutExtension(f));
+            return list;
         }
 
         /// <summary>The project's replacement of a game texture (textures/&lt;name&gt;.png or .jpg; with a scope, the one

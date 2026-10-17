@@ -266,7 +266,7 @@ namespace GoF2Remake.Multiplayer
                 run = (a, by) => Moderate("deleteprofile", a, by), description = () => X("mpCmdDeleteProfile", "master: deletes an offline pilot's profile") },
             new Command { name = "flightmodel", usage = "[gof2 | es2 | player]", arg = Arg.Text, available = () => LocalIsAdmin, allowed = IsAdmin,
                 run = FlightModel,
-                description = () => X("mpCmdFlightModel", "admins: the flight model everyone flies: gof2 (the game's, the default), es2 (EVERSPACE 2 style) or player (each player's own option)") },
+                description = () => X("mpCmdFlightModel", "admins: the flight model: gof2 (the game's) or es2 (EVERSPACE 2 style) for everyone, or player (each player's own option, the default)") },
             new Command { name = "settings", available = () => LocalRole >= NetModeration.Admin, allowed = Anyone,
                 run = (a, by) => Moderate("settings", a, by), description = () => X("mpCmdSettings", "admins: the server's settings") },
             new Command { name = "set", usage = "<key> <value>", arg = Arg.Text, available = () => LocalRole >= NetModeration.Admin, allowed = Anyone,

@@ -36,7 +36,7 @@ arenas, distress calls and their chat commands), see [Playing together](docs/MUL
    - `PASSWORD`: leave it empty for no password.
    - `MAXPLAYERS`: the player limit, at most 100.
    - `ALLOWDEBUG`: `1` lets players use the Debug menu (cheats, items, spawns); `0` (the default) turns it off.
-   - `FLIGHT`: the flight model everyone flies: `gof2` (the default), `es2` (EVERSPACE 2 style) or `player` (each player's own).
+   - `FLIGHT`: the flight model: `player` (the default: each player picks their own in Options), or `gof2` (the game's) / `es2` (EVERSPACE 2 style) for everyone.
 2. Save the file and double-click it. A console window opens. The game itself runs without a window and without sound.
 3. The console shows the **join code**, and the game appears in every player's server browser.
 
@@ -142,7 +142,7 @@ Players on a different game version are turned away with a message saying which 
 | `-maxplayers N` | The player limit, 2 to 100 (default 16). |
 | `-allowdebug` | Players may use the Debug menu (cheats, items, spawns). Off without it. |
 | `-freepvp` | Players may fight each other anywhere, not only in arena matches and faction sieges. |
-| `-flightmodel M` | The flight model everyone flies: `gof2` (the game's own, the default), `es2` (EVERSPACE 2 style) or `player` (each player's own Options choice). One model for everyone keeps PvP fair. Admins change it in the game with `/flightmodel`. |
+| `-flightmodel M` | The flight model: `player` (also `any` or `unrestricted`; the default: each player's own Options choice), or `gof2` (the game's own) / `es2` (EVERSPACE 2 style) for everyone. One model for everyone keeps PvP fair. Admins change it in the game with `/flightmodel`. |
 | **Gameplay rules** | The game's Gameplay options that change how it plays are one rule for everyone on the server. Each flag turns one the other way from its default. |
 | `-cloakhides` | NPC ships lose track of a cloaked player (they fly to where they last saw them, then back to their patrol). Off by default: as in the original, they keep chasing a cloaked player without firing. |
 | `-capitalships` | Capital ship enhancements (escorts, stronger turrets, a killable carrier and Vossk battleship, fleet battles). Off by default. |
@@ -154,6 +154,7 @@ Players on a different game version are turned away with a message saying which 
 | `-nocloakbay` | A cloak mounted on the Specter or the Scimitar takes an equipment slot, as in the original (by default it goes into their integrated cloak's bay). |
 | `-noempcloak` | EMP hits don't break cloaks, as in the original (by default an EMP hit drops a cloak at once). |
 | `-originaltargeting` | NPC fighters go for the player first, as in the original (by default they take the nearest hostile ship and spread out over their targets). |
+| `-shipcollision MODE` | Ship collision: `exact` (shots hit every ship and object on its real shape, and players' ships meet each other on it), `mixed` (the default: fighters and players' ships are hit on a box and meet as spheres, as in the original; freighters, capital ships, stations and objects keep their real shape) or `original` (the original's boxes and spheres for everything). The old `-precisecollision` still means `exact`. |
 | `-port N` | The port for local network play (default 7777, UDP). |
 | `-fps N` | The server's frame rate (default 60). |
 | `-noconsole` | Windows: no console window of its own. |
@@ -187,6 +188,7 @@ window, **Admin** tab, **Server settings**. You can also type `/set <key> <value
 | `allowdebug` | Players may use the Debug menu (`on` / `off`) | At once. |
 | `freepvp` | Players may fight anywhere (`on` / `off`) | At once. |
 | `flightmodel` | The flight model above (`gof2`, `es2` or `player`; also `/flightmodel`) | At once. |
+| `shipcollision` | The ship collision mode above (`exact`, `mixed` or `original`) | At once. |
 | `cloakhides`, `pirateevents`, `capitalships`, `informeroriginal`, `kaamostacking`, `kaamoequipment`, `cloakbay`, `empcloak`, `smarttargeting` | The gameplay rules above (`on` / `off`; `on` = the option on) | At once (new orbits get the spawns that depend on them). |
 | `kaamomaxlevel` | The Kaamo Club upgrade limit above (2-20) | At once for new upgrades; profiles above a lowered limit are cut back at their next sign-in or upload. |
 | `maxearn` | Worth a profile may gain per minute | At once. |

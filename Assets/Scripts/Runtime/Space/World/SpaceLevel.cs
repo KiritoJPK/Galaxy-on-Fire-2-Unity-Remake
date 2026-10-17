@@ -288,7 +288,8 @@ namespace GoF2Remake.World
             // Ship combat: the player's Player object, the orbit's NPC traffic, the ship / salvage locks.
             Health = Player.gameObject.AddComponent<PlayerHealth>();
             Health.Setup(db, Player, chase, Weapons);
-            if (Player.visualModel != null) HullCollision.Attach(Player.visualModel.gameObject, Health.Target, null);   // NPC shots hit its real shape
+            if (Player.visualModel != null)   // NPC shots hit its real shape (with Original ship collision its cube)
+                HullCollision.Attach(Player.visualModel.gameObject, Health.Target, null, HullCollision.FlyableShip(Session.ShipIndex));
             Collision = Player.gameObject.AddComponent<PlayerCollision>();
             Collision.Setup(Health, chase, Mining);
             Collision.wormhole = Wormhole;
@@ -713,7 +714,7 @@ namespace GoF2Remake.World
             // Remake mods: the exhaust style of the ship's build (ModExhausts; before the exhaust particles, which it replaces).
             if (PlayerHull.OwnEngines(db)) Modding.ModExhausts.Apply(db, shipIndex, model, Modding.ModShipKits.PlayerBuild(shipIndex));
             ctrl.visualModel = model.transform;
-            if (Health != null) HullCollision.Attach(model, Health.Target, null);
+            if (Health != null) HullCollision.Attach(model, Health.Target, null, HullCollision.FlyableShip(shipIndex));
 
             var ship = db.Ship(shipIndex);
             var equipment = new System.Collections.Generic.List<ItemData>();

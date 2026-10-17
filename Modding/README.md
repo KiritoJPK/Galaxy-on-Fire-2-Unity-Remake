@@ -1636,6 +1636,27 @@ veteran_skin/
 
 The Mod Builder's Skins tab writes these for you: a shared texture has "This ship..." and "All ships..." buttons.
 
+### A new ship on a game model
+
+A new ship that flies one of the game's models (`"model": "gof2:ship_028_terran"`, see
+[The game's own models](#the-games-own-models)) uses that model's textures, so a skin of the model above changes the game's
+ship too. To give your ship textures of its own, put them in `textures/ships/<ship id>/`, named like the game's (the `id` of
+its ships.json entry). They change that ship only: the game's Veteran and every other ship on its model keep their look.
+What the folder doesn't replace still takes the model's other skins (`textures/<model>/`, `textures/<name>`).
+
+```
+custom_veteran/
+  ships.json                   [ { "id": "red_veteran", "name": "Red Veteran", "model": "gof2:ship_028_terran", ... } ]
+  textures/
+    ships/
+      red_veteran/
+        ship_028_terran_diffuse.png    (the Red Veteran's hull only)
+        glow_terran.png                (its lights only)
+```
+
+In the Mod Builder: **Its own textures…** on the ship's Ship tab, or **+ Skin a game ship** in the Skins tab, which lists your
+ships on a game model too. Their Replace buttons write to that ship's folder.
+
 ### Planets, suns and rings
 
 The same goes for the planets, suns and rings in the sky: a texture named like the game's replaces it in every system that
@@ -1686,7 +1707,7 @@ model comes with everything it has: its textures, lights, engine glows, animatio
 
 | Where | |
 |---|---|
-| ships.json `model` | A new ship on a game ship's model: `"model": "gof2:ship_028_terran"`. It gets that ship's hardpoints (unless the entry has its own `mounts`), sits on the hangar pads like that ship (unless it gives `hangarHeight`) and uses its shop icon (unless it gives `icon`). On an `override` it gives an original ship another ship's model. `modelLength`, `modelYaw` and the other model fields don't apply: the model is used as made. |
+| ships.json `model` | A new ship on a game ship's model: `"model": "gof2:ship_028_terran"`. It gets that ship's hardpoints (unless the entry has its own `mounts`), sits on the hangar pads like that ship (unless it gives `hangarHeight`) and uses its shop icon (unless it gives `icon`). Textures of its own go in `textures/ships/<ship id>/` (see [A new ship on a game model](#a-new-ship-on-a-game-model)). On an `override` it gives an original ship another ship's model. `modelLength`, `modelYaw` and the other model fields don't apply: the model is used as made. |
 | stations.json `model` | A station on any game model, at its own size unless `modelSize` is given: `"model": "gof2:station_078_midorian"`. |
 | items.json fx `turret` | A turret on any game model: `"turret": "gof2:turret_003_ship_mounted"` (a model without the turret's `pivot` / `*_gun` nodes turns as one piece), or `"turret": { "item": 48 }` for that game turret's model with its own muzzle and shot start. `scale` and `offset` work on both. |
 | items.json fx parts | A projectile, muzzle flash or impact on a game model: `{ "model": "gof2:rocket_002", "size": 300 }`; or another item's own part with `{ "item": 46 }` (see [Weapon effects](#weapon-effects)). Two props that aren't in the model list work here too: `"gof2:bra"` and `"gof2:beer"`, the bra and beer can that drift through the ending (see `Modding/Examples/exploding_bra`). |

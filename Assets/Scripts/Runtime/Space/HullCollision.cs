@@ -13,6 +13,12 @@
 //               channel) neither stops shots nor the ship
 //   Suppressed  the main menu's backdrop builds no hulls (nobody flies there; the cooking would only cost loading)
 // Sweep, Shown and Suppressed follow a contributor's precise-collision version (2026-10-11).
+// Ship collision (Options > Gameplay, Settings.ShipCollision, a session rule; players found the fighters hard to hit on
+// their real shapes, 2026-10-17; HullBody.Collides, Mode): Exact as above; Mixed (default) leaves the flyable ships' hulls
+// out (HullBody.flyableShip): shots hit fighters, the player's ship and other players' ships on the original's hit cube,
+// and the player meets another player's ship on its sphere, while freighters, the battleship, the capital ships,
+// stations, gates, turrets and objects keep their hulls; Original leaves every hull out: the original's boxes, spheres and
+// cubes everywhere (CollisionVolume obstacles, Target cubes / boxes). The hulls are still built, so switching is at once.
 // Untouched: NPC fighters steering round stations and freighters (Obstacle volumes), the original's rules for what can be
 // hit (stations never, a ship's own shots never) and for what the player slides along (landmarks and freighters, not
 // fighters), asteroids (their cube), crates. The physics simulation isn't used: the bodies are kinematic, the queries read
@@ -41,6 +47,9 @@ namespace GoF2Remake.Flight
         /// <summary>No hulls are made while set (MenuBackground: the main menu's live orbit).</summary>
         public static bool Suppressed;
 
+        static int modeFrame = -1;
+        static int mode = GoF2Remake.Data.SessionRules.DefaultCollision;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()
         {
@@ -48,14 +57,43 @@ namespace GoF2Remake.Flight
             baked.Clear();
             syncedFrame = -1;
             Suppressed = false;
+            modeFrame = -1;
         }
+
+        /// <summary>Options > Gameplay "Ship collision" (SessionRules.CollisionExact / Mixed / Original; the session's in
+        /// multiplayer). Read once a frame: every shot asks.</summary>
+        public static int Mode
+        {
+            get
+            {
+                if (modeFrame != Time.frameCount || !Application.isPlaying)
+                {
+                    modeFrame = Time.frameCount;
+                    mode = GoF2Remake.Data.Settings.ShipCollision;
+                }
+                return mode;
+            }
+        }
+
+        /// <summary>A hull takes part under the current mode: Exact every one, Mixed all but the flyable ships', Original
+        /// none.</summary>
+        public static bool Takes(bool flyableShip)
+        {
+            int m = Mode;
+            return m == GoF2Remake.Data.SessionRules.CollisionExact || (m == GoF2Remake.Data.SessionRules.CollisionMixed && !flyableShip);
+        }
+
+        /// <summary>A ship number a player can fly: not the freighter (13), the battleship (14) or 15 (the debug capital
+        /// hulls fly on those); a mod's ship is.</summary>
+        public static bool FlyableShip(int ship) => ship >= 0 && ship != 13 && ship != 14 && ship != 15;
 
         /// <summary>Some hull exists (a quick skip for the shot tests).</summary>
         public static bool Any => bodies.Count > 0;
 
         /// <summary>The hull of 'model' (its root gets the HullBody); 'target' what shots on it hit, 'obstacle' what the
-        /// player slides along (either may be null). Null when the model has no readable hull mesh.</summary>
-        public static HullBody Attach(GameObject model, Target target, Obstacle obstacle)
+        /// player slides along (either may be null); 'flyableShip' a ship a player can fly (HullBody.flyableShip: Mixed
+        /// ship collision leaves it out). Null when the model has no readable hull mesh.</summary>
+        public static HullBody Attach(GameObject model, Target target, Obstacle obstacle, bool flyableShip = false)
         {
             if (model == null || Suppressed) return null;
             var body = model.GetComponent<HullBody>();
@@ -90,6 +128,7 @@ namespace GoF2Remake.Flight
             }
             body.target = target;
             body.obstacle = obstacle;
+            body.flyableShip = flyableShip;
             if (obstacle != null) obstacle.hull = body;
             if (target != null) target.hull = body;
             return body;
@@ -171,7 +210,7 @@ namespace GoF2Remake.Flight
             {
                 if (hits[i].distance >= best) continue;
                 var b = BodyOf(hits[i].collider);
-                if (b == null || b.target == null || !valid(b.target) || !Shown(hits[i].collider)) continue;
+                if (b == null || b.target == null || !b.Collides || !valid(b.target) || !Shown(hits[i].collider)) continue;
                 best = hits[i].distance;
                 target = b.target;
                 point = hits[i].distance > 0f ? hits[i].point : from;
@@ -194,7 +233,7 @@ namespace GoF2Remake.Flight
             {
                 if (hits[i].distance <= 0f || hits[i].distance >= best) continue;
                 var b = BodyOf(hits[i].collider);
-                if (b == null || !valid(b) || !Shown(hits[i].collider)) continue;
+                if (b == null || !b.Collides || !valid(b) || !Shown(hits[i].collider)) continue;
                 best = hits[i].distance;
             }
             if (best == float.MaxValue) return false;

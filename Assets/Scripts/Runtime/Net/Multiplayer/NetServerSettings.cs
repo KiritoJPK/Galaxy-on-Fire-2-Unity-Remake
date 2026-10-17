@@ -90,6 +90,12 @@ namespace GoF2Remake.Multiplayer
                 get = () => SessionRules.FlightText(NetRules.HostFlight),
                 apply = v => { int s = SessionRules.ParseFlight(v); if (s < -1) throw new FormatException(); NetRules.SetFlight(s); },
             });
+            list.Insert(at++, new Setting
+            {
+                key = NetRules.CollisionKey, option = NetRules.CollisionFlag, label = NetRules.CollisionLabel, kind = Kind.Text,
+                get = () => SessionRules.CollisionText(NetRules.HostCollision),
+                apply = v => { int c = SessionRules.ParseCollision(v); if (c < 0) throw new FormatException(); NetRules.SetCollision(c); },
+            });
             return list;
         }
 
@@ -104,11 +110,16 @@ namespace GoF2Remake.Multiplayer
         {
             fromCommandLine.Clear();
             foreach (var s in All) if (onCommandLine(s.option)) fromCommandLine.Add(s.key);
+            if (onCommandLine(NetRules.LegacyCollisionFlag)) fromCommandLine.Add(NetRules.CollisionKey);   // the old toggle's flag
             saved = null;
             try { if (PathOf != null && File.Exists(PathOf)) saved = JsonUtility.FromJson<Saved>(File.ReadAllText(PathOf)); }
             catch (Exception e) { Debug.LogError($"Server: server_settings.json unreadable ({e.Message}); the defaults and the command line only."); }
             if (saved == null) saved = new Saved();
             if (saved.values == null) saved.values = new List<Entry>();
+            // The old toggle (2026-10-17): "precisecollision" on = exact, unless the mode itself was saved.
+            var legacy = saved.values.Find(e => e.key == "precisecollision");
+            if (legacy != null && legacy.value == "on" && !saved.values.Exists(e => e.key == NetRules.CollisionKey) && !fromCommandLine.Contains(NetRules.CollisionKey))
+                NetRules.SetCollision(SessionRules.CollisionExact);
             foreach (var e in saved.values)
             {
                 var s = All.Find(x => x.key == e.key);
@@ -141,6 +152,12 @@ namespace GoF2Remake.Multiplayer
                     {
                         if (NetFactions.ParseToll(value) is not int t) return Localization.Extra("mpSetToll", "toll is a number of credits or a percentage (0-100%).");
                         value = NetFactions.TollText(t);
+                    }
+                    if (s.key == NetRules.CollisionKey)
+                    {
+                        int c = SessionRules.ParseCollision(value);
+                        if (c < 0) return Localization.Extra("mpSetCollision", "shipcollision is exact, mixed or original.");
+                        value = SessionRules.CollisionText(c);
                     }
                     if (s.key == NetRules.FlightKey)
                     {

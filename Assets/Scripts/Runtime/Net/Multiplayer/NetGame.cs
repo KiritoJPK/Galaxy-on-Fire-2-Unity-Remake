@@ -359,7 +359,7 @@ namespace GoF2Remake.Multiplayer
             {
                 NetRules.Host = NetRules.FromOptions();   // a player host's own Gameplay options (a server: Boot)
                 NetRules.HostKaamoLevel = Settings.LocalKaamoLevel();
-                NetRules.HostFlight = SessionRules.DefaultFlight;   // the game's flight model; an admin's /flightmodel changes it
+                NetRules.HostFlight = SessionRules.DefaultFlight;   // each player's own flight model; an admin's /flightmodel changes it
             }
             NetMods.BeginHost();   // the host's mods when modded content is allowed, else none
             Seed = Environment.TickCount & 0x7fffffff;

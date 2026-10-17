@@ -360,7 +360,7 @@ namespace GoF2Remake.UI
             else
             {
                 fastForward.EnableInClassList("nav-button--dim", false);
-                Image(fastForward, fastForwardPressed && nav.FastForward ? fastForwardOn : fastForwardOff);
+                Image(fastForward, fastForwardPressed && (nav.FastForward || nav.Cruise) ? fastForwardOn : fastForwardOff);
             }
             Image(autopilotButton, active || nav != null && nav.MenuOpen ? autopilotOn : autopilotOff);
         }

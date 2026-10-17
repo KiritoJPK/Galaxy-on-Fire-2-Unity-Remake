@@ -130,7 +130,7 @@ namespace GoF2Remake.Flight
         bool Solid(HullBody body)
         {
             var o = body != null ? body.obstacle : null;
-            if (o == null || !o.Active) return false;
+            if (o == null || !o.Active || !body.Collides) return false;   // not taken by the ship collision mode: the volumes (CheckLandmarks)
             if (ignoreGate && o.cubeIsContact) return false;
             if (docking != null && docking.State == ObjectDocking.Phase.Approach && docking.Target != null
                 && (o.gameObject == docking.Target.gameObject

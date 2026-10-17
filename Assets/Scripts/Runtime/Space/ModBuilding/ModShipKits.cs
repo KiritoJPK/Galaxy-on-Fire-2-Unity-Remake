@@ -842,17 +842,26 @@ namespace GoF2Remake.Modding
                 var own = Database.Shared.ShipAssembly(ship);
                 var skin = CustomizationOf(ship)?.FindSkin(build?.skin);
                 if (own == null || skin == null) return own;
-                return new AssemblyData { name = $"{own.name}{VariantSeparator}{ShipToken}{ship};skin={skin.id}", pack = own.pack, category = own.category,
+                // A ship with textures of its own already shows its copy, "<model>#ship=N": the skin goes on the model's name.
+                int ownHash = own.name.IndexOf(VariantSeparator);
+                string model = ownHash > 0 ? own.name.Substring(0, ownHash) : own.name;
+                return new AssemblyData { name = $"{model}{VariantSeparator}{ShipToken}{ship};skin={skin.id}", pack = own.pack, category = own.category,
                                           origin = "skin", root = own.root };
             }
             return new AssemblyData { name = $"ship_{ship:000}_mod{VariantSeparator}{build}", pack = ModContent.Pack, category = "ships", origin = "kit build" };
         }
 
-        public const string ShipToken = "ship=";
+        public const string ShipToken = KitRules.ShipToken;
 
         /// <summary>A skinned variant's parts ("<model>#ship=N;skin=id"): the model's own assembly name, the ship and the
         /// skin (false: not one).</summary>
-        public static bool ParseSkinned(string assembly, out string model, out int ship, out string skin)
+        public static bool ParseSkinned(string assembly, out string model, out int ship, out string skin) =>
+            ParseShipCopy(assembly, out model, out ship, out skin) && skin != null;
+
+        /// <summary>A game model's copy for one ship: "<model>#ship=N" (a mod ship's own textures, Database.ShipAssembly) or
+        /// "<model>#ship=N;skin=id" (a skin, VariantAssembly): the model's own assembly name, the ship and the skin (null:
+        /// none); false = not one.</summary>
+        public static bool ParseShipCopy(string assembly, out string model, out int ship, out string skin)
         {
             model = null; ship = -1; skin = null;
             int hash = assembly?.IndexOf(VariantSeparator) ?? -1;
@@ -863,7 +872,8 @@ namespace GoF2Remake.Modding
                 if (pair.StartsWith(ShipToken)) int.TryParse(pair.Substring(ShipToken.Length), out ship);
                 else if (pair.StartsWith("skin=")) skin = pair.Substring(5);
             }
-            return ship >= 0 && !string.IsNullOrEmpty(skin);
+            if (string.IsNullOrEmpty(skin)) skin = null;
+            return ship >= 0;
         }
 
         // ---- customizations of ships without a kit ---------------------------------------------------------------------

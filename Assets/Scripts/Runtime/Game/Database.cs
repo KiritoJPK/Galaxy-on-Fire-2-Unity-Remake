@@ -373,7 +373,13 @@ namespace GoF2Remake.Data
         {
             // A mod's ship on one of the game's own models (Modding.GameModels), else a mod's model for this ship (a new mod
             // ship, or an original's replaced: ModContent.ModelOverrides).
-            if (!original && ShipModels.TryGetValue(ship, out var gameModel) && AssemblyByName(gameModel) is AssemblyData g) return g;
+            // With textures of its own (ShipOwnTextures) it shows a copy of that model of its own, "<model>#ship=N", which
+            // Modding.ModTextures gives the ship's textures/ships/<id>/ files: the game's ship of that model keeps its look.
+            if (!original && ShipModels.TryGetValue(ship, out var gameModel) && AssemblyByName(gameModel) is AssemblyData g)
+                return ShipOwnTextures.Contains(ship)
+                    ? new AssemblyData { name = g.name + Modding.KitRules.VariantSeparator + Modding.KitRules.ShipToken + ship, pack = g.pack,
+                                         category = g.category, root = g.root, origin = "skin" }
+                    : g;
             string modName = $"ship_{ship:000}_mod";
             var modded = original ? null : Assemblies.Find(a => a.pack == "mod" && a.name == modName);
             if (modded != null) return modded;
@@ -409,6 +415,10 @@ namespace GoF2Remake.Data
         /// <summary>Remake (Modding.GameModels): ships that fly one of the game's own models, by ship index (a mod's new ship
         /// or an override with "model": "gof2:<model>"); ShipAssembly hands it out before anything else.</summary>
         [System.NonSerialized] public Dictionary<int, string> ShipModels = new Dictionary<int, string>();
+
+        /// <summary>Remake (Modding.ModContent): the ShipModels ships whose mod has textures of their own for them
+        /// (textures/ships/&lt;ship id&gt;/): ShipAssembly hands out a copy of the model for each.</summary>
+        [System.NonSerialized] public HashSet<int> ShipOwnTextures = new HashSet<int>();
 
         /// <summary>Ship::hasJumpDriveIntegrated: the ships with a Khador Drive built in (37 Cronus, 38 Typhon, 40 Nemesis);
         /// remake mods add or remove them (ships.json "integrated": "khadorDrive", Modding.ModContent).</summary>

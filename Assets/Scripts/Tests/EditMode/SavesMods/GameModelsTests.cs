@@ -56,6 +56,36 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void ANewShipOnAGameModelWithTexturesOfItsOwn()
+        {
+            // Modding/README.md "One ship only": textures/ships/<id>/ re-skins that new ship alone; the Inflict and the other
+            // ship on its model keep their look (a copy of the model of its own, "<model>#ship=N", ModTextures' scope).
+            string dir = WriteMod("s", "t_gm", "1.0", "", ("ships.json", "[ { 'id': 'twin', 'name': 'Twin', 'model': 'gof2:ship_005_terran' }, " +
+                                                                          "{ 'id': 'plain', 'name': 'Plain', 'model': 'gof2:ship_005_terran' } ]"));
+            WriteFile(dir, "textures/ships/twin/ship_005_terran_diffuse.png", Dummy);
+            ScanAndEnable("t_gm");
+            Assert.IsEmpty(Installed("t_gm").Errors, AllMessages(Installed("t_gm")));
+            var db = Database.Load();
+            int twin = ModContent.ShipIndexOf("t_gm:twin"), plain = ModContent.ShipIndexOf("t_gm:plain");
+            Assert.IsTrue(ModContent.HasShipTextures(Installed("t_gm"), "twin"));
+            Assert.IsFalse(ModContent.HasShipTextures(Installed("t_gm"), "plain"));
+            CollectionAssert.AreEquivalent(new[] { twin }, db.ShipOwnTextures);
+            var own = db.ShipAssembly(twin);
+            Assert.AreEqual($"ship_005_terran#ship={twin}", own?.name, "a copy of the model of its own");
+            Assert.AreEqual("ship_005_terran", db.ShipAssembly(plain)?.name, "without textures: the model itself");
+            StringAssert.DoesNotContain("#", db.ShipAssembly(5)?.name, "the Inflict keeps its own");
+            Assert.AreEqual(db.AssemblyByName("ship_005_terran").pack, own.pack, "the game's pack (AssembledObject.LoadPrefab copies it)");
+            Assert.AreEqual(own.pack, db.AssemblyByName(own.name)?.pack);
+            Assert.IsTrue(ModShipKits.ParseShipCopy(own.name, out string model, out int ship, out string skin));
+            Assert.AreEqual("ship_005_terran", model);
+            Assert.AreEqual(twin, ship);
+            Assert.IsNull(skin);
+            Assert.IsFalse(ModShipKits.ParseSkinned(own.name, out _, out _, out _), "no skin");
+            Assert.IsTrue(ModShipKits.ParseSkinned($"ship_005_terran#ship={twin};skin=red", out _, out _, out skin));
+            Assert.AreEqual("red", skin);
+        }
+
+        [Test]
         public void AnUnknownGameModelIsReported()
         {
             WriteMod("s", "t_gm", "1.0", "", ("ships.json", "[ { 'id': 'twin', 'name': 'Twin', 'model': 'gof2:nothing_here' } ]"));
@@ -166,6 +196,39 @@ namespace GoF2Remake.Tests
             string json = File.ReadAllText(Path.Combine(p.Folder, ModContent.ShipsFile));
             StringAssert.DoesNotContain("modelLength", json);
             StringAssert.DoesNotContain("hangarHeight", json, "the game ship's height on the pads");
+        }
+
+        [Test]
+        public void TheBuilderGivesAShipOnAGameModelTexturesOfItsOwn()
+        {
+            var p = ModProject.Create("Own skin", "tests");
+            var s = p.AddNewShip("twin", "Twin", "models/x.glb");
+            Assert.IsNull(ModProject.ShipSkinScope(s), "a file model has its own materials");
+            var db = Database.Load();
+            s.UseGameModel("ship_005_terran", db.Ship(5), Database.GameMounts(5), Shop.RaceOfShip(5));
+            Assert.AreEqual("ships/twin", ModProject.ShipSkinScope(s));
+            string png = Path.Combine(p.Folder, "paint.png");
+            File.WriteAllBytes(png, Dummy);
+            p.SetSkinTexture("ship_005_terran_diffuse", png, ModProject.ShipSkinScope(s));
+            Assert.IsTrue(File.Exists(Path.Combine(p.Folder, "textures", "ships", "twin", "ship_005_terran_diffuse.png")));
+            Assert.AreEqual("textures/ships/twin/ship_005_terran_diffuse.png", p.SkinTexture("ship_005_terran_diffuse", "ships/twin"));
+            Assert.IsNull(p.SkinTexture("ship_005_terran_diffuse"), "no every-ship file: the Inflict keeps its own");
+            p.Save();
+            ModManager.SetBuilderProject(p.Folder);
+            db = Database.Load();
+            int i = ModContent.ShipIndexOf(p.Key("twin"));
+            Assert.GreaterOrEqual(i, 64);
+            Assert.AreSame(s, p.OwnSkinShip(i));
+            Assert.IsNull(p.OwnSkinShip(5), "a game ship");
+            CollectionAssert.Contains(p.SkinShips(), i, "its textures make it one of the Skins kind's ships");
+            Assert.AreEqual($"ship_005_terran#ship={i}", db.ShipAssembly(i)?.name);
+            string Skins() => Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(Path.Combine(p.Folder, ModProject.BuilderFile)))["skins"]?.ToString(Newtonsoft.Json.Formatting.None) ?? "";
+            p.AddSkin(i);
+            p.Save();
+            Assert.AreEqual("[\"twin\"]", Skins(), "kept by its id, not this run's number");
+            p.RemoveSkin(i);
+            p.Save();
+            Assert.AreEqual("[]", Skins());
         }
 
         [Test]

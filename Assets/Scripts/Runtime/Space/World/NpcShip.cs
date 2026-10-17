@@ -441,7 +441,9 @@ namespace GoF2Remake.World
                 if (spec.capitalEnhanced) Target.boxes = LocalBoxes(obstacle.volumes);
             }
             // Remake: shots hit its real shape and the player slides along it (HullCollision); NPCs still steer by the volumes.
-            if (modelGo != null) HullCollision.Attach(modelGo, Target, obstacle);
+            // A fighter (not a freighter, a fixed object such as the battleship or a capital ship, nor a turret) is a flyable
+            // ship: Original ship collision hits it on its cube (HullBody.flyableShip).
+            if (modelGo != null) HullCollision.Attach(modelGo, Target, obstacle, !IsFreighter && !IsFixed && !IsTurret && HullCollision.FlyableShip(spec.ship));
             if (spec.deadButSelectable) ShowWreckAtEnd();
             Target.Damaged += OnDamaged;
             Target.Died += OnDied;

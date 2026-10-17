@@ -14,6 +14,11 @@
 // Per object (the Mod Builder's "this ship only"): textures/<assembly>/<name>.png (e.g. textures/ship_028_terran/glow_terran.png)
 // replaces the texture only on that assembled object (AssembledObject.ModScope, its assembly's name), before any textures/<name>
 // of every object; such an object gets material copies of its own.
+// Per ship (a mod's new ship on one of the game's models, ships.json "model": "gof2:<model>"): textures/ships/<ship id>/<name>.png
+// replaces the texture on that ship alone. The ship then shows a copy of the model of its own ("<model>#ship=N",
+// Database.ShipAssembly / ModShips.SkinnedTemplate), whose scope leads here to the ship's key ("<mod id>:<ship id>"); the game's
+// ship of that model and every other ship on it keep their look. Its model's textures/<model>/ files and the every-object ones
+// still apply to what the ship's own folder doesn't replace.
 // The combat HUD's images (Resources/GoF2Hud, the ship / crate markers...) are replaced by name too (Hud, read by CombatView).
 
 using System;
@@ -31,10 +36,11 @@ namespace GoF2Remake.Modding
         // The texture slots of the game's materials (URP Lit copies and the GoF2 Shader Graphs).
         static readonly string[] Slots = { "_BaseMap", "_MainTex", "_BumpMap", "_MetallicGlossMap", "_EmissionMap" };
 
-        // The replacements by key: "<texture name>" for every object, "<scope>/<texture name>" for one assembly's objects.
+        // The replacements by key: "<texture name>" for every object, "<scope>/<texture name>" for one assembly's objects,
+        // "<mod id>:<ship id>/<texture name>" for one mod ship's (textures/ships/<ship id>/).
         static readonly Dictionary<string, Texture2D> textures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
         static readonly HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        // The scopes (assembly names) with replacements of their own.
+        // The scopes (assembly names, mod ship keys) with replacements of their own.
         static readonly HashSet<string> scopes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         // (scope, game material) -> its copy with the mods' textures (null: none of its textures is replaced); scope "" for
         // objects without replacements of their own.
@@ -78,8 +84,15 @@ namespace GoF2Remake.Modding
                 {
                     if (!f.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
                     var parts = f.Substring(prefix.Length).Split('/');
-                    if (parts.Length != 2 || parts[0].Length == 0) continue;
                     if (!Array.Exists(Extensions, e => f.EndsWith(e, StringComparison.OrdinalIgnoreCase))) continue;
+                    // textures/ships/<ship id>/<name>: one of this mod's ships only, keyed by the ship's key
+                    if (parts.Length == 3 && parts[1].Length > 0
+                        && string.Equals(Folder + "/" + parts[0], ModContent.ShipTexturesFolder, StringComparison.OrdinalIgnoreCase))
+                    {
+                        files[mod.Id + ":" + parts[1] + "/" + Path.GetFileNameWithoutExtension(parts[2])] = (mod, f);
+                        continue;
+                    }
+                    if (parts.Length != 2 || parts[0].Length == 0) continue;
                     files[parts[0] + "/" + Path.GetFileNameWithoutExtension(parts[1])] = (mod, f);
                 }
             }
@@ -190,17 +203,42 @@ namespace GoF2Remake.Modding
             return textures.TryGetValue(name, out var t) ? t : null;
         }
 
-        /// <summary>The replacement for a texture on an object of 'scope': its own, else every object's.</summary>
+        /// <summary>The replacement for a texture on an object of 'scope': its ship's own (a game model's copy for one mod ship),
+        /// its own, its model's (a copy's), else every object's.</summary>
         static Texture2D Find(string texture, string scope)
         {
-            if (scope != null && textures.TryGetValue(scope + "/" + texture, out var own)) return own;
+            if (scope != null)
+            {
+                string ship = ShipScope(scope);
+                if (ship != null && textures.TryGetValue(ship + "/" + texture, out var mine)) return mine;
+                if (textures.TryGetValue(scope + "/" + texture, out var own)) return own;
+                string model = ModelScope(scope);
+                if (model != scope && textures.TryGetValue(model + "/" + texture, out var its)) return its;
+            }
             return textures.TryGetValue(texture, out var all) ? all : null;
+        }
+
+        /// <summary>The key of the mod ship a game model's copy is for ("&lt;model&gt;#ship=N[;skin=id]" -> "&lt;mod id&gt;:&lt;ship id&gt;"),
+        /// when that ship has textures of its own; else null.</summary>
+        static string ShipScope(string scope)
+        {
+            if (scope.IndexOf(ModShipKits.VariantSeparator) <= 0 || !ModShipKits.ParseShipCopy(scope, out _, out int ship, out _)) return null;
+            string key = ModContent.ShipKey(ship);
+            return key != null && scopes.Contains(key) ? key : null;
+        }
+
+        /// <summary>A copy's model ("&lt;model&gt;#..." -> "&lt;model&gt;"), else the scope itself.</summary>
+        static string ModelScope(string scope)
+        {
+            int hash = scope.IndexOf(ModShipKits.VariantSeparator);
+            return hash > 0 ? scope.Substring(0, hash) : scope;
         }
 
         static Material CopyFor(Material m, string scope)
         {
             if (m == null || made.Contains(m)) return null;   // already a copy (Apply again on the same object)
-            string key = scope != null && scopes.Contains(scope) ? scope : "";   // objects without their own share copies
+            // Objects without their own (nor their ship's or model's) share copies.
+            string key = scope != null && (scopes.Contains(scope) || ShipScope(scope) != null || scopes.Contains(ModelScope(scope))) ? scope : "";
             if (copies.TryGetValue((key, m), out var copy)) return copy;
             foreach (var slot in Slots)
             {

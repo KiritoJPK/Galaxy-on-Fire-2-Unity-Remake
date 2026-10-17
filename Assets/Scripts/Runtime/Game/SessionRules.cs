@@ -8,7 +8,39 @@ namespace GoF2Remake.Data
     {
         public const int CloakLosesPursuers = 1, PirateEvents = 2, CapitalShips = 4, InformerOriginalRule = 8,
                          KaamoStacking = 16, KaamoKeepsEquipment = 32, CloakBay = 64, EmpBreaksCloak = 128,
-                         SmarterNpcTargeting = 256;
+                         SmarterNpcTargeting = 256, PreciseShipCollision = 512, OriginalCollision = 1024;
+
+        /// <summary>Remake: the ship collision mode (Settings.ShipCollision), carried in sessions by two bits:
+        /// PreciseShipCollision = Exact, OriginalCollision = Original (it wins), neither = Mixed.
+        /// Exact: every hull on its real shape (Flight.HullCollision). Mixed (default since 2026-10-17): the ships a player
+        /// can fly on the original's hit cube and sphere, everything else on its real shape. Original: no mesh collision,
+        /// every object on the original's boxes, spheres and cubes.</summary>
+        public const int CollisionExact = 0, CollisionMixed = 1, CollisionOriginal = 2, DefaultCollision = CollisionMixed;
+
+        public static int CollisionOf(int rules) =>
+            (rules & OriginalCollision) != 0 ? CollisionOriginal : (rules & PreciseShipCollision) != 0 ? CollisionExact : CollisionMixed;
+
+        public static int WithCollision(int rules, int mode)
+        {
+            rules &= ~(PreciseShipCollision | OriginalCollision);
+            if (mode == CollisionExact) rules |= PreciseShipCollision;
+            else if (mode == CollisionOriginal) rules |= OriginalCollision;
+            return rules;
+        }
+
+        /// <summary>A collision mode's name ("exact" / "precise", "mixed", "original" / "gof2"), -1 = none of them.</summary>
+        public static int ParseCollision(string text)
+        {
+            switch ((text ?? "").Trim().ToLowerInvariant())
+            {
+                case "exact": case "precise": case "mesh": case "0": return CollisionExact;
+                case "mixed": case "1": return CollisionMixed;
+                case "original": case "gof2": case "2": return CollisionOriginal;
+                default: return -1;
+            }
+        }
+
+        public static string CollisionText(int mode) => mode == CollisionExact ? "exact" : mode == CollisionOriginal ? "original" : "mixed";
 
         /// <summary>Remake: the highest level of one Kaamo Club upgrade on a ship while stacking is on (Settings.KaamoMaxLevel,
         /// Session.MaxModLevel); a number, so the session carries it beside the bits (NetRules.HostKaamoLevel). 5 by default; 10 was the
@@ -17,19 +49,22 @@ namespace GoF2Remake.Data
 
         public static int ClampKaamoLevel(int level) => level < MinKaamoLevel ? MinKaamoLevel : level > MaxKaamoLevel ? MaxKaamoLevel : level;
 
-        /// <summary>Remake: the flight model a session flies (NetRules.HostFlight): FlightStyles.Original ("gof2", the game's,
-        /// the default: players flying the other one in PvP had other turn rates, strafing and drift), FlightStyles.Free
-        /// ("es2", EVERSPACE 2 style) for everyone, or PlayerFlight ("player") = each player's own option.</summary>
-        public const int PlayerFlight = -1, DefaultFlight = FlightStyles.Original;
+        /// <summary>Remake: the flight model a session flies (NetRules.HostFlight): FlightStyles.Original ("gof2", the game's;
+        /// one model for everyone keeps PvP fair: players flying the other one had other turn rates, strafing and drift),
+        /// FlightStyles.Free ("es2", EVERSPACE 2 style) for everyone, or PlayerFlight ("player" / "any" / "unrestricted") =
+        /// each player's own option, the default since 2026-10-17 (the user: the players choose the flight model they want;
+        /// it was gof2).</summary>
+        public const int PlayerFlight = -1, DefaultFlight = PlayerFlight;
 
-        /// <summary>A flight model's name ("gof2" / "original", "es2" / "free", "player" / "any" / "choice"), -2 = none of them.</summary>
+        /// <summary>A flight model's name ("gof2" / "original", "es2" / "free", "player" / "any" / "choice" / "unrestricted"),
+        /// -2 = none of them.</summary>
         public static int ParseFlight(string text)
         {
             switch ((text ?? "").Trim().ToLowerInvariant())
             {
                 case "gof2": case "original": case "0": return FlightStyles.Original;
                 case "free": case "es2": case "everspace": case "1": return FlightStyles.Free;
-                case "player": case "any": case "choice": case "-1": return PlayerFlight;
+                case "player": case "any": case "choice": case "unrestricted": case "-1": return PlayerFlight;
                 default: return -2;
             }
         }

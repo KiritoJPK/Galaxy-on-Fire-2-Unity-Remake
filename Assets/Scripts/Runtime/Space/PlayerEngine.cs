@@ -30,6 +30,10 @@ namespace GoF2Remake.Flight
         PlayerHealth health;
         Mining mining;
         AudioSource main, extra, boostSource;
+        /// <summary>Remake, multiplayer: the cruise mode (Navigation.Cruise) sounds like a boost, the booster's own, or without
+        /// one item 71's (index 0): a new pilot's Betty has no booster.</summary>
+        AudioClip cruiseClip;
+        int cruiseBoost;
         // Remake mods: the ship's own sounds (Modding.ModShipSounds), null = the game's.
         Modding.ModShipSounds.ShipSounds modSounds;
         AudioSource boostLoop, charger;
@@ -87,6 +91,16 @@ namespace GoF2Remake.Flight
                 extra = Loop(Pick(audio.playerEngineExtras, engine));
             }
             boostSource.clip = GoF2Remake.Modding.ModSounds.Get(Pick(audio.boosters, boost));
+            cruiseBoost = boost >= 0 ? boost : 0;
+            cruiseClip = boostSource.clip != null ? boostSource.clip : GoF2Remake.Modding.ModSounds.Get(Pick(audio.boosters, cruiseBoost));
+        }
+
+        /// <summary>The boost sound for this boost's start: the booster's, or the cruise's fallback while only cruising.</summary>
+        AudioClip StartClip(out int index)
+        {
+            bool cruiseOnly = ship.Model != null && !ship.Model.IsBoosting;
+            index = cruiseOnly ? cruiseBoost : boost;
+            return cruiseOnly ? cruiseClip : boostSource != null ? boostSource.clip : null;
         }
 
         /// <summary>PlayerEgo::PlayerEgo 0xa5940: ships 42 / 43 / 40 their DLC engines, else by handling.</summary>
@@ -143,16 +157,16 @@ namespace GoF2Remake.Flight
             if (ear != null) volume *= EngineVoices.Rolloff(Vector3.Distance(ear.position, transform.position) * ship.engineEarScale);
             // ... and deeper the heavier it is (ShipController.mass).
             float deep = Mathf.Lerp(1f, 0.6f, ship.mass);
-            bool boosting = ship.Model != null && ship.Model.IsBoosting;
+            bool boosting = ship.Model != null && ship.Model.LooksBoosting;   // the multiplayer cruise mode sounds like a boost too
             if (modSounds != null) { UpdateOwn(on, boosting, ear, deep); return; }
             // 1104: one layer with the pitch; 1106 / 1107: EngineDLC_07 plain + the pitched second layer.
             Drive(main, on, volume, (engine >= 5 ? 1f : pitch) * deep);
             Drive(extra, on, volume, pitch * deep);
 
-            if (boosting && !wasBoosting && boostSource != null && boostSource.clip != null)
+            if (boosting && !wasBoosting && boostSource != null && StartClip(out int bi) is AudioClip startClip)
             {
                 boostSource.pitch = Mathf.Lerp(1f, 0.7f, ship.mass);   // 1 for every ordinary ship, as before
-                boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(boostSource.clip), BoostVolume[boost] * Sfx.EventGain * Settings.SfxVolume);
+                boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(startClip), BoostVolume[bi] * Sfx.EventGain * Settings.SfxVolume);
             }
             wasBoosting = boosting;
         }
@@ -188,10 +202,10 @@ namespace GoF2Remake.Flight
                     boostSource.pitch = s.RandomPitch * deep * TimeExtender.SoundPitch;
                     boostSource.PlayOneShot(clip, s.vol0 * gain);
                 }
-                else if (boosting && s == null && modSounds.boostStart == null && boostSource.clip != null && boost >= 0)
+                else if (boosting && s == null && modSounds.boostStart == null && StartClip(out int bi) is AudioClip startClip && bi >= 0)
                 {
                     boostSource.pitch = deep;
-                    boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(boostSource.clip), BoostVolume[boost] * Sfx.EventGain * gain);
+                    boostSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(startClip), BoostVolume[bi] * Sfx.EventGain * gain);
                 }
             }
             wasBoosting = boosting;

@@ -459,7 +459,8 @@ namespace GoF2Remake.EditorTools
             sb.AppendLine();
             sb.AppendLine("Every assembled object of the game (the names `/spawn` and the Spawn node take for scenery, and the folder name of");
             sb.AppendLine("one-model skins), with the textures it draws: a mod's `textures/<texture>.png` replaces that texture on every model using");
-            sb.AppendLine("it, `textures/<model>/<texture>.png` on that model only. Keep the original's UV layout. `_normal_specular` = normal map,");
+            sb.AppendLine("it, `textures/<model>/<texture>.png` on that model only, `textures/ships/<ship id>/<texture>.png` on one new ship on that");
+            sb.AppendLine("model only (`\"model\": \"gof2:<name>\"`). Keep the original's UV layout. `_normal_specular` = normal map,");
             sb.AppendLine("`_metallic_smoothness` = the remake's metallic map; `glow_<race>` / `ship_engine_glow` and the like are shared lights.");
             sb.AppendLine("Any of them is also a model a mod can use without a file: `\"model\": \"gof2:<name>\"` in ships.json, stations.json and");
             sb.AppendLine("items.json fx (see the guide's \"The game's own models\").");

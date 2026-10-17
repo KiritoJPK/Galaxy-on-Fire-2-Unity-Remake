@@ -587,7 +587,8 @@ namespace GoF2Remake.UI
                 Hint(T("hudTurretExit", "CHASE VIEW"), GameControls.Camera);
                 return;
             }
-            string ff = T("hudFastForward", "FAST FORWARD") + " (" + T("hudHold", "HOLD") + ")";
+            // Multiplayer: the held button is a cruise mode (Navigation.Cruise), not a fast-forward.
+            string ff = (NetSession.Active ? T("hudCruise", "CRUISE") : T("hudFastForward", "FAST FORWARD")) + " (" + T("hudHold", "HOLD") + ")";
             if (lastAutopilot)
             {
                 // Autopilot: throttle, boost and guns still work; fast-forward is held. Off: the autopilot key, or the

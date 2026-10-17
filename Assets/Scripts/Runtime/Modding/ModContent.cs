@@ -34,6 +34,21 @@ namespace GoF2Remake.Modding
         public const string Pack = "mod";
         /// <summary>A mod's folder of replacement textures (ModTextures).</summary>
         public const string TexturesFolder = "textures";
+        /// <summary>A new ship's own textures when it flies one of the game's models: textures/ships/&lt;ship id&gt;/&lt;game texture
+        /// name&gt;.png replaces that texture on this ship alone (Database.ShipOwnTextures, Modding.ModTextures).</summary>
+        public const string ShipTexturesFolder = TexturesFolder + "/ships";
+
+        /// <summary>The mod has a picture in textures/ships/&lt;localId&gt;/.</summary>
+        public static bool HasShipTextures(ModInfo mod, string localId)
+        {
+            if (mod?.Source == null || string.IsNullOrEmpty(localId)) return false;
+            string prefix = ShipTexturesFolder + "/" + localId + "/";
+            foreach (string f in mod.Source.Files)
+                if (f.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && f.IndexOf('/', prefix.Length) < 0
+                    && Array.Exists(ImageImport.FileExtensions, e => f.EndsWith(e, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            return false;
+        }
 
         public const string ItemsFile = "items.json";
 
@@ -689,6 +704,7 @@ namespace GoF2Remake.Modding
         {
             db.NpcTurrets.Clear();
             db.ShipModels.Clear();
+            db.ShipOwnTextures.Clear();
             db.IntegratedDrives = new HashSet<int>(Database.DefaultIntegratedDrives);
             db.IntegratedCloaks = new Dictionary<int, int>(Database.DefaultIntegratedCloaks);
             foreach (var mod in ModManager.Active)
@@ -761,7 +777,11 @@ namespace GoF2Remake.Modding
                         {
                             // One of the game's own models: nothing to build, ShipAssembly hands the game's out.
                             if (GameModels.Find(db, shipModel) == null) Report(mod, $"{d.where}: \"model\": the game has no model \"{shipModel}\"");
-                            else db.ShipModels[index] = shipModel;
+                            else
+                            {
+                                db.ShipModels[index] = shipModel;
+                                if (HasShipTextures(mod, d.localId)) db.ShipOwnTextures.Add(index);
+                            }
                         }
                         else db.Assemblies.Add(new AssemblyData { name = c.assembly, pack = ModContent.Pack, category = "ships", origin = "mod " + mod.Id });
                         if (c.mounts != null && c.mounts.Count > 0)

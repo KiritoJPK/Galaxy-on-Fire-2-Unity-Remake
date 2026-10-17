@@ -436,6 +436,15 @@ namespace GoF2Remake.UI
             if (ModImport.Available)
                 Act(mrow, hasModel ? T("mbReplaceModel", "Replace model…") : T("mbUseModel", "Use a .glb model…"), () => PickModel(s));
             Act(mrow, T("mbGameModel", "Game model…"), () => PickGameShip(T("mbGameModelTitle", "Use a game ship's model"), i => UseGameShipModel(s, i)));
+            // A new ship on a game model: textures of its own in the Skins kind (textures/ships/<id>/; the game's ship keeps its look).
+            if (ModProject.OwnsSkinOf(s) && ModBuilder.IndexOf(s) is int ownIndex && ownIndex >= 0)
+                Act(mrow, T("mbOwnTextures", "Its own textures…"), () =>
+                {
+                    Project.AddSkin(ownIndex);
+                    SaveNow();
+                    ModBuilder.SkinShip = ownIndex;
+                    SelectKind(ModBuilder.Kind.Skins);
+                });
             if (s.IsOverride && (hasModel || gameModel)) Act(mrow, T("mbOriginalModelButton", "Original model"), () =>
             {
                 s.Model = null;

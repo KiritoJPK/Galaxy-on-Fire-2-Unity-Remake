@@ -431,7 +431,9 @@ required). `override` changes originals (name, techLevel, looks, music...).
 - `sounds/<name>.ogg`: replaces the game sound with that file name (from the game's Assets/Audio folders).
 - `textures/<name>.png`: replaces that game texture everywhere (`ship_028_terran_diffuse`; keep the original UV layout,
   2048 x 2048). `textures/<model>/<name>.png` (e.g. `textures/ship_028_terran/glow_terran.png`) replaces a shared texture
-  (`glow_<race>` lights, `ship_engine_glow`) on that one model only, before the every-ship one. Also the sky's planets, suns and rings (`planet_000_small` ... `planet_019_big`, `planet_void_*`,
+  (`glow_<race>` lights, `ship_engine_glow`) on that one model only, before the every-ship one. A new ship on a game model
+  (`"model": "gof2:<model>"`) takes `textures/ships/<ship id>/<name>.png` on that ship alone (the game's ship of that model
+  keeps its look). Also the sky's planets, suns and rings (`planet_000_small` ... `planet_019_big`, `planet_void_*`,
   `sn_planet_024_*` ... `sn_planet_026_*`, `sun_000` ..., `sn_sun_011`, `sn_planet_ring`): one whole disc image each, keep the
   transparent edge. `backdrop.json` `{ "planets": "star", "planetGlow": 2, "planetFlare": 0.35 }` draws the retextured planets
   as stars (facing the camera, no ring, a core glow, a weaker copy of the sun's flare).

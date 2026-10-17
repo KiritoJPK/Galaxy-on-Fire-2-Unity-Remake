@@ -737,5 +737,23 @@ namespace GoF2Remake.Tests
             float original = 750f * (handling / 5f) / 63f * RateToRad * 1000f * Mathf.Rad2Deg;
             Assert.AreEqual(degPerSec, Mathf.Max(1f, m.FreeTurnSpeedup) * original, 0.1f);
         }
+
+        // ---- the multiplayer cruise mode (CLAUDE.md "Navigation", Fast-forward) ------------------------------------
+
+        [Test]
+        public void CruiseLooksLikeABoostWithoutBeingOne()
+        {
+            var m = Model(boostSpeed: 100, boostMs: 3000, rechargeMs: 5000);
+            m.UpdateCruise(true, FlightModel.CruiseEaseMs / 2f);
+            Assert.AreEqual(0.5f, m.BoostVisualPercent, 1e-4f, "eased in");
+            m.UpdateCruise(true, FlightModel.CruiseEaseMs);
+            Assert.AreEqual(1f, m.BoostVisualPercent, 1e-4f);
+            Assert.IsTrue(m.LooksBoosting);
+            Assert.IsFalse(m.IsBoosting, "missiles, the recharge and volatile goods keep the real boost");
+            Assert.IsTrue(m.BoostReady);
+            m.UpdateCruise(false, FlightModel.CruiseEaseMs);
+            Assert.AreEqual(0f, m.BoostVisualPercent, 1e-4f, "eased out");
+            Assert.IsFalse(m.LooksBoosting);
+        }
     }
 }

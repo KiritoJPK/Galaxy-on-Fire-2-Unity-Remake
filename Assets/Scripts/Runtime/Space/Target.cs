@@ -103,7 +103,7 @@ namespace GoF2Remake.Flight
         /// <summary>Remake: the hull of MeshColliders shots hit instead of the cube / boxes (HullCollision), null = none.</summary>
         [NonSerialized] public HullBody hull;
         /// <summary>Shots test the hull (HullCollision.Cast), not the cube / boxes.</summary>
-        public bool HasHull => hull != null && hull.Active;
+        public bool HasHull => hull != null && hull.Collides;   // not taken by the ship collision mode (Mixed: a flyable ship's; Original: any): the cube / boxes
 
         /// <summary>Shield / armor / hull pools; null = plain 'hp' (asteroids).</summary>
         [NonSerialized] public Hitpoints hitpoints;

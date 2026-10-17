@@ -509,7 +509,8 @@ namespace GoF2Remake.Multiplayer
                 obstacle.volumes.Add(CollisionVolume.Sphere(Vector3.zero, size * CollisionScale));
             }
             model.SetActive(shown);
-            HullCollision.Attach(model, target, obstacle);   // shots hit and the local ship slides along its real shape
+            // Shots hit and the local ship slides along its real shape; with Original ship collision its cube and its sphere.
+            HullCollision.Attach(model, target, obstacle, HullCollision.FlyableShip(index));
             BuildTurret();
             // Its look and sound: the exhaust (their build's exhaust style, ModExhausts, in place of the particles), the cloak,
             // the engine loop (3D, at space distances).

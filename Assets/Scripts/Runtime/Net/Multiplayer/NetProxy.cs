@@ -498,7 +498,10 @@ namespace GoF2Remake.Multiplayer
             if (NpcMountedTurrets.Unpack(turrets.Value.ToString(), out int turretShip, out var turretItems))
                 TurretCore.DisplayAll(NetGame.Db, turretShip, turretItems, visual.transform);
             visual.SetActive(shown);
-            if (target != null) HullCollision.Attach(visual, target, null);   // shots hit its real shape
+            // Shots hit its real shape; a fighter's (a ship's model that leaves no wreck: not a freighter or a fixed object,
+            // not a turret or junk) only with Precise ship collision (HullBody.flyableShip).
+            bool fighter = junkKind.Value < 0 && wreck < 0 && !leavesWreck.Value && path.Contains("/ships/");
+            if (target != null) HullCollision.Attach(visual, target, null, fighter);
             if (prefab != null && junkKind.Value < 0 && wreck < 0) { cloakLook?.Dispose(); cloakLook = new World.NpcCloak(visual.transform); }
         }
 

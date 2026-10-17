@@ -642,7 +642,7 @@ namespace GoF2Remake.Modding
         public static GameObject Template(string assembly)
         {
             int hash = assembly?.IndexOf(ModShipKits.VariantSeparator) ?? -1;
-            if (hash > 0 && ModShipKits.ParseSkinned(assembly, out _, out _, out _))
+            if (hash > 0 && ModShipKits.ParseShipCopy(assembly, out _, out _, out _))
                 return SkinnedTemplate(new AssemblyData { name = assembly, pack = Pack, category = "ships" });
             if (hash > 0)
             {
@@ -676,7 +676,8 @@ namespace GoF2Remake.Modding
             return stand != null && stand.pack != Pack ? Visuals.AssembledObject.LoadPrefab(stand) : null;
         }
 
-        // Skinned copies of ships without a kit (ModShipKits.CustomizationOf): "<model>#ship=N;skin=id".
+        // Skinned copies of ships without a kit (ModShipKits.CustomizationOf): "<model>#ship=N;skin=id"; a ship's own copy of
+        // a game model for its own textures (Database.ShipOwnTextures): "<model>#ship=N".
         static readonly Dictionary<string, GameObject> skinned = new Dictionary<string, GameObject>();
         static readonly Queue<string> skinnedOrder = new Queue<string>();
 
@@ -694,21 +695,37 @@ namespace GoF2Remake.Modding
         /// <summary>A ship's own model with a skin of its customizations ("<model>#ship=N;skin=id", ModShipKits.VariantAssembly):
         /// a copy of the model (the game's prefab, or a mod ship's template) under the hidden holder with the skin's textures on
         /// copies of its materials (ApplySkin), made the first time and kept (the most recent VariantCap). While the skin's
-        /// textures load (EnsureBuild starts it; ModelsChanged follows) the model itself stands in.</summary>
+        /// textures load (EnsureBuild starts it; ModelsChanged follows) the model itself stands in.
+        /// Without a skin ("&lt;model&gt;#ship=N", a mod ship with textures of its own, Database.ShipAssembly) a plain copy: its name
+        /// is the scope its objects take (AssembledObject.ModScope), so ModTextures gives them the ship's own textures
+        /// (textures/ships/&lt;id&gt;/) while the game's ship of that model keeps its look.</summary>
         public static GameObject SkinnedTemplate(AssemblyData entry)
         {
-            if (entry == null || !ModShipKits.ParseSkinned(entry.name, out string model, out int ship, out string skinId)) return null;
+            if (entry == null || !ModShipKits.ParseShipCopy(entry.name, out string model, out int ship, out string skinId)) return null;
             var plain = new AssemblyData { name = model, pack = entry.pack, category = entry.category, root = entry.root, origin = entry.origin };
             var source = Visuals.AssembledObject.LoadPrefab(plain);
             if (skinned.TryGetValue(entry.name, out var made) && made != null) return made;
-            var kit = ModShipKits.CustomizationOf(ship);
-            var skin = kit?.FindSkin(skinId);
-            if (source == null || skin == null) return source;
-            var build = new ModShipKits.Build { skin = skin.id };
-            if (!EnsureBuild(ship, build)) return source;   // its textures load: the model itself meanwhile
+            if (source == null) return null;
+            bool ownTextures = Database.Shared.ShipOwnTextures.Contains(ship);
+            // Not there (yet): the ship's own copy when it has textures of its own, else the model itself.
+            GameObject Fallback() => ownTextures && skinId != null
+                ? SkinnedTemplate(new AssemblyData { name = $"{model}{ModShipKits.VariantSeparator}{ModShipKits.ShipToken}{ship}", pack = entry.pack,
+                                                     category = entry.category, root = entry.root, origin = entry.origin }) ?? source
+                : source;
+            ModShipKits.Kit kit = null;
+            ModShipKits.Skin skin = null;
+            if (skinId != null)
+            {
+                kit = ModShipKits.CustomizationOf(ship);
+                skin = kit?.FindSkin(skinId);
+                if (skin == null) return Fallback();
+                var build = new ModShipKits.Build { skin = skin.id };
+                if (!EnsureBuild(ship, build)) return Fallback();   // its textures load: the model itself meanwhile
+            }
+            else if (!ownTextures) return source;
             var copy = Object.Instantiate(source, Holder().transform, false);
             copy.name = entry.name;
-            ApplySkin(copy, kit, skin);
+            if (skin != null) ApplySkin(copy, kit, skin);
             skinned[entry.name] = copy;
             skinnedOrder.Enqueue(entry.name);
             while (skinnedOrder.Count > VariantCap)

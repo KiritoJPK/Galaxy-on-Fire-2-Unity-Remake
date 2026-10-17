@@ -544,7 +544,9 @@ namespace GoF2Remake.Flight
         /// Boost strength for visuals (engine flame, FOV, camera): ramps 0->1 over the first sixth of the
         /// boost, holds at 1, ramps back to 0 over the last sixth. Original flame scale = 1 + 0.5*this.
         /// </summary>
-        public float BoostVisualPercent
+        public float BoostVisualPercent => Mathf.Max(CruiseVisual, OwnBoostVisual);
+
+        float OwnBoostVisual
         {
             get
             {
@@ -556,6 +558,16 @@ namespace GoF2Remake.Flight
                 return 1f;
             }
         }
+
+        /// <summary>Remake, multiplayer: the cruise mode (Navigation.Cruise) looks and sounds like a boost, 0..1, eased in
+        /// and out over CruiseEaseMs. Only the look: the boost's own rules (missiles, recharge, volatile goods) read IsBoosting.</summary>
+        public float CruiseVisual { get; private set; }
+        public const float CruiseEaseMs = 400f;
+        /// <summary>Boosting or cruising: the boost's look and sound (camera rumble, the boost sound's start and stop).</summary>
+        public bool LooksBoosting => IsBoosting || CruiseVisual > 0f;
+
+        public void UpdateCruise(bool cruising, float dtMs) =>
+            CruiseVisual = Mathf.MoveTowards(CruiseVisual, cruising ? 1f : 0f, Mathf.Max(0f, dtMs) / CruiseEaseMs);
 
         public void AlignToHorizon() { IsLeveling = true; levelSide = 0; levelFine = false; rollLevelled = false; levelSteerArmed = false; }
         /// <summary>A manual roll (remake) cancels the auto-level.</summary>
