@@ -6,9 +6,10 @@
 //   Ship tab (183): your ship, then per slot type its slots (mounted item or empty) and the cargo items of that type
 //             that could be mounted. Mount (281) / Demount (282), one-per-ship categories swap (287).
 // Details: icon on its type frame, stats (ItemInfo), description and known price range.
-// Controls: tap / click a row; up / down select, left / right sell / buy (held arrows repeat like HangarWindow::update:
-// after 200 ms, every 30 ms after 1.5 s, 5 units at a time after 4 s), Enter / A the row's action, Q / E or LB / RB
-// switch tabs. Sounds: 0x7c row, 0x65 buy (Button_to_ship), 0x64 sell (Button_to_station), 0x62 mount, 0x60 demount.
+// Controls: tap / click a row; up / down select (remake: a fresh press wraps round the ends), left / right sell / buy
+// (held arrows repeat like HangarWindow::update: after 200 ms, every 30 ms after 1.5 s, 5 units at a time after 4 s),
+// Enter / A the row's action, Q / E or LB / RB switch tabs. Sounds: 0x7c row, 0x65 buy (Button_to_ship), 0x64 sell
+// (Button_to_station), 0x62 mount, 0x60 demount.
 //   Blueprints tab (272, HangarList::initBlueprintTab 0x143208; blueprints_mods.md 1.5): 273 "Available blueprints" with
 //             the unlocked ones (progress "N%  (station)", highlighted while the hold carries a missing ingredient) and
 //             274 "Products finished" waiting elsewhere. Edit (283) opens the ingredients (tab 4): the right arrow moves
@@ -905,11 +906,17 @@ namespace GoF2Remake.UI
             if (text >= 0) menu.ShowDialog(Localization.Get(text), null, true);
         }
 
-        public void MoveSelection(int dir)
+        /// <summary>Up / down to the next selectable row. Remake (players' request): with wrap, past the last row comes
+        /// the first and before the first the last, so the commodities are one press up from the top of the shop; only a
+        /// fresh press wraps (HoldDirections), a held key's repeat stops at the end.</summary>
+        public void MoveSelection(int dir, bool wrap = false)
         {
             if (rows.Count == 0) return;
             int i = selected != null ? rows.IndexOf(selected) : -1;
             for (int n = i + dir; n >= 0 && n < rows.Count; n += dir)
+                if (rows[n].Selectable) { Select(rows[n], true); return; }
+            if (!wrap || i < 0) return;
+            for (int n = dir > 0 ? 0 : rows.Count - 1; n != i; n += dir)
                 if (rows[n].Selectable) { Select(rows[n], true); return; }
         }
 
@@ -1708,7 +1715,7 @@ namespace GoF2Remake.UI
             {
                 moveDirection = vertical;
                 moveMs = -350f;
-                if (vertical != 0) MoveSelection(vertical);
+                if (vertical != 0) MoveSelection(vertical, true);
             }
             else if (vertical != 0 && (moveMs += dtMs) >= 80f)
             {

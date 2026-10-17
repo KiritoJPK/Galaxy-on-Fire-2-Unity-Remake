@@ -110,7 +110,25 @@ namespace GoF2Remake.World
         }
 
         /// <summary>The engine exhaust meshes (cutscenes: "exhaust hidden" while the pirates wait).</summary>
-        public void SetExhaust(bool on) => modelGo?.GetComponent<AssembledObject>()?.SetExhaust(on, playerEngines);
+        public void SetExhaust(bool on)
+        {
+            exhaustWanted = on;
+            ApplyExhaust();
+        }
+
+        // Remake: an EMP-disabled ship's engines go dark (the glow meshes, and with them a mod ship's flames, EngineDrive; the
+        // exhaust particles already stopped), back when the EMP wears off; the scripts' own on / off stays theirs.
+        bool exhaustWanted = true, exhaustEmpOff;
+
+        void ApplyExhaust() => modelGo?.GetComponent<AssembledObject>()?.SetExhaust(exhaustWanted && !exhaustEmpOff, playerEngines);
+
+        void UpdateEmpEngines()
+        {
+            bool off = Hp.empDisabled && Current == State.Fly;
+            if (off == exhaustEmpOff) return;
+            exhaustEmpOff = off;
+            ApplyExhaust();
+        }
 
         /// <summary>Remake option (Settings.NpcPlayerEngines): the player's engine glow mesh and exhaust particles instead of
         /// the *_engine_add mesh; ships without a glow mesh (39 / 41, the battleship, static objects) keep theirs.</summary>
@@ -769,6 +787,7 @@ namespace GoF2Remake.World
             UpdatePush(dtMs);
             UpdateSmoke();
             UpdateSparks();
+            UpdateEmpEngines();
             UpdateMissionCrate();
             if (Asleep) { UpdateSleep(); return; }
             if (IsTurret) { UpdateTurret(dtMs); return; }

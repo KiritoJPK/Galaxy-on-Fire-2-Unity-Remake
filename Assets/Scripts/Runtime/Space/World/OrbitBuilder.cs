@@ -99,10 +99,16 @@ namespace GoF2Remake.World
         }
 
         /// <param name="sunIntensityAt2">URP intensity for the original's LIGHT0 diffuse of 2.0 (tuned, not recovered).</param>
-        public static void SetupLights(OrbitLayout layout, Light sun, Light planet, float sunIntensityAt2 = 1.6f, float planetIntensity = 1f)
+        /// <param name="sunShadows">URP's real-time shadows from the sun: none in space (the original draws none; within URP's
+        /// 50 m shadow distance the player's own hull shaded itself as the camera came close, Action Freeze, a player's report
+        /// 2026-10-17), the Space Lounge keeps its room's.</param>
+        public static void SetupLights(OrbitLayout layout, Light sun, Light planet, float sunIntensityAt2 = 1.6f, float planetIntensity = 1f,
+                                       LightShadows sunShadows = LightShadows.None)
         {
+            if (planet != null) planet.shadows = LightShadows.None;
             if (sun != null)
             {
+                sun.shadows = sunShadows;
                 var toSun = OrbitLayout.DirToUnity(layout.lightDirection).normalized;
                 sun.transform.rotation = Quaternion.LookRotation(-toSun);
                 var c = layout.SunLightColor;   // 0..2 per channel, 2 for most systems

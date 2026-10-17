@@ -1,0 +1,11 @@
+{
+    "id": "exploding_bra",
+    "name": "Exploding Bra",
+    "version": "1.0",
+    "author": "JoppieToppie",
+    "description": {
+        "en": "A joke secondary weapon from the community: the bra that drifts through the ending's credits, launched spinning at your enemies and going off in fireworks. Sold at Var Hastra and wherever its tech level allows. Uses the game's own bra model (\"gof2:bra\"), so the mod has no 3D file.",
+        "de": "Eine Spaß-Sekundärwaffe aus der Community: der BH, der durch den Abspann treibt, wirbelnd auf Gegner geschossen und als Feuerwerk gezündet. Zu kaufen in Var Hastra und überall, wo ihre Techstufe es erlaubt. Nutzt das Modell des Spiels (\"gof2:bra\"), der Mod hat also keine 3D-Datei."
+    },
+    "credits": "Idea: VulZen, Eight, Citrus, Mike and the Discord."
+}

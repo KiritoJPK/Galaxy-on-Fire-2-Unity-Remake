@@ -118,6 +118,28 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
+        public void TheEndingsPropsAreGameModelsToo()
+        {
+            // "gof2:bra" / "gof2:beer": single meshes with no assembly (Level::createScene's 0x37d1 / 0x37d0), from
+            // StoryAssets.menuStatics; the community's exploding bra (Modding/Examples/exploding_bra) flies the bra.
+            Assert.IsNotNull(GameModels.Prop("bra"));
+            Assert.IsNotNull(GameModels.Prop("Beer"));
+            Assert.IsNull(GameModels.Prop("ship_028_terran"), "assemblies go through Find, not Prop");
+            Assert.IsNull(GameModels.Prop(""));
+
+            CopyExample("exploding_bra");
+            ScanAndEnable("exploding_bra");
+            var m = Installed("exploding_bra");
+            Assert.IsFalse(m.Broken, AllMessages(m));
+            Assert.IsEmpty(m.Warnings, AllMessages(m));
+            var bra = Database.Load().Item(ModContent.ItemIndexOf("exploding_bra:exploding_bra"));
+            Assert.AreEqual(232, bra.Look, "the Fireworks: its trail, burst and second-press detonation");
+            Assert.AreEqual(160, bra.Attr(9));
+            Assert.AreEqual(20000, bra.Attr(14));
+            Assert.AreEqual(78, bra.Attr(61));
+        }
+
+        [Test]
         public void AGameIconForAnItem()
         {
             WriteMod("i", "t_gic", "1.0", "", ("items.json", "[ { 'id': 'a', 'base': 0, 'name': 'A', 'icon': 'gof2:item_046' } ]"));

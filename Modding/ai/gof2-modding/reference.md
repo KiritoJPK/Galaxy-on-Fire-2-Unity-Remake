@@ -164,7 +164,7 @@ recipe in the original (see Blueprints).
 | 134 | Behén Wine | commodity | Commodity | 1 | 30 | 789-868 |  |  |
 | 135 | V'ikka Moonshine | commodity | Commodity | 1 | 30 | 237-261 |  |  |
 | 136 | Eanya Tonic | commodity | Commodity | 1 | 30 | 211-232 |  |  |
-| 137 | S'kloptorr Rum | commodity | Commodity | 1 | 30 | 245-270 |  |  |
+| 137 | S'kolptorr Rum | commodity | Commodity | 1 | 30 | 245-270 |  |  |
 | 138 | Wolf-Reiser Brandy | commodity | Commodity | 1 | 50 | 99-109 |  |  |
 | 139 | Aquila Cocktail | commodity | Commodity | 1 | 30 | 320-352 |  |  |
 | 140 | Buntta Apéritif | commodity | Commodity | 1 | 30 | 259-285 |  |  |
@@ -667,7 +667,7 @@ The PC / Mac / iPhone numbers where they differ from the Android ones above (And
 | 134 | Behén Wine | price 789-868 -> 789-1624 |
 | 135 | V'ikka Moonshine | price 237-261 -> 237-322 |
 | 136 | Eanya Tonic | price 211-232 -> 211-388 |
-| 137 | S'kloptorr Rum | price 245-270 -> 245-480 |
+| 137 | S'kolptorr Rum | price 245-270 -> 245-480 |
 | 138 | Wolf-Reiser Brandy | price 99-109 -> 99-202 |
 | 139 | Aquila Cocktail | price 320-352 -> 320-648 |
 | 140 | Buntta Apéritif | price 259-285 -> 259-314 |

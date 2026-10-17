@@ -46,9 +46,12 @@ namespace GoF2Remake.UI
         }
 
         /// <summary>The controls for this input kind: rotate (the drag and 'rotateKeys'), zoom (the wheel, + / -), Hide UI (H / Y),
-        /// Screenshot (Enter / A), Back (Esc / B). The actions play their own release sound; 'push' the press.</summary>
+        /// Screenshot (Enter / A), Back (Esc / B). The actions play their own release sound; 'push' the press. The photo tools
+        /// (PhotoTools): 'freeCam' (F / X) and 'settings' (Tab / View) when given; 'free': the free camera's controls instead of
+        /// the orbit's (move, look, up / down, the lens's zoom).</summary>
         public static void BuildHints(VisualElement hints, InputKind kind, string[] rotateKeys,
-                                      Action hideUi, Action screenshot, Action back, Action push)
+                                      Action hideUi, Action screenshot, Action back, Action push,
+                                      Action freeCam = null, Action settings = null, bool free = false)
         {
             if (hints == null) return;
             hints.Clear();
@@ -72,6 +75,35 @@ namespace GoF2Remake.UI
             }
             string rotate = T("inspectRotate", "ROTATE"), zoom = T("inspectZoom", "ZOOM"), backText = T("hudBack", "BACK");
             string hide = T("inspectHideUi", "HIDE UI"), shot = T("inspectScreenshot", "SCREENSHOT");
+            string camText = free ? T("photoOrbitCamera", "ORBIT CAMERA") : T("photoFreeCamera", "FREE CAMERA");
+            string settingsText = T("photoSettingsHint", "CAMERA SETTINGS");
+            string move = T("photoMove", "MOVE"), look = T("photoLook", "LOOK"), upDown = T("photoUpDown", "UP / DOWN");
+            if (free && kind == InputKind.KeyboardMouse)
+            {
+                Add(move, null, InputGlyph.Key("W"), InputGlyph.Key("A"), InputGlyph.Key("S"), InputGlyph.Key("D"));
+                Add(upDown, null, InputGlyph.Key("E"), InputGlyph.Key("Q"));
+                Add(look, null, InputGlyph.Key(T("inspectDrag", "DRAG"), true), InputGlyph.Key("↑"), InputGlyph.Key("←"), InputGlyph.Key("↓"), InputGlyph.Key("→"));
+                Add(zoom, null, InputGlyph.Key(T("inspectWheel", "WHEEL"), true), InputGlyph.Key("+"), InputGlyph.Key("-"));
+            }
+            else if (free && kind == InputKind.Gamepad)
+            {
+                Add(move, null, InputGlyph.Pad(PadButton.LeftStick));
+                Add(look, null, InputGlyph.Pad(PadButton.RightStick));
+                Add(upDown, null, InputGlyph.Pad(PadButton.RightBumper), InputGlyph.Pad(PadButton.LeftBumper));
+                Add(zoom, null, InputGlyph.Pad(PadButton.LeftTrigger), InputGlyph.Pad(PadButton.RightTrigger));
+            }
+            else if (free)
+                Add(T("photoTouchFree", "DRAG TO LOOK · PINCH TO MOVE"), null);
+            if (free)
+            {
+                bool k = kind == InputKind.KeyboardMouse, g = kind == InputKind.Gamepad;
+                if (freeCam != null) Add(camText, freeCam, k ? new[] { InputGlyph.Key("F") } : g ? new[] { InputGlyph.Pad(PadButton.X) } : new VisualElement[0]);
+                if (settings != null) Add(settingsText, settings, k ? new[] { InputGlyph.Key("TAB", true) } : g ? new[] { InputGlyph.Pad(PadButton.View) } : new VisualElement[0]);
+                if (k) { Add(hide, hideUi, InputGlyph.Key("H")); Add(shot, screenshot, InputGlyph.Key("ENTER", true)); Add(backText, back, InputGlyph.Key("ESC")); }
+                else if (g) { Add(hide, hideUi, InputGlyph.Pad(PadButton.Y)); Add(shot, screenshot, InputGlyph.Pad(PadButton.A)); Add(backText, back, InputGlyph.Pad(PadButton.B)); }
+                else { Add(hide, hideUi); Add(shot, screenshot); }
+                return;
+            }
             if (kind == InputKind.KeyboardMouse)
             {
                 var keys = new VisualElement[rotateKeys.Length + 1];
@@ -79,6 +111,8 @@ namespace GoF2Remake.UI
                 for (int i = 0; i < rotateKeys.Length; i++) keys[i + 1] = InputGlyph.Key(rotateKeys[i]);
                 Add(rotate, null, keys);
                 Add(zoom, null, InputGlyph.Key(T("inspectWheel", "WHEEL"), true), InputGlyph.Key("+"), InputGlyph.Key("-"));
+                if (freeCam != null) Add(camText, freeCam, InputGlyph.Key("F"));
+                if (settings != null) Add(settingsText, settings, InputGlyph.Key("TAB", true));
                 Add(hide, hideUi, InputGlyph.Key("H"));
                 Add(shot, screenshot, InputGlyph.Key("ENTER", true));
                 Add(backText, back, InputGlyph.Key("ESC"));
@@ -87,6 +121,8 @@ namespace GoF2Remake.UI
             {
                 Add(rotate, null, InputGlyph.Pad(PadButton.LeftStick), InputGlyph.Pad(PadButton.RightStick));
                 Add(zoom, null, InputGlyph.Pad(PadButton.LeftTrigger), InputGlyph.Pad(PadButton.RightTrigger));
+                if (freeCam != null) Add(camText, freeCam, InputGlyph.Pad(PadButton.X));
+                if (settings != null) Add(settingsText, settings, InputGlyph.Pad(PadButton.View));
                 Add(hide, hideUi, InputGlyph.Pad(PadButton.Y));
                 Add(shot, screenshot, InputGlyph.Pad(PadButton.A));
                 Add(backText, back, InputGlyph.Pad(PadButton.B));
@@ -94,6 +130,8 @@ namespace GoF2Remake.UI
             else
             {
                 Add(T("inspectTouch", "DRAG TO ROTATE · PINCH TO ZOOM"), null);
+                if (freeCam != null) Add(camText, freeCam);
+                if (settings != null) Add(settingsText, settings);
                 Add(hide, hideUi);
                 Add(shot, screenshot);
             }

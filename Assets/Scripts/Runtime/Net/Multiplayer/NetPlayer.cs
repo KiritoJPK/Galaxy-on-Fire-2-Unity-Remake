@@ -684,6 +684,8 @@ namespace GoF2Remake.Multiplayer
                 if (target != null)
                 {
                     target.hp = hull.Value * target.maxHp;   // 0 = destroyed: no marker, no lock, no NPC after it
+                    target.netShield = shield.Value;          // their marker's shield bar and armor over the hull (CombatView)
+                    target.netArmor = armor.Value;
                     bool mate = NetSquad.Same(this, Local);   // squadmates: green, out of each other's line of fire
                     target.friendToPlayer = mate;
                     target.playerProof = mate || !PvpWith(this);   // free roam: no player hurts another (NetArena)

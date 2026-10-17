@@ -184,7 +184,7 @@ holding a node named `*_gun` (tilts; barrel along +Z), else it turns as one piec
 game units; `scale` resizes, `offset` moves it off the mount (game units, x pilot's left, y the turret's up, z forward);
 without `model`, `scale` / `offset` reshape the base item's turret; `"item": 48` instead of `model` = that game turret's
 model with its muzzle / shot start. Any `model` (turret, part) may be `"gof2:<model name>"`, one of the game's models from
-reference.md's "Models and their textures" (no file needed). Sounds: `.ogg` / `.wav` / `.mp3`. Behaviour never changes (a beam
+reference.md's "Models and their textures" (no file needed; fx parts also take `"gof2:bra"` / `"gof2:beer"`, the ending's props). Sounds: `.ogg` / `.wav` / `.mp3`. Behaviour never changes (a beam
 stays a beam) except through the stats above.
 
 ## ships.json

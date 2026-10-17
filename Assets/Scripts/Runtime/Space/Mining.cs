@@ -66,7 +66,7 @@ namespace GoF2Remake.Flight
         public bool HasDrill => drill != null;
         public int FreeCargo => Shop.FreeCargo(db);
         /// <summary>A HUD message (text id 546, 541, 322, "12t Gold" ...).</summary>
-        public event Action<string> Message;
+        public event Action<string, HudMessageKind> Message;
         /// <summary>Multiplayer (NetOrbit): the asteroid exploding now was mined out here (not shot or rammed).</summary>
         public static bool MiningOut { get; private set; }
 
@@ -271,7 +271,7 @@ namespace GoF2Remake.Flight
                 case Phase.Idle:
                     if (Locked == null || BeamMode) return false;   // beam mode: the fire button mines
                     if (Shop.FreeCargo(db) < 1) { Say(Localization.Get(322)); return false; }   // Cargo hold is full.
-                    Say(Localization.Get(546) + ": " + Localization.Get(550));            // Target: Asteroid
+                    Say(Localization.Get(546) + ": " + Localization.Get(550), HudMessageKind.Target);            // Target: Asteroid
                     Play(sounds?.autopilotOn);
                     StartApproach(Locked);
                     break;
@@ -493,7 +493,7 @@ namespace GoF2Remake.Flight
                         Shop.AddToCargo(core, 1);
                         Session.CoresMined++;
                         Session.CoreTypesMined.Add(core);
-                        Say($"1t {GameNames.Item(core)}");
+                        Say($"1t {GameNames.Item(core)}", HudMessageKind.Gain);
                         n = Mathf.Min(n, Shop.FreeCargo(db));
                     }
                     if (n > 0)
@@ -501,7 +501,7 @@ namespace GoF2Remake.Flight
                         Shop.AddToCargo(ore, n);
                         Session.OreMined += n;
                         Session.OreTypesMined.Add(ore);
-                        Say($"{n}t {GameNames.Item(ore)}");
+                        Say($"{n}t {GameNames.Item(ore)}", HudMessageKind.Gain);
                     }
                     if (Shop.FreeCargo(db) <= 0) Say(Localization.Get(322));
                 }
@@ -705,7 +705,7 @@ namespace GoF2Remake.Flight
             beamTarget = null;
             beamFx?.Off();
             drillSound.Stop();
-            foreach (var kv in beamCut) Say($"{kv.Value}t {GameNames.Item(kv.Key)}");
+            foreach (var kv in beamCut) Say($"{kv.Value}t {GameNames.Item(kv.Key)}", HudMessageKind.Gain);
             beamCut.Clear();
             PruneExtractions();
         }
@@ -736,7 +736,7 @@ namespace GoF2Remake.Flight
             if (asm?.playerVariantParts != null) foreach (var p in asm.playerVariantParts) if (p != null) p.SetActive(on);
         }
 
-        void Say(string text) => Message?.Invoke(text);
+        void Say(string text, HudMessageKind kind = HudMessageKind.Normal) => Message?.Invoke(text, kind);
 
         void Play(AudioClip clip, float volume = 1f)
         {

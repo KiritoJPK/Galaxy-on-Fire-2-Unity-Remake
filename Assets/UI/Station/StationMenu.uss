@@ -93,6 +93,51 @@
     color: #FFFFFF;
 }
 
+/* Remake (players' request): the credits and the hold at the top right under the bar, on the main view and in the
+   Space Lounge, like the hangar window's footer (StationMenu.UpdateFunds). Not over the windows that cover that corner
+   (the hangar window has its own footer, the Missions and Status windows). */
+.station-funds {
+    position: absolute;
+    right: 40px;
+    top: 112px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.station-funds-cargo,
+.station-funds-credits {
+    padding: 6px 16px;
+    background-color: rgba(4, 10, 18, 0.6);
+    border-width: 2px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+    -unity-text-align: middle-center;
+}
+
+.station-funds-cargo {
+    font-size: 20px;
+    letter-spacing: 1px;
+    color: var(--gof-text);
+}
+
+.station-funds-cargo--over {
+    color: #FF6B5E;
+    border-color: #FF6B5E;
+}
+
+.station-funds-credits {
+    margin-left: 10px;
+    font-size: 22px;
+    color: var(--gof-amber);
+    border-color: var(--gof-amber);
+}
+
+.hangar-open .station-funds,
+.missions-open .station-funds,
+.status-open .station-funds {
+    display: none;
+}
+
 /* ---- left panel -------------------------------------------------------------------- */
 
 .side-panel {
@@ -391,6 +436,19 @@
 /* Phones: narrower panel. */
 .layout-phone .side-panel {
     width: 380px;
+}
+
+/* Inspect ship (and its Customize screen): the menu's dark shades fade with the menu, so the view (and its screenshots) has
+   no dark gradient on the left. */
+.side-shade,
+.bottom-shade {
+    transition-property: opacity;
+    transition-duration: 0.45s;
+}
+
+.station-inspecting .side-shade,
+.station-inspecting .bottom-shade {
+    opacity: 0;
 }
 
 /* The star map (StarMap) is open: it draws the whole screen. */

@@ -61,7 +61,10 @@ namespace GoF2Remake.World
         public void End() => Active = false;
 
         /// <summary>Gone at once (the view left the hangar): no blend back.</summary>
-        public void Reset() { Active = false; Blend = 0f; }
+        public void Reset() { Active = false; Blend = 0f; ClearPhoto(); }
+
+        /// <summary>The photo tools' free pose, roll and field of view gone (the blend back has ended).</summary>
+        void ClearPhoto() { free = false; RollDeg = 0f; FovDeg = 0f; }
 
         /// <summary>Turns the orbit: + yaw takes the camera to its own left (the ship turns with a drag to the right), + pitch
         /// takes it up.</summary>
@@ -96,6 +99,26 @@ namespace GoF2Remake.World
             distance = targetDistance;
         }
 
+        // ---- remake: the photo tools (UI.PhotoTools: the free camera, the lens's roll and field of view) ----
+
+        bool free;
+        Vector3 freePos;
+        Quaternion freeRot = Quaternion.identity;
+
+        /// <summary>The camera flies free (World.FreeCamera) instead of orbiting: this pose replaces the orbit's.</summary>
+        public void SetFreePose(Vector3 position, Quaternion rotation) { free = true; freePos = position; freeRot = rotation; }
+        public void ClearFree() => free = false;
+        public bool Free => free;
+        /// <summary>The lens turned about the view (degrees, + counter-clockwise), the photo tools' Roll.</summary>
+        public float RollDeg { get; set; }
+        /// <summary>The photo tools' vertical field of view (degrees), 0 = the hangar camera's.</summary>
+        public float FovDeg { get; set; }
+        /// <summary>The floor the free camera stays above (m): the hull's lowest point + the orbit's clearance.</summary>
+        public float FloorY => floorY + FloorClearance;
+        /// <summary>The orbit camera's pose now (where the free camera starts).</summary>
+        public Vector3 OrbitPosition => centre + pan + Direction * distance;
+        public Quaternion OrbitRotation => Quaternion.LookRotation(-Direction, Vector3.up);
+
         /// <summary>The orbit's pitch now (rad; the floor may have raised it).</summary>
         public float Pitch => pitch;
 
@@ -108,6 +131,7 @@ namespace GoF2Remake.World
         public void Tick(float dtMs)
         {
             Blend = Mathf.MoveTowards(Blend, Active ? 1f : 0f, dtMs / BlendMs);
+            if (!Active && Blend <= 0f) ClearPhoto();   // kept through the blend back, so the view doesn't jump
             distance = Mathf.Lerp(distance, targetDistance, 1f - Mathf.Exp(-ZoomEase * dtMs));
             // Above the floor: sin(pitch) * distance >= floor + clearance - centre.
             float minPitch = Mathf.Asin(Mathf.Clamp((floorY + FloorClearance - centre.y - pan.y) / Mathf.Max(distance, 1e-3f), -1f, 1f));
@@ -120,11 +144,13 @@ namespace GoF2Remake.World
         {
             if (!Shown) return hangarNear;
             var dir = Direction;
-            var pos = centre + pan + dir * distance;
-            var rot = Quaternion.LookRotation(-dir, Vector3.up);
+            var pos = free ? freePos : centre + pan + dir * distance;
+            var rot = (free ? freeRot : Quaternion.LookRotation(-dir, Vector3.up)) * Quaternion.AngleAxis(RollDeg, Vector3.forward);
             float b = Mathf.SmoothStep(0f, 1f, Blend);
             camera.SetPositionAndRotation(Vector3.Lerp(hangarPos, pos, b), Quaternion.Slerp(hangarRot, rot, b));
-            float orbitNear = Mathf.Clamp((distance - radius) * 0.5f, 0.1f, hangarNear);
+            // In front of the hull at the closest: the camera's distance from it (the free camera may go anywhere near it).
+            float gap = (free ? Vector3.Distance(freePos, centre) : distance) - radius;
+            float orbitNear = Mathf.Clamp(gap * 0.5f, free ? 0.05f : 0.1f, hangarNear);
             return Mathf.Lerp(hangarNear, orbitNear, b);
         }
     }

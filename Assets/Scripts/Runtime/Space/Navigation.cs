@@ -225,7 +225,7 @@ namespace GoF2Remake.Flight
         /// <summary>Radar+0x54: hostile ships around (Traffic): no fast-forward.</summary>
         [NonSerialized] public bool HostilesPresent;
         public bool AboutToReach { get; private set; }
-        public event Action<string> Message;
+        public event Action<string, HudMessageKind> Message;
 
         /// <summary>The action prompt text (null = nothing to do here).</summary>
         public string PromptText =>
@@ -409,7 +409,7 @@ namespace GoF2Remake.Flight
             {
                 // MGame::OnTouchEnd key 0x2000000: HUD event 0xd "Target: Waypoint" + 28; the autopilot follows the route.
                 if (routeTarget == null || playerRoute == null || playerRoute.Waypoint == null) return;
-                Say($"{Localization.Get(546)}: {Localization.Get(573)}");
+                Say($"{Localization.Get(546)}: {Localization.Get(573)}", HudMessageKind.Target);
                 Play(sounds?.autopilotOn);
                 SetAutopilot(routeTarget);
                 return;
@@ -421,7 +421,7 @@ namespace GoF2Remake.Flight
                 KhadorRequested?.Invoke();
                 return;
             }
-            Say($"{Localization.Get(546)}: {target.name}");
+            Say($"{Localization.Get(546)}: {target.name}", HudMessageKind.Target);
             Play(sounds?.autopilotOn);
             SetAutopilot(target);
         }
@@ -602,7 +602,7 @@ namespace GoF2Remake.Flight
             else if (Locked.kind == Kind.DockingTarget) { var s = Locked.dockingShip; SetAutopilot(null); Docking?.Dock(s); }
             else
             {
-                Say($"{Localization.Get(546)}: {Locked.name}");                 // Target: Var Hastra Station
+                Say($"{Localization.Get(546)}: {Locked.name}", HudMessageKind.Target);                 // Target: Var Hastra Station
                 Play(sounds?.autopilotOn);
                 SetAutopilot(Locked);
             }
@@ -709,7 +709,7 @@ namespace GoF2Remake.Flight
             MusicPaused = pauseMenuOpen && !GoF2Remake.Data.NetSession.Active;
         }
 
-        void Say(string text) => Message?.Invoke(text);
+        void Say(string text, HudMessageKind kind = HudMessageKind.Normal) => Message?.Invoke(text, kind);
 
         void Play(AudioClip clip)
         {

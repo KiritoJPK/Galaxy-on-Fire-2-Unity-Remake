@@ -138,6 +138,9 @@ namespace GoF2Remake.UI
             safeArea = root.Q("safeArea");
             dragZone = root.Q("dragZone");
             hints = root.Q("hints");
+            fundsCargo = root.Q<Label>("fundsCargo");
+            fundsCredits = root.Q<Label>("fundsCredits");
+            shownCredits = shownLoad = shownMaxLoad = int.MinValue;   // a UI reload: write them again
             SetupUiAnimation();
             if (GoF2Remake.Multiplayer.NetGame.Active)
             {
@@ -1913,8 +1916,11 @@ namespace GoF2Remake.UI
         // Hide UI (H, the controller's Y) clears the screen (a short click / tap or H / Y again brings it back; a drag still
         // turns); Screenshot (Enter / P, the controller's A) saves the view without the UI, like Action Freeze's 60 Save to
         // library (PhotoMode.Store: PC Pictures/Galaxy on Fire 2, Android MediaStore; 55 / 56). Their hints are clickable
-        // (a tap on touch, which has no keys).
+        // (a tap on touch, which has no keys). Remake (players' suggestion, 2026-10-17): Action Freeze's photo tools
+        // (PhotoTools): the free camera (F / X) within six ship radii of the hull, above the pad, and the Camera settings
+        // panel (Tab / View); not in the Customize screen.
         VisualElement inspectOverlay, inspectHints, inspectFooter;
+        PhotoTools inspectTools;
         Label inspectTitle, inspectMessage;
         Button inspectBack;
         bool inspectDragging, inspectUiHidden, inspectCapturing;
@@ -1941,6 +1947,9 @@ namespace GoF2Remake.UI
             customize.Applied += ApplyCustomize;
             customize.Cancelled += CancelCustomize;
             inspectOverlay.Add(customize.Root);
+            inspectTools = new PhotoTools(inspectOverlay, push => Play(push ? buttonPush : buttonRelease));
+            inspectTools.Changed += () => BuildInspectHints(InputMode.Current);
+            inspectTools.Tapped += () => { if (inspectUiHidden) SetInspectUiHidden(false); };
             root.Add(inspectOverlay);   // the last child: over the blocker that keeps the menu's own input out meanwhile
         }
 
@@ -1957,8 +1966,12 @@ namespace GoF2Remake.UI
             SetInspectUiHidden(false);
             if (root.focusController?.focusedElement is VisualElement f) f.Blur();
             inspectTitle.text = GameNames.Ship(Session.ShipIndex).ToUpperInvariant();
+            var insp = level.Inspect;
+            inspectTools.Begin(Camera.main, level.PlayerShip, () => insp.Centre, insp.Radius, insp.Radius * 6f, insp.FloorY,
+                               () => (insp.OrbitPosition, insp.OrbitRotation), true);
             BuildInspectHints(InputMode.Current);
             if (inspectOverlay != null) inspectOverlay.AddToClassList("inspect-overlay--shown");
+            root.AddToClassList("station-inspecting");   // the menu's dark shades fade out with it
         }
 
         void EndInspect()
@@ -1967,8 +1980,10 @@ namespace GoF2Remake.UI
             if (level == null || !level.Inspect.Active) return;
             Play(buttonRelease);
             SetInspectUiHidden(false);
+            inspectTools.End();   // the free pose, roll and lens stay with HangarInspect through the blend back
             level.EndInspect();
             if (inspectOverlay != null) inspectOverlay.RemoveFromClassList("inspect-overlay--shown");
+            root.RemoveFromClassList("station-inspecting");
             Select(inspectButton);   // back where it was opened (keys / controller)
         }
 
@@ -1999,6 +2014,10 @@ namespace GoF2Remake.UI
             if (kit == null || build == null) return;
             BeginInspect();
             if (!level.Inspect.Active) return;
+            inspectTools.End();   // the Customize screen has its own panel and keys: no photo tools
+            level.Inspect.ClearFree();
+            level.Inspect.RollDeg = 0f;
+            level.Inspect.FovDeg = 0f;
             string key = ModShipKits.BuildKey(ship);
             customizeBefore = key != null && Session.ShipBuilds.TryGetValue(key, out var text) ? text : null;
             customizing = true;
@@ -2102,23 +2121,12 @@ namespace GoF2Remake.UI
         System.Collections.IEnumerator CaptureInspect()
         {
             inspectCapturing = true;
-            FpsCounter.Suppressed = true;
-            inspectOverlay.style.visibility = Visibility.Hidden;
-            yield return null;   // a frame drawn without the overlay
-            yield return new WaitForEndOfFrame();
-            bool ok = false;
-            try
-            {
-                var shot = ScreenCapture.CaptureScreenshotAsTexture();
-                byte[] png = shot.EncodeToPNG();
-                Destroy(shot);
-                ok = PhotoMode.Store(png, $"GoF2_{System.DateTime.Now:yyyyMMdd_HHmmss}.png");
-            }
-            catch (System.Exception e) { Debug.LogWarning("Inspect screenshot: " + e.Message); }
-            inspectOverlay.style.visibility = StyleKeyword.Null;
+            bool saved = false;
+            // The photo tools' capture: the overlay hidden, cut to the frame, twice the size if asked.
+            yield return inspectTools.Capture(inspectOverlay, ok => saved = ok);
             inspectCapturing = false;
             FpsCounter.Suppressed = inspectUiHidden;
-            inspectMessage.text = Localization.Get(ok ? 55 : 56);   // "Screenshot saved." / "Error saving screenshot."
+            inspectMessage.text = Localization.Get(saved ? 55 : 56);   // "Screenshot saved." / "Error saving screenshot."
             inspectMessageMs = 3000f;
         }
 
@@ -2127,12 +2135,14 @@ namespace GoF2Remake.UI
             OrbitViewUi.BuildHints(inspectHints, kind, new[] { "W", "A", "S", "D" },
                 () => { Play(buttonRelease); SetInspectUiHidden(true); },
                 () => { Play(buttonRelease); TakeInspectScreenshot(); },
-                EndInspect, () => Play(buttonPush));
+                EndInspect, () => Play(buttonPush),
+                customizing ? null : inspectTools.ToggleFree, customizing ? null : inspectTools.ToggleSettings, !customizing && inspectTools.Free);
         }
 
         /// <summary>A pointer on one of the footer's buttons (while they show): a click there isn't a drag (screen pixels, y up).</summary>
         bool OverInspectButton(Vector2 screen) => !inspectUiHidden && (OrbitViewUi.OverControl(root, inspectBack, inspectHints, screen)
-                                                                       || (customize != null && customize.Contains(root, screen)));
+                                                                       || (customize != null && customize.Contains(root, screen))
+                                                                       || inspectTools.OverPanel(screen));
 
         /// <summary>The orbit camera's input; 'customize' (the Customize screen): its panel takes the arrows, the left stick,
         /// Enter / Esc and the face buttons, the camera keeps the drag, the wheel / pinch / triggers, the right stick (and
@@ -2143,7 +2153,24 @@ namespace GoF2Remake.UI
             float frames = Time.unscaledDeltaTime * 1000f / (1000f / 30f);
             var kb = GoF2Remake.Multiplayer.NetChat.Keys;   // null while a multiplayer chat line is typed
             var pad = Gamepad.current;
+            // The photo tools (not in the Customize screen): their keys first, the settings panel takes the arrows / Enter /
+            // Esc while open; the free camera replaces the orbit.
+            bool panelKeys = false, backTaken = false;
             if (!customize)
+            {
+                panelKeys = inspectTools.TickKeys(kb, pad, out backTaken);
+                insp.RollDeg = PhotoSettings.Roll;
+                insp.FovDeg = PhotoSettings.Fov;
+                if (inspectTools.Free)
+                {
+                    inspectTools.TickFree(kb, pad, Time.unscaledDeltaTime, OverInspectButton, out _);
+                    var (fp, fr) = inspectTools.FreePose;
+                    insp.SetFreePose(fp, fr);
+                }
+                else insp.ClearFree();
+                inspectTools.LateTick();
+            }
+            if (!customize && !panelKeys && !backTaken)
             {
                 if ((kb != null && (kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame || kb.iKey.wasPressedThisFrame || kb.digit6Key.wasPressedThisFrame))
                     || (pad != null && (pad.buttonEast.wasPressedThisFrame || pad.rightStickButton.wasPressedThisFrame)))
@@ -2155,6 +2182,8 @@ namespace GoF2Remake.UI
                     TakeInspectScreenshot();
             }
             if (inspectMessageMs > 0f && (inspectMessageMs -= Time.unscaledDeltaTime * 1000f) <= 0f) inspectMessage.text = "";
+            if (!customize && inspectTools.Free) return;   // the free camera took the input above; the orbit rests
+            if (panelKeys) { kb = null; pad = null; }      // the settings panel has the keys and the controller
 
             float scale = 1080f / Mathf.Max(1, Screen.height);   // PhotoMode's pixels: a 1080-high screen
             Vector2 delta = Vector2.zero;   // x: + takes the camera to its left (the ship turns with a drag right); y: + up
@@ -2178,7 +2207,9 @@ namespace GoF2Remake.UI
                 Vector2? pos = null;
                 if (down == 1) pos = ts.primaryTouch.position.ReadValue();
                 else if (Mouse.current != null && Mouse.current.leftButton.isPressed) pos = Mouse.current.position.ReadValue();
-                if (pos.HasValue && (inspectDragging || !OverInspectButton(pos.Value)))
+                // A press that began on the settings panel (a slider) or a button stays theirs when the pointer leaves them.
+                bool overUi = inspectTools.PressOverUi(pos, OverInspectButton);
+                if (pos.HasValue && !overUi)
                 {
                     if (!inspectDragging) { inspectDragging = true; inspectLast = pos.Value; inspectDragTravel = 0f; }
                     delta = (pos.Value - inspectLast) * scale;
@@ -2225,7 +2256,7 @@ namespace GoF2Remake.UI
                 float trig = pad.leftTrigger.ReadValue() - pad.rightTrigger.ReadValue();   // RT closer, LT further
                 if (Mathf.Abs(trig) > 0.05f) insp.Zoom(Mathf.Pow(1.03f, trig * frames));
             }
-            if (Mouse.current != null)
+            if (Mouse.current != null && !inspectTools.OverPanel(Mouse.current.position.ReadValue()))
             {
                 float steps = Mathf.Clamp(Mouse.current.scroll.ReadValue().y, -1f, 1f);   // a notch reads 1 or 120
                 if (Mathf.Abs(steps) > 0f) insp.Zoom(Mathf.Pow(0.85f, steps));
@@ -2245,10 +2276,11 @@ namespace GoF2Remake.UI
         // is simply on its pad (a load, a new game, the flights off) shows it at once.
         const float UiAnimMs = 450f;
         const float UiTopOffset = 90f, UiLaunchOffset = 220f, UiTickerOffset = 60f;   // panel px
+        const float UiFundsOffset = 160f;   // the credits and cargo under the bar: off the top edge too
         const float UiItemOffset = 40f, UiItemMs = 180f, UiItemStepMs = 50f;            // the main menu's buttons
         float uiShown = 1f;   // 0 away .. 1 in place
         bool uiStateTaken;
-        VisualElement uiTop, uiTicker, uiBlocker, uiInfo, uiButtons;
+        VisualElement uiTop, uiFunds, uiTicker, uiBlocker, uiInfo, uiButtons;
         readonly System.Collections.Generic.List<VisualElement> uiItems = new System.Collections.Generic.List<VisualElement>();
 
         /// <summary>The menu is away or on its way in / out: no input.</summary>
@@ -2258,6 +2290,7 @@ namespace GoF2Remake.UI
         {
             if (safeArea == null) return;
             uiTop = safeArea.Q(className: "top-bar");
+            uiFunds = safeArea.Q("fundsBar");   // the credits and cargo: up and away with the bar
             uiTicker = safeArea.Q("ticker");
             uiInfo = safeArea.Q(className: "station-info");
             uiButtons = safeArea.Q(className: "station-buttons");
@@ -2318,7 +2351,7 @@ namespace GoF2Remake.UI
             if (still)
             {
                 safeArea.style.opacity = StyleKeyword.Null;
-                foreach (var el in new[] { uiTop, launchButton, uiTicker, uiInfo }) if (el != null) el.style.translate = StyleKeyword.Null;
+                foreach (var el in new[] { uiTop, uiFunds, launchButton, uiTicker, uiInfo }) if (el != null) el.style.translate = StyleKeyword.Null;
                 if (uiInfo != null) uiInfo.style.opacity = StyleKeyword.Null;
                 if (uiButtons != null)
                     foreach (var b in uiButtons.Children()) { b.style.translate = StyleKeyword.Null; b.style.opacity = StyleKeyword.Null; }
@@ -2330,6 +2363,7 @@ namespace GoF2Remake.UI
             // The safe area fades over the first 40 %: the side entries do their own fade after that, the rest is in by then.
             safeArea.style.opacity = Mathf.SmoothStep(0f, 1f, t / 0.4f);
             if (uiTop != null) uiTop.style.translate = new Translate(0f, -UiTopOffset * k);
+            if (uiFunds != null) uiFunds.style.translate = new Translate(0f, -UiFundsOffset * k);
             if (launchButton != null) launchButton.style.translate = new Translate(UiLaunchOffset * k, 0f);
             if (uiTicker != null) uiTicker.style.translate = new Translate(0f, UiTickerOffset * k);
             float ms = t * UiAnimMs;
@@ -2342,12 +2376,40 @@ namespace GoF2Remake.UI
             }
         }
 
+        // ---- credits and cargo (remake, players' request) -----------------------------------------------------------
+        // The main view and the Space Lounge show the credits and the hold at the top right under the bar, the hangar
+        // window footer's look ("CARGO 65 / 195 t", the credits in amber; red when overloaded), so a lounge deal, a
+        // mission payout, a medal reward, a fine, a multiplayer trade or a faction toll shows without opening the hangar.
+        // Read every frame and written only when a value changed. Hidden under the hangar, Missions and Status windows
+        // (StationMenu.uss) and with the rest of the menu under the star map and while it is flown away.
+        Label fundsCargo, fundsCredits;
+        int shownCredits = int.MinValue, shownLoad = int.MinValue, shownMaxLoad = int.MinValue;
+
+        void UpdateFunds()
+        {
+            if (fundsCargo == null || fundsCredits == null || level == null || level.Database == null) return;
+            int credits = Session.Credits, load = Shop.CargoLoad(), max = Shop.MaxLoad(level.Database);
+            if (credits != shownCredits)
+            {
+                shownCredits = credits;
+                fundsCredits.text = ItemInfo.Credits(credits);
+            }
+            if (load != shownLoad || max != shownMaxLoad)
+            {
+                shownLoad = load;
+                shownMaxLoad = max;
+                fundsCargo.text = $"{Localization.Get(184).ToUpperInvariant()}  {load} / {max} t";   // 184 Cargo, as the hangar's footer
+                fundsCargo.EnableInClassList("station-funds-cargo--over", load > max);
+            }
+        }
+
         void Update()
         {
             if (root == null || level == null) return;
             if (builderView != null) { builderView.Update(); return; }   // the Mod Builder's hangar
             if (lastScreen != ScreenSize() || lastSafeArea != Screen.safeArea) UpdateLayout();
             UpdateTicker();   // scrolls on under dialogs and windows (it used to wait, then fly in again)
+            UpdateFunds();
             // Remake hangar flights: the menu hides while the ship flies in or out; the conversations, windows and hints
             // wait until it has landed. Any key / tap / button skips the flight.
             bool flying = level.PlayerFlying;

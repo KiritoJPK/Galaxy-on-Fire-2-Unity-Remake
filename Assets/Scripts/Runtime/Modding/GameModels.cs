@@ -32,6 +32,19 @@ namespace GoF2Remake.Modding
         public static AssemblyData Find(Database db, string name) =>
             db == null || string.IsNullOrEmpty(name) ? null : db.Assemblies.Find(a => a.name == name && a.pack != ModContent.Pack);
 
+        /// <summary>One of the game's single-mesh props that has no assembly (null = none): "beer" (0x37d0) and "bra" (0x37d1),
+        /// the ending's menu-backdrop statics (Level::createScene, StoryAssets.menuStatics), the only way a build reaches them.
+        /// For weapon effects ("gof2:bra" as a projectile: players asked for the exploding bra, 2026-10-17).</summary>
+        public static UnityEngine.GameObject Prop(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            var story = StoryAssets.Load();
+            if (story == null || story.menuStatics == null) return null;
+            foreach (var p in story.menuStatics)
+                if (p != null && string.Equals(p.name, name, StringComparison.OrdinalIgnoreCase)) return p;
+            return null;
+        }
+
         /// <summary>An "icon" that is one of the game's shop icons ("gof2:item_046", "gof2:ship_005": Resources/GoF2Icons),
         /// null = not one of them / no such icon.</summary>
         public static UnityEngine.Texture2D Icon(string icon) =>

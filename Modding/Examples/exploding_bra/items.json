@@ -1,0 +1,22 @@
+[
+    // The Exploding Bra, made from the Fireworks (item 232): a bomb (press again to set it off early) with the fireworks'
+    // spark trail and burst, its own numbers, and the bra the ending leaves in space as what flies.
+    {
+        "id": "exploding_bra",
+        "base": 232,
+        "name": { "en": "Exploding Bra", "de": "Explodierender BH" },
+        "description": {
+            "en": "Recovered tumbling through the wreckage of the Void mother ship, right next to an empty beer can. Nobody admits to losing it. A Kaamo Club regular with too much time and too much Buskat fitted it with a fireworks charge, and now it is the most talked-about secondary weapon in the galaxy. Launch it, press again to detonate, and watch your enemies get the support they never asked for. Not machine washable. One size fits all.",
+            "de": "Geborgen aus den Trümmern des Void-Mutterschiffs, gleich neben einer leeren Bierdose. Niemand gibt zu, ihn verloren zu haben. Ein Stammgast des Kaamo Club mit zu viel Zeit und zu viel Buskat hat ihn mit einer Feuerwerksladung bestückt, und nun ist er die meistbesprochene Sekundärwaffe der Galaxis. Abschießen, erneut drücken zum Zünden, und zusehen, wie die Gegner Halt bekommen, um den sie nie gebeten haben. Nicht maschinenwaschbar. Einheitsgröße."
+        },
+        "techLevel": 2,
+        "occurrence": 25,
+        "price": [2400, 3000],
+        "alwaysSoldAt": 78,
+        "stats": { "damage": 160, "reloadMs": 5000, "lifetimeMs": 8000, "speed": 10, "blastRadius": 20000 },
+        "fx": {
+            // The game's bra (Level::createScene's 0x37d1), 40 m across, spinning about its flight.
+            "projectile": { "model": "gof2:bra", "size": 800, "spin": 540 }
+        }
+    }
+]

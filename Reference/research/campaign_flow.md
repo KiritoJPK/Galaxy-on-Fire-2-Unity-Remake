@@ -191,7 +191,7 @@ against the transition table). Freelance types 0..15 are named by texts 354..369
      - N = 18: mission removed, nothing else;
      - N = 77 at station 100: ship 37 Cronus added to the dealer (price 0 via `OnInitialize`);
      - N = 78: `departStation` + space module (**auto-launch**, escape from Valkyrie);
-     - N = 84 at station 100: ships 38 Typhon and 40 Nemesis to the dealer, +1 137 S'kloptorr Rum cargo;
+     - N = 84 at station 100: ships 38 Typhon and 40 Nemesis to the dealer, +1 137 S'kolptorr Rum cargo;
      - N = 104: hangar window rebuilt (blueprints);
      - **auto-launch into a story orbit** (`initStreamOutPosition = 1`, `departStation(target)`, module 2): N = 89 → 109,
        99 → 10, 109 → 114, 119 → 10, 133 → 120; N = 144 → 112 and N = 160 → 10 (without stream-out);
@@ -359,7 +359,7 @@ in that station's orbit; "dock" = completes on docking. Goal lines are inferred 
 | 80 | 0x01 | 100 | 691 | – | 2426-2431 | Defend Kothar against Alice |
 | 81 | 0x04 | −1 | 691 | – | – | Chase Alice (level-driven, uncertain where) |
 | 82 | 0x0b | 100 | 749 | – | 2436-2443 | Aftermath with Carla |
-| 83 | 0x0b | 100 | 749 | – | 2444-2452 | Khador gives the **Cronus**; station reload → 84: dealer adds Typhon + Nemesis, +1 S'kloptorr Rum |
+| 83 | 0x0b | 100 | 749 | – | 2444-2452 | Khador gives the **Cronus**; station reload → 84: dealer adds Typhon + Nemesis, +1 S'kolptorr Rum |
 | 84 | empty hidden | – | 692 | – | – | Free play (`dlc1Won`); jump drive saleable, +1 Khador Drive |
 
 ### Supernova add-on (85-162)

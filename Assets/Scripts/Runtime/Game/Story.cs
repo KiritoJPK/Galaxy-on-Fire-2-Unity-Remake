@@ -858,7 +858,7 @@ namespace GoF2Remake.Data
         }
 
         /// <summary>ModStation::OnTouchEnd after a docked success conversation, by the new index 'n' (campaign_flow.md 3.1 3):
-        /// Khador's gifts at Kothar (77: the Cronus; 84: the Typhon, the Nemesis and a bottle of S'kloptorr Rum).</summary>
+        /// Khador's gifts at Kothar (77: the Cronus; 84: the Typhon, the Nemesis and a bottle of S'kolptorr Rum).</summary>
         public static void AfterDockedAdvance(int n, int station)
         {
             if (station != 100) return;

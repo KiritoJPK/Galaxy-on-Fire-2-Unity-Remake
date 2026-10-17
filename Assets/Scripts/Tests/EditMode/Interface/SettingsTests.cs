@@ -61,6 +61,7 @@ namespace GoF2Remake.Tests
             Assert.IsTrue(Settings.NpcPlayerEngines, "other ships' engines like yours: on");
             Assert.IsTrue(Settings.DyingCargoMarkers, "salvage markers: on");
             Assert.IsFalse(Settings.OriginalTargetLock, "target lock: Smart");
+            Assert.IsTrue(Settings.KeepEnemyLock, "the Smart lock's hold on an enemy: on, as before it was its own option");
             Assert.IsFalse(Settings.KeyAutofire, "double-press autofire: off");
             Assert.IsTrue(Settings.LevelPitch, "level out levels the nose: on");
             Assert.IsFalse(Settings.GyroSteering, "controller gyro: off");

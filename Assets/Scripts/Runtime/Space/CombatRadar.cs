@@ -15,7 +15,12 @@
 //               list, any faction), and while a hostile ship is locked and alive no neutral or friendly one becomes a
 //               candidate: one crossing the box no longer steals the lock (and the missiles) from the enemy aimed at. A
 //               crate in the box beats the ship already locked and the non-hostile ones (#76: the locked enemy kept the
-//               tractor off its own container); a new hostile ship still comes first.
+//               tractor off its own container); a new hostile ship still comes first. The hold is its own option
+//               (Settings.KeepEnemyLock, on by default; players asked for the two apart): off, the priority alone, so a
+//               neutral ship can be scanned while an enemy is locked. Rules in TargetLockRules.
+//               Remake, Unlock target (GameControls.UnlockTarget, U; a tap on the lock plate): the lock is dropped (the
+//               missiles homing on it fly straight on: WeaponSystem.HomingLock reads the lock) and that ship is no candidate
+//               again until it has left the crosshair box, so the next lock can be any other ship. The original has no unlock.
 //   salvage     a crate in the box: ring after 500 ms, locked after the tractor beam's attr 24 (TractorBeam::update);
 //               without a tractor beam "No tractor beam." (540). The beam (projectile_068..070 / v_194) pulls the crate at
 //               10 u/ms, sound 0 loops; within 400 units it is captured (sound 4): the first non-empty cargo entry, capped
@@ -65,7 +70,21 @@ namespace GoF2Remake.Flight
         public int LockFrame { get; private set; } = -1;
         /// <summary>A ship or crate candidate exists (blocks the asteroid lock, Navigation.ShipLockActive).</summary>
         public bool Busy => Candidate != null || CrateCandidate != null || StealCandidate != null || cloudCandidate >= 0;
-        public event Action<string, int> Message;   // text, colour (0 white, 1 red, 2 green)
+        /// <summary>The ship let go by Unlock: no candidate until it leaves the crosshair box (TargetLockRules).</summary>
+        public Target Released { get; private set; }
+
+        /// <summary>Remake: Unlock target. Drops the ship lock; that ship isn't locked again until it has left the crosshair
+        /// box. False when no ship was locked.</summary>
+        public bool Unlock()
+        {
+            if (Locked == null) return false;
+            Released = Locked;
+            Locked = null;
+            if (Candidate == Released) { Candidate = null; timer = 0f; }
+            if (weapons != null) weapons.LockTarget = null;
+            return true;
+        }
+        public event Action<string, int, HudMessageKind> Message;   // text, colour (0 white, 1 red, 2 green), kind
 
         Database db;
         ShipController ship;
@@ -212,13 +231,15 @@ namespace GoF2Remake.Flight
                     // Remake: the smarter lock (see the header): hostile first, then the nearest to the crosshair; no
                     // non-hostile candidate while a hostile ship is locked.
                     bool smart = !Settings.OriginalTargetLock;
-                    bool keepHostile = smart && Locked != null && Locked.Alive && Locked.hostileToPlayer;
+                    bool keepHostile = TargetLockRules.HoldsEnemy(smart, Settings.KeepEnemyLock, Locked != null && Locked.Alive && Locked.hostileToPlayer);
+                    // Unlock target: the ship let go stays out until it leaves the box.
+                    if (Released != null && !TargetLockRules.StillReleased(Released.Alive && Released.isActiveAndEnabled, InBox(cam, c, box, Released.transform.position, out _))) Released = null;
                     float bestScore = float.MaxValue;
                     bool Better(Target t)
                     {
-                        if (keepHostile && !t.hostileToPlayer) return false;
+                        if (!TargetLockRules.Eligible(keepHostile, t.hostileToPlayer, t == Released)) return false;
                         var p = cam.WorldToScreenPoint(t.transform.position);
-                        float score = (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) + (t.hostileToPlayer ? 0f : 1e9f);
+                        float score = TargetLockRules.Score(p.x - c.x, p.y - c.y, t.hostileToPlayer);
                         if (score >= bestScore) return false;
                         bestScore = score;
                         return true;
@@ -226,7 +247,7 @@ namespace GoF2Remake.Flight
                     // PlayerJunk objects: Level::createMission (Junk removal) puts them in the ship list before the pirates,
                     // so the first in the box is the junk, not a ship behind it (#28).
                     foreach (var o in Target.RadarObjects)
-                        if (o != null && o.Alive && !o.untargetable && InBox(cam, c, box, o.transform.position, out float dj))
+                        if (o != null && o.Alive && !o.untargetable && o != Released && InBox(cam, c, box, o.transform.position, out float dj))
                         {
                             if (!smart) { best = o; break; }
                             if (Better(o)) best = o;
@@ -248,12 +269,12 @@ namespace GoF2Remake.Flight
                             // KIPlayer+0x20: a disabled ship with cargo is salvage (it wins over the ship locks).
                             if (s.Hp.empDisabled && s.HasCargo) { if (d < stealD && (Salvaging == null || Salvaging.stolenFrom != s)) { stealD = d; bestSteal = s; } }
                             else if (smart) { if (Better(s.Target)) best = s.Target; }
-                            else if (best == null) best = s.Target;   // Radar::draw: the first ship of the list in the box
+                            else if (best == null && s.Target != Released) best = s.Target;   // Radar::draw: the first ship of the list in the box
                         }
                     // Multiplayer: the other players and the host's ships (on a client), after the traffic's.
                     if ((best == null || smart) && bestSteal == null)
                         foreach (var o in Target.NetShips)
-                            if (o != null && o.Alive && !o.untargetable && InBox(cam, c, box, o.transform.position, out float dn))
+                            if (o != null && o.Alive && !o.untargetable && o != Released && InBox(cam, c, box, o.transform.position, out float dn))
                             {
                                 if (!smart) { best = o; break; }
                                 if (Better(o)) best = o;
@@ -311,7 +332,7 @@ namespace GoF2Remake.Flight
                     {
                         // Radar::draw: 540 "No tractor beam."; remake: once, and the salvage lock is dropped (the ring goes)
                         // instead of staying full.
-                        if (!noTractorShown) { noTractorShown = true; Message?.Invoke(Localization.Get(540), 0); }
+                        if (!noTractorShown) { noTractorShown = true; Message?.Invoke(Localization.Get(540), 0, HudMessageKind.Normal); }
                         refusedCrate = CrateCandidate;
                         refusedSteal = StealCandidate;
                         CrateCandidate = null;
@@ -364,9 +385,9 @@ namespace GoF2Remake.Flight
             var ship = traffic.Ships.Find(s => s != null && s.Target == locked);
             if (ship == null) return;
             var cargo = ship.CargoList;
-            if (cargo == null || cargo.Count == 0) { Message?.Invoke(Localization.Get(542), 0); return; }
+            if (cargo == null || cargo.Count == 0) { Message?.Invoke(Localization.Get(542), 0, HudMessageKind.Scan); return; }
             for (int i = 0; i < cargo.Count; i++)
-                if (cargo[i].amount > 0) { Message?.Invoke($"{cargo[i].amount}t {GameNames.Item(cargo[i].item)}", 0); return; }
+                if (cargo[i].amount > 0) { Message?.Invoke($"{cargo[i].amount}t {GameNames.Item(cargo[i].item)}", 0, HudMessageKind.Scan); return; }
         }
 
         void StartSalvage(Crate crate)
@@ -529,7 +550,7 @@ namespace GoF2Remake.Flight
                 bool known = Blueprints.IsUnlocked(entry.item);
                 Blueprints.Unlock(entry.item);
                 Message?.Invoke(string.Format(known ? Localization.Extra("bpKnown", "Blueprint already known: {0}")
-                                                    : Localization.Extra("bpFound", "Blueprint found: {0}"), GameNames.Item(entry.item)), 2);
+                                                    : Localization.Extra("bpFound", "Blueprint found: {0}"), GameNames.Item(entry.item)), 2, HudMessageKind.Normal);
                 crate.CapturedHere?.Invoke();
                 Destroy(crate.gameObject);
                 return;
@@ -546,7 +567,7 @@ namespace GoF2Remake.Flight
             Standing.ApplyDelict(crate.race, 2);                               // Standing::applyStealCargo
             if (free < n)
             {
-                Message?.Invoke(Localization.Get(322), 1);
+                Message?.Invoke(Localization.Get(322), 1, HudMessageKind.Normal);
                 if (crate.missionCrate && ship == null) { crate.pulled = false; return; }
                 entry.amount -= n;
                 ship?.StealFrom(entry.item, n);
@@ -567,7 +588,7 @@ namespace GoF2Remake.Flight
             // A Void crate counts for Alien Hunter (Status+0xcc), another race's booze for Barkeeper.
             if (crate.race == Standing.Void) Session.AlienRemainsCollected += n;
             else if (Session.IsBooze(entry.item)) Session.BoozeTypes.Add(entry.item);
-            Message?.Invoke($"{n}t {GameNames.Item(entry.item)}", 2);
+            Message?.Invoke($"{n}t {GameNames.Item(entry.item)}", 2, HudMessageKind.Gain);
             // Remake: a crate of several stacks (the remake's own: a capital ship's, a pirate outpost's by tier; the
             // original's crates hold one) gives every one of them, as far as the hold has room (it used to give the first).
             if (ship == null && !crate.missionCrate)
@@ -575,7 +596,7 @@ namespace GoF2Remake.Flight
                 {
                     if (more == entry || more.amount <= 0) continue;
                     int room = Shop.FreeCargo(db);
-                    if (room <= 0) { Message?.Invoke(Localization.Get(322), 1); break; }
+                    if (room <= 0) { Message?.Invoke(Localization.Get(322), 1, HudMessageKind.Normal); break; }
                     int k = Mathf.Min(more.amount, room);
                     more.amount -= k;
                     var mountedMore = db.Item(more.item)?.TypeId == 1 ? Session.Equipment.Find(e => e.item == more.item) : null;
@@ -583,7 +604,7 @@ namespace GoF2Remake.Flight
                     Session.CratesSalvaged += k;
                     if (crate.race == Standing.Void) Session.AlienRemainsCollected += k;
                     else if (Session.IsBooze(more.item)) Session.BoozeTypes.Add(more.item);
-                    Message?.Invoke($"{k}t {GameNames.Item(more.item)}", 2);
+                    Message?.Invoke($"{k}t {GameNames.Item(more.item)}", 2, HudMessageKind.Gain);
                 }
             crate.CapturedHere?.Invoke();   // multiplayer: the capture reaches the crate's owner (NetCrate)
             Destroy(crate.gameObject);

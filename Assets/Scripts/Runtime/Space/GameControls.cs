@@ -60,9 +60,9 @@ namespace GoF2Remake.Flight
         public static event Action Changed;
 
         public static readonly InputAction Steer, Throttle, Brake, Boost, LevelOut, Roll, StrafeLeft, StrafeRight, DodgeLeft, DodgeRight, Drill,
-            FirePrimary, FireSecondary, SwitchSecondary, Action, AutopilotMenu, ActionsMenu, Wingmen, KhadorDrive, FastForward,
+            FirePrimary, FireSecondary, SwitchSecondary, UnlockTarget, Action, AutopilotMenu, ActionsMenu, Wingmen, KhadorDrive, FastForward,
             Camera, AutoTurret, Cloak, TimeExtender, MouseSteering, Chat, ChatSend, ChatChannel, Screenshot,
-            MultiplayerWindow, DistressCall,
+            HudToggle, MultiplayerWindow, DistressCall,
             Thrust, StrafeAxis, Hover, Dampeners, FreeLookHold;
 
         static string X(string key, string english) => Localization.Extra(key, english);
@@ -109,6 +109,9 @@ namespace GoF2Remake.Flight
             SwitchSecondary = Button("switchSecondary", () => X("ctlSwitchSecondary", "Switch secondary"), "<Keyboard>/g", null, "<Gamepad>/dpad/right");
             Camera = Button("camera", () => X("ctlCamera", "Camera / turret view"), "<Keyboard>/t", null, "<Gamepad>/dpad/up");
             AutoTurret = Button("autoTurret", () => X("ctlAutoTurret", "Auto turret on / off"), "<Keyboard>/y", null, "<Gamepad>/dpad/down");
+            // Remake: drops the ship lock (CombatRadar.Unlock; the original has none). U, and B: in flight B is only the
+            // menus' back, and the flight's presses wait while a menu is open (Navigation.PressesBlocked).
+            UnlockTarget = Button("unlockTarget", () => X("ctlUnlockTarget", "Unlock target"), "<Keyboard>/u", null, "<Gamepad>/buttonEast");
             // ---- navigation and equipment
             Action = Button("action", () => X("ctlAction", "Action (dock, autopilot, jump, mine)"), "<Keyboard>/f", "<Keyboard>/enter", "<Gamepad>/buttonWest");
             AutopilotMenu = Button("autopilotMenu", () => X("ctlAutopilotMenu", "Autopilot menu"), "<Keyboard>/q", null, "<Gamepad>/select");
@@ -126,6 +129,8 @@ namespace GoF2Remake.Flight
             ChatSend = Button("chatSend", () => X("ctlChatSend", "Chat: send message"), "<Keyboard>/enter", "<Keyboard>/numpadEnter", null, padSlot: false);
             ChatChannel = Button("chatChannel", () => X("ctlChatChannel", "Chat: switch Local / Global"), "<Keyboard>/tab", null, null, padSlot: false);
             Screenshot = Button("screenshot", () => X("ctlScreenshot", "Screenshot"), "<Keyboard>/f12", null, null);
+            // Remake: the flight HUD Full -> Minimal -> Off (Settings.HudMode), F1 like many games' "hide HUD".
+            HudToggle = Button("hudToggle", () => X("ctlHudToggle", "Toggle HUD"), "<Keyboard>/f1", null, null);
             // Multiplayer (remake): the multiplayer window in flight (N, no controller default) and the squad's distress call
             // (unbound: an accidental call brings the squad over, so it takes a click / tap on its button unless bound here).
             // Added last: the saved overrides are by action and binding index.

@@ -482,7 +482,7 @@ namespace GoF2Remake.UI
                 float y = pad.dpad.ReadValue().y + pad.leftStick.ReadValue().y;
                 if (y > 0.5f) dir = -1; else if (y < -0.5f) dir = 1;
             }
-            if (dir != moveDirection) { moveDirection = dir; moveMs = 0f; if (dir != 0) Move(dir); }
+            if (dir != moveDirection) { moveDirection = dir; moveMs = 0f; if (dir != 0) Move(dir, true); }
             else if (dir != 0)
             {
                 moveMs += dtMs;
@@ -507,10 +507,14 @@ namespace GoF2Remake.UI
             }
         }
 
-        void Move(int dir)
+        /// <summary>Like the hangar's list (HangarWindow.MoveSelection): a fresh press wraps round the ends, a held
+        /// key's repeat stops there.</summary>
+        void Move(int dir, bool wrap = false)
         {
             if (rows.Count == 0) return;
-            Select(Mathf.Clamp(selected + dir, 0, rows.Count - 1), true);
+            int next = selected + dir;
+            if (wrap && selected >= 0 && (next < 0 || next >= rows.Count)) next = next < 0 ? rows.Count - 1 : 0;
+            Select(Mathf.Clamp(next, 0, rows.Count - 1), true);
         }
     }
 }

@@ -805,7 +805,7 @@ namespace GoF2Remake.Tests
             CollectionAssert.AreEquivalent(new[] { 37 }, stock.ships);
             Story.AfterDockedAdvance(84, 100);
             CollectionAssert.AreEquivalent(new[] { 37, 38, 40 }, stock.ships);
-            Assert.AreEqual(1, Shop.CargoOf(137), "a bottle of S'kloptorr Rum");
+            Assert.AreEqual(1, Shop.CargoOf(137), "a bottle of S'kolptorr Rum");
             Story.AfterDockedAdvance(84, 10);
             Assert.AreEqual(1, Shop.CargoOf(137), "only at Kothar");
         }

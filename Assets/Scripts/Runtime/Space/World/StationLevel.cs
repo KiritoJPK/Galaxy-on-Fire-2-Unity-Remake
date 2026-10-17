@@ -989,6 +989,9 @@ namespace GoF2Remake.World
                 if (customHangar != null && customHangar.hasLight && (customHangar.pad - customHangar.light).sqrMagnitude > 1e-4f)
                     keyLight.transform.rotation = Quaternion.LookRotation((customHangar.pad - customHangar.light).normalized);   // its "light" marker
                 keyLight.color = Color.white;
+                // No URP shadows on the ships (the original has none; HangarShipShadow gives their contact shadows): within
+                // the 50 m shadow distance Inspect ship's close-ups showed the hull shading itself (a player's report).
+                keyLight.shadows = LightShadows.None;
                 keyLight.intensity = customHangar != null && customHangar.def.lightIntensity >= 0f ? customHangar.def.lightIntensity : hangarLightIntensity;
             }
             var amb = (StationTables.HangarAmbient(Layout.raceId) + new Color(0.2f, 0.2f, 0.2f)) * 0.7f * hangarAmbientScale;
@@ -1002,7 +1005,7 @@ namespace GoF2Remake.World
         void ApplyLoungeLighting()
         {
             SkyReflection.SetSystem(Layout);
-            OrbitBuilder.SetupLights(Layout, keyLight, null, sunIntensityAt2);
+            OrbitBuilder.SetupLights(Layout, keyLight, null, sunIntensityAt2, sunShadows: LightShadows.Soft);   // the room's own shadows
             RenderSettings.ambientMode = AmbientMode.Skybox;
             DynamicGI.UpdateEnvironment();
             if (customBar != null)
@@ -1296,6 +1299,8 @@ namespace GoF2Remake.World
                 {
                     Inspect.Tick(Time.unscaledDeltaTime * 1000f);
                     mainCamera.nearClipPlane = Inspect.Apply(cam, cam.position, cam.rotation, mainCamera.nearClipPlane);
+                    // The photo tools' field of view (UI.PhotoTools), eased in with the orbit.
+                    if (Inspect.FovDeg > 0f) mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, Inspect.FovDeg, Mathf.SmoothStep(0f, 1f, Inspect.Blend));
                     // A panel over part of the screen (the Customize screen): the view turns aside so the ship stands in the
                     // middle of the free part (InspectFrameX), eased, with the orbit's blend.
                     inspectFrame = Mathf.MoveTowards(inspectFrame, InspectFrameX, Time.unscaledDeltaTime * 1000f / InspectFrameMs);

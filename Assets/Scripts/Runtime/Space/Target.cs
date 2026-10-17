@@ -77,6 +77,9 @@ namespace GoF2Remake.Flight
         [NonSerialized] public ulong remoteKiller = ulong.MaxValue;
         /// <summary>Multiplayer: a squadmate's ship: the players' weapons don't affect it (NPCs still do).</summary>
         [NonSerialized] public bool playerProof;
+        /// <summary>Multiplayer: another player's shield / armor fractions (NetPlayer), drawn on their marker (CombatView);
+        /// -1 = no such pool (and every NPC).</summary>
+        [NonSerialized] public float netShield = -1f, netArmor = -1f;
         /// <summary>The player's cloak (Player+0x5e set by PlayerEgo::toggleCloaking): NPCs keep it as their target but don't
         /// fire, turrets don't aim at it, sleepers don't wake for it.</summary>
         [NonSerialized] public bool cloaked;

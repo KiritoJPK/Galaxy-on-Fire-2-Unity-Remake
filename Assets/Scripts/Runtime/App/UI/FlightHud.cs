@@ -39,7 +39,8 @@ namespace GoF2Remake.UI
 
         PanelRenderer panelRenderer;
         PanelSettings runtimePanel;
-        bool lastTurretView, lastTurretAuto;
+        bool lastTurretView, lastTurretAuto, lastShipLocked;
+        VisualElement lockPlate;
         VisualElement root, safeArea, hints;
         VisualElement crosshair, dockPrompt, dockGlyph;
         VisualElement lockRingElement, navMarkers;   // queried once: two root.Q per frame were a fifth of the HUD's update
@@ -153,13 +154,13 @@ namespace GoF2Remake.UI
             pauseMenu?.Close();   // the scene is going: sounds and time back to normal
             UnityEngine.Cursor.lockState = CursorLockMode.None;   // the captured mouse (mouse steering) is released
             UnityEngine.Cursor.visible = true;
-            if (mining != null) mining.Message -= OnMiningMessage;
+            if (mining != null) mining.Message -= OnKindMessage;
             if (docking != null) docking.Message -= OnMiningMessage;
-            if (nav != null) nav.Message -= OnMiningMessage;
+            if (nav != null) nav.Message -= OnKindMessage;
             if (jump != null) jump.Message -= OnMiningMessage;
             if (traffic != null) traffic.Message -= OnMiningMessage;
             if (traffic != null) traffic.ChoiceRequested -= OnChoiceRequested;
-            if (radar != null) radar.Message -= OnCombatMessage;
+            if (radar != null) radar.Message -= OnRadarMessage;
             if (health != null) health.GameOverStarted -= OnGameOver;
             panelRenderer?.UnregisterUIReloadCallback(OnUIReload);
             InputMode.Changed -= ApplyInputMode;
@@ -225,6 +226,14 @@ namespace GoF2Remake.UI
             root.Add(transferCounter);
             navView = new NavigationView(root);
             combatView = new CombatView(root);
+            // Remake: on touch a tap on the lock plate unlocks the ship locked (Unlock target); pickable only meanwhile.
+            lockPlate = root.Q("lockPlate");
+            lockPlate.RegisterCallback<PointerDownEvent>(e =>
+            {
+                if (InputMode.Current != InputKind.Touch || radar == null || radar.Locked == null) return;
+                UnlockTarget();
+                e.StopPropagation();
+            });
             missileWarning = new MissileWarningView(root, gameObject);
             BuildRadarEllipse(root.Q("radarEllipse"));
             var speedPanel = root.Q("speedPanel");
@@ -613,6 +622,7 @@ namespace GoF2Remake.UI
                 Hint(fire, GameControls.FirePrimary);
                 Hint(T("hudMissile", "MISSILE"), GameControls.FireSecondary);
                 if (weapons != null && weapons.CanCycleSecondary) Hint(T("hudSwitchSecondary", "SWITCH"), GameControls.SwitchSecondary);
+                if (radar != null && radar.Locked != null) Hint(T("hudUnlock", "UNLOCK"), GameControls.UnlockTarget);
                 Hint(T("hudFreeLook", "FREE LOOK"), GameControls.FreeLookHold);
                 if (FirstAuto() != null) Hint(Localization.Get(37).ToUpperInvariant(), GameControls.AutoTurret);
                 if (HasManualTurret()) Hint(T("hudTurretView", "TURRET VIEW"), GameControls.Camera);
@@ -629,6 +639,7 @@ namespace GoF2Remake.UI
             Hint(fire, GameControls.FirePrimary);
             Hint(T("hudMissile", "MISSILE"), GameControls.FireSecondary);
             if (weapons != null && weapons.CanCycleSecondary) Hint(T("hudSwitchSecondary", "SWITCH"), GameControls.SwitchSecondary);
+            if (radar != null && radar.Locked != null) Hint(T("hudUnlock", "UNLOCK"), GameControls.UnlockTarget);
             Hint(T("hudStrafe", "STRAFE"), GameControls.StrafeLeft, GameControls.StrafeRight);
             Hint(T("hudDodge", "DODGE"), GameControls.DodgeLeft, GameControls.DodgeRight);   // left out while unbound
             Hint(T("hudRoll", "ROLL"), GameControls.Roll);
@@ -790,6 +801,9 @@ namespace GoF2Remake.UI
             bool mapOpen = StarMap.IsOpen;
             root.EnableInClassList("hud-map", mapOpen);
             root.EnableInClassList("hud-shop", carrierShop != null && carrierShop.IsOpen);   // the carrier's resupply window
+            int hudMode = Settings.HudMode;   // Options > Gameplay "Flight HUD" (immersion): FlightHud.uss hides the markings
+            root.EnableInClassList("hud-minimal", hudMode == Settings.HudMinimal);
+            root.EnableInClassList("hud-off", hudMode == Settings.HudOff);
             if (mapOpen) return;   // the map has its own input
 
             // MGame::OnUpdate: DialogueWindow::update runs only while the player lives; a conversation open at the death waits.
@@ -877,6 +891,17 @@ namespace GoF2Remake.UI
                 miningView?.ShowMessage(Localization.Extra("mouseSteering", "Mouse steering") + ": "
                                         + (Settings.MouseSteering ? Localization.Extra("on", "On") : Localization.Extra("off", "Off")));
             }
+            // Remake: the Toggle HUD key (F1) steps the "Flight HUD" option Full -> Minimal -> Off; the messages stay in every mode.
+            if (GameControls.HudToggle.WasPressedThisFrame())
+            {
+                Settings.HudMode = (Settings.HudMode + 1) % 3;
+                miningView?.ShowMessage(Localization.Extra("hudMode", "Flight HUD") + ": " + Settings.HudMode switch
+                {
+                    Settings.HudMinimal => Localization.Extra("hudMinimal", "Minimal"),
+                    Settings.HudOff => Localization.Extra("hudOff", "Off"),
+                    _ => Localization.Extra("hudFull", "Full"),
+                });
+            }
 
             if (ship == null)
             {
@@ -886,12 +911,12 @@ namespace GoF2Remake.UI
                 weapons = level.Weapons;
                 if (weapons != null) weapons.mouseOverControls = MouseOverControls;
                 mining = level.Mining;
-                if (mining != null) mining.Message += OnMiningMessage;
+                if (mining != null) mining.Message += OnKindMessage;
                 docking = level.Docking;
                 if (docking != null) docking.Message += OnMiningMessage;
-                if (level.GasClouds != null) level.GasClouds.Message += OnMiningMessage;
+                if (level.GasClouds != null) level.GasClouds.Message += OnKindMessage;
                 nav = level.Navigation;
-                if (nav != null) nav.Message += OnMiningMessage;
+                if (nav != null) nav.Message += OnKindMessage;
                 jump = level.SystemJump;
                 if (jump != null) jump.Message += OnMiningMessage;
                 health = level.Health;
@@ -909,7 +934,7 @@ namespace GoF2Remake.UI
                     var ca = CombatAssets.Load();
                     if (ca != null && ca.missionAccomplished != null) Sfx.PlayAt(ca.missionAccomplished, Camera.main != null ? Camera.main.transform.position : Vector3.zero);
                 };
-                if (radar != null) radar.Message += OnCombatMessage;
+                if (radar != null) radar.Message += OnRadarMessage;
                 if (health != null) health.GameOverStarted += OnGameOver;
                 story = level.StorySpace;
                 if (story != null)
@@ -985,6 +1010,11 @@ namespace GoF2Remake.UI
             var autoT = FirstAuto();
             bool tv = turret != null && turret.InTurretView, ta = autoT != null ? autoT.AutoEnabled : turret != null && turret.AutoEnabled;
             if (tv != lastTurretView || ta != lastTurretAuto) { lastTurretView = tv; lastTurretAuto = ta; BuildHints(InputMode.Current); }
+            // Remake: Unlock target (U / B, a tap on the lock plate), its hint while a ship is locked.
+            if (radar != null && !Navigation.PressesBlocked && GameControls.UnlockTarget.WasPressedThisFrame()) UnlockTarget();
+            bool shipLocked = radar != null && radar.Locked != null;
+            if (shipLocked != lastShipLocked) { lastShipLocked = shipLocked; BuildHints(InputMode.Current); }
+            lockPlate.pickingMode = shipLocked && InputMode.Current == InputKind.Touch ? PickingMode.Position : PickingMode.Ignore;
             root.EnableInClassList("hud-cinematic", (nav != null && nav.Jumping) || (jump != null && jump.Cinematic));   // jumps: no HUD
             // The Khador Drive's charge bar, shared with the cloak's "Cloak charging" (317, Hud::draw 0x1933f6).
             var cloak = level != null && level.Cloak != null ? level.Cloak.Rules : null;
@@ -1385,6 +1415,18 @@ namespace GoF2Remake.UI
         }
 
         void OnMiningMessage(string text) => miningView?.ShowMessage(text);
+
+        /// <summary>Remake: Unlock target (CombatRadar.Unlock): the ship lock dropped, that ship not relocked until it has
+        /// left the crosshair box.</summary>
+        void UnlockTarget()
+        {
+            if (radar == null || !radar.Unlock()) return;
+            miningView?.ShowMessage(Localization.Extra("targetUnlocked", "Target unlocked"), 0, HudMessageKind.Target);   // the next lock's scan replaces it
+            BuildHints(InputMode.Current);
+        }
+        /// <summary>Remake: scans, target notices and cargo gains replace each other on the plate (HudMessageQueue).</summary>
+        void OnKindMessage(string text, HudMessageKind kind) => miningView?.ShowMessage(text, 0, kind);
+        void OnRadarMessage(string text, int colour, HudMessageKind kind) => miningView?.ShowMessage(text, colour, kind);
 
         /// <summary>A ChoiceWindow in flight (MGame+0x90): the pause menu's choice page, the game paused.</summary>
         void OnChoiceRequested(string text, string yes, string no, System.Action onYes, System.Action onNo)

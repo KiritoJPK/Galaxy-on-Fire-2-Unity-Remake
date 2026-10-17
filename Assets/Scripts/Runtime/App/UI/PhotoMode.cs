@@ -14,6 +14,9 @@
 // Remake: the overlay is the hangar's Inspect ship one (OrbitViewUi): "ACTION FREEZE" at the top left, the controls as
 // hints at the top right (Hide UI H / Y, Screenshot Enter / P / A, Back clickable), Back and the remake logo in the
 // footer; Hide UI clears the screen until a short click / tap or H / Y again; + / - (Page Up / Down) zoom too.
+// Remake (players' suggestion "Everspace-style Action Freeze", 2026-10-17): the photo tools (PhotoTools) shared with Inspect
+// ship: the free camera (F / X), anywhere within 5 km of the ship, and the Camera settings panel (Tab / View: lens, depth of
+// field, colour, frame and grid, hide the ship, the screenshot's size).
 
 using System;
 using System.Collections;
@@ -49,6 +52,8 @@ namespace GoF2Remake.UI
         InputKind hintsKind = (InputKind)(-1);
         int draggingFinger = -1;
         float pinchSpan = -1f;
+        readonly PhotoTools tools;
+        const float FreeRangeMetres = 5000f;
 
         public bool Active { get; private set; }
         /// <summary>Back: the pause menu takes over again.</summary>
@@ -78,6 +83,9 @@ namespace GoF2Remake.UI
             footer.Add(logo);
             overlay.Add(footer);
             root.Add(overlay);
+            tools = new PhotoTools(overlay, s => ButtonSound?.Invoke(s));
+            tools.Changed += BuildHints;
+            tools.Tapped += () => { if (uiHidden) SetUiHidden(false); };
         }
 
         public void Enter(SpaceLevel level)
@@ -108,6 +116,13 @@ namespace GoF2Remake.UI
             root.AddToClassList("hud-photo");
             FpsCounter.Suppressed = true;   // not in the photos either
             overlay.AddToClassList("photo-overlay--shown");
+            // The ship's size (its meshes' bounds): the depth of field's "on the ship" reads it.
+            float radius = 30f;
+            var rs = target.GetComponentsInChildren<Renderer>();
+            if (rs.Length > 0) { var b = rs[0].bounds; foreach (var r in rs) b.Encapsulate(r.bounds); radius = Mathf.Max(5f, b.extents.magnitude); }
+            tools.Begin(cam, target, () => target != null ? target.position : Vector3.zero, radius, FreeRangeMetres, float.NegativeInfinity,
+                        OrbitPose, false);
+            BuildHints();
             Place();
         }
 
@@ -115,6 +130,7 @@ namespace GoF2Remake.UI
         {
             if (!Active) return;
             Active = false;
+            tools.End();   // the lens back first: the camera's field of view and near plane
             SetUiHidden(false);
             root.RemoveFromClassList("hud-photo");
             FpsCounter.Suppressed = false;
@@ -132,13 +148,30 @@ namespace GoF2Remake.UI
             float frames = Time.unscaledDeltaTime * 1000f / FrameMs;
             var kb = GoF2Remake.Multiplayer.NetChat.Keys;   // null while a multiplayer chat line is typed
             var pad = Gamepad.current;
-            if ((kb != null && (kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) || (pad != null && pad.buttonEast.wasPressedThisFrame))
-            { Exit(); return false; }
-            if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.pKey.wasPressedThisFrame))
-                || (pad != null && pad.buttonSouth.wasPressedThisFrame)) Save();
-            if ((kb != null && kb.hKey.wasPressedThisFrame) || (pad != null && pad.buttonNorth.wasPressedThisFrame))
-            { ButtonSound?.Invoke(false); SetUiHidden(!uiHidden); }
+            // The photo tools' keys first: the settings panel takes the arrows / Enter / Esc while open.
+            bool panelKeys = tools.TickKeys(kb, pad, out bool backTaken);
+            if (!panelKeys && !backTaken)
+            {
+                if ((kb != null && (kb.escapeKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) || (pad != null && pad.buttonEast.wasPressedThisFrame))
+                { Exit(); return false; }
+                if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.pKey.wasPressedThisFrame))
+                    || (pad != null && pad.buttonSouth.wasPressedThisFrame)) Save();
+                if ((kb != null && kb.hKey.wasPressedThisFrame) || (pad != null && pad.buttonNorth.wasPressedThisFrame))
+                { ButtonSound?.Invoke(false); SetUiHidden(!uiHidden); }
+            }
             if (InputMode.Current != hintsKind) BuildHints();
+            if (messageMs > 0f && (messageMs -= Time.unscaledDeltaTime * 1000f) <= 0f) message.text = "";
+            if (tools.Free)
+            {
+                // The free camera: the orbit rests (it takes up again where it was when switched back).
+                tools.TickFree(kb, pad, Time.unscaledDeltaTime, OverControl, out bool looking);
+                var (fp, fr) = tools.FreePose;
+                cam.transform.SetPositionAndRotation(fp, PhotoTools.Rolled(fr));
+                overlay.EnableInClassList("photo-overlay--turning", looking && !capturing && !tools.PanelOpen);
+                tools.LateTick();
+                return true;
+            }
+            if (panelKeys) { kb = null; pad = null; }   // the panel has the keys and the controller
 
             float scale = 1080f / Mathf.Max(1, Screen.height);   // the original's pixels: a 1080-high canvas
             Vector2 delta = Vector2.zero;
@@ -162,7 +195,9 @@ namespace GoF2Remake.UI
                 Vector2? pos = null;
                 if (down == 1) pos = ts.primaryTouch.position.ReadValue();
                 else if (Mouse.current != null && Mouse.current.leftButton.isPressed) pos = Mouse.current.position.ReadValue();
-                if (pos.HasValue && (dragging || !OverControl(pos.Value)))
+                // A press that began on the panel (a slider) or a button stays theirs when the pointer leaves them.
+                bool overUi = tools.PressOverUi(pos, OverControl);
+                if (pos.HasValue && !overUi)
                 {
                     if (!dragging) { dragging = true; lastPointer = pos.Value; draggingFinger = down == 1 ? 1 : -1; dragTravel = 0f; }
                     delta = (pos.Value - lastPointer) * scale;
@@ -208,7 +243,7 @@ namespace GoF2Remake.UI
                 delta += new Vector2(-s.x, -s.y) * 8f * frames;
                 distance += (pad.leftTrigger.ReadValue() - pad.rightTrigger.ReadValue()) * 200f * frames;
             }
-            if (Mouse.current != null)
+            if (Mouse.current != null && !tools.OverPanel(Mouse.current.position.ReadValue()))
             {
                 float steps = Mathf.Clamp(Mouse.current.scroll.ReadValue().y, -1f, 1f);   // a notch reads 1 (uniform scroll) or 120 (raw)
                 if (Mathf.Abs(steps) > 0f) wheel += steps;
@@ -218,9 +253,9 @@ namespace GoF2Remake.UI
             py += delta.y;
             if (flingClamps) py = Mathf.Clamp(py, -200f, 200f);
             distance = Mathf.Clamp(distance, MinDistance, MaxDistance);
-            overlay.EnableInClassList("photo-overlay--turning", held && !capturing);
-            if (messageMs > 0f && (messageMs -= Time.unscaledDeltaTime * 1000f) <= 0f) message.text = "";
+            overlay.EnableInClassList("photo-overlay--turning", held && !capturing && !tools.PanelOpen);
             Place();
+            tools.LateTick();
             return true;
         }
 
@@ -241,7 +276,8 @@ namespace GoF2Remake.UI
                 () => { ButtonSound?.Invoke(false); SetUiHidden(true); },
                 () => { ButtonSound?.Invoke(false); Save(); },
                 () => { ButtonSound?.Invoke(false); Exit(); },
-                () => ButtonSound?.Invoke(true));
+                () => ButtonSound?.Invoke(true),
+                tools.ToggleFree, tools.ToggleSettings, tools.Free);
         }
 
         /// <summary>rotateAroundTarget(-0.005 py, -0.005 px, 0) at the distance, looking at the ship (MGame::OnUpdate 0x1af324).
@@ -250,10 +286,16 @@ namespace GoF2Remake.UI
         /// up takes it down (remake: inverted, see the drag). Copied without the mirror, every axis was inverted.</summary>
         void Place()
         {
+            var (pos, rot) = OrbitPose();
+            cam.transform.SetPositionAndRotation(pos, PhotoTools.Rolled(rot));   // the photo tools' roll on top
+        }
+
+        (Vector3, Quaternion) OrbitPose()
+        {
             var rot = Quaternion.Euler(-0.005f * py * Mathf.Rad2Deg, 0.005f * px * Mathf.Rad2Deg, 0f);
             // Looking at the ship with the orbit's own up (LookAt with world up flipped the view over the top: past +-90 deg
             // the pitch is free now); below 90 deg it is the same view.
-            cam.transform.SetPositionAndRotation(target.position + rot * new Vector3(0f, 0f, -distance * M), rot);
+            return (target.position + rot * new Vector3(0f, 0f, -distance * M), rot);
         }
 
         // ---- 60 Save to library (remake-only) -------------------------------------------------------------------
@@ -267,26 +309,45 @@ namespace GoF2Remake.UI
         IEnumerator Capture()
         {
             capturing = true;
-            overlay.style.visibility = Visibility.Hidden;
-            yield return null;   // a frame drawn without the overlay
-            yield return new WaitForEndOfFrame();
-            bool ok = false;
-            try
+            // The photo tools' capture: the overlay hidden, cut to the frame, twice the size if asked (PhotoTools.Capture).
+            yield return tools.Capture(overlay, ok =>
             {
-                var shot = ScreenCapture.CaptureScreenshotAsTexture();
-                byte[] png = shot.EncodeToPNG();
-                UnityEngine.Object.Destroy(shot);
-                ok = Store(png, $"GoF2_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-            }
-            catch (Exception e) { Debug.LogWarning("PhotoMode: " + e.Message); }
-            overlay.style.visibility = Visibility.Visible;
-            message.text = Localization.Get(ok ? 55 : 56);   // "Screenshot saved." / "Error saving screenshot."
-            messageMs = 3000f;
+                message.text = Localization.Get(ok ? 55 : 56);   // "Screenshot saved." / "Error saving screenshot."
+                messageMs = 3000f;
+            });
             capturing = false;
         }
 
         /// <summary>Saves a PNG to the pictures library (also the F12 screenshots, ScreenshotKey).</summary>
-        public static bool Store(byte[] png, string name)
+        public static bool Store(byte[] png, string name) => StoreAt(png, name) != null;
+
+        /// <summary>The system's file browser can show a saved screenshot (desktop: Windows, macOS, Linux).</summary>
+        public static bool CanShowInFolder =>
+#if UNITY_STANDALONE || UNITY_EDITOR
+            true;
+#else
+            false;
+#endif
+
+        /// <summary>Opens the folder holding 'path' in the file browser, the file selected where the system can (Windows).</summary>
+        public static void ShowInFolder(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            try
+            {
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path.Replace('/', '\\')}\"");
+                return;
+            }
+            catch (Exception e) { Debug.LogWarning("PhotoMode: explorer " + e.Message); }
+#endif
+            string dir = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Application.OpenURL("file:///" + dir.Replace('\\', '/'));
+        }
+
+        /// <summary>Saves a PNG to the pictures library; returns where (the file's full path; on Android the library's
+        /// "Pictures/Galaxy on Fire 2/name"), null when it couldn't.</summary>
+        public static string StoreAt(byte[] png, string name)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             try
@@ -301,11 +362,11 @@ namespace GoF2Remake.UI
                 using var media = new AndroidJavaClass("android.provider.MediaStore$Images$Media");
                 using var uri = media.GetStatic<AndroidJavaObject>("EXTERNAL_CONTENT_URI");
                 using var item = resolver.Call<AndroidJavaObject>("insert", uri, values);
-                if (item == null) return false;
+                if (item == null) return null;
                 using var stream = resolver.Call<AndroidJavaObject>("openOutputStream", item);
                 stream.Call("write", png);
                 stream.Call("close");
-                return true;
+                return "Pictures/Galaxy on Fire 2/" + name;
             }
             catch (Exception e) { Debug.LogWarning("PhotoMode: MediaStore " + e.Message); }
 #elif !UNITY_WSA || UNITY_EDITOR
@@ -318,8 +379,9 @@ namespace GoF2Remake.UI
                 {
                     string preferred = Path.Combine(pictures, "Galaxy on Fire 2");
                     Directory.CreateDirectory(preferred);
-                    File.WriteAllBytes(Path.Combine(preferred, name), png);
-                    return true;
+                    string file = Path.Combine(preferred, name);
+                    File.WriteAllBytes(file, png);
+                    return file;
                 }
                 catch (Exception e) { Debug.LogWarning("PhotoMode: Pictures " + e.Message); }
             }
@@ -327,9 +389,10 @@ namespace GoF2Remake.UI
             // The fallback: <persistentDataPath>/Screenshots (Android without MediaStore, UWP, an unwritable Pictures folder).
             string dir = Path.Combine(GoF2Remake.GamePaths.Data, "Screenshots");
             Directory.CreateDirectory(dir);
-            File.WriteAllBytes(Path.Combine(dir, name), png);
+            string saved = Path.Combine(dir, name);
+            File.WriteAllBytes(saved, png);
             Debug.Log("PhotoMode: saved to " + dir);
-            return true;
+            return saved;
         }
     }
 }

@@ -17,6 +17,10 @@
                 <ui:Label name="viewTitle" class="view-title" picking-mode="Ignore" />
                 <ui:Button name="menuButton" class="station-menu-button gof-semibold" />
             </ui:VisualElement>
+            <ui:VisualElement name="fundsBar" class="station-funds" picking-mode="Ignore">
+                <ui:Label name="fundsCargo" class="station-funds-cargo gof-semibold" picking-mode="Ignore" />
+                <ui:Label name="fundsCredits" class="station-funds-credits gof-semibold" picking-mode="Ignore" />
+            </ui:VisualElement>
 
             <ui:VisualElement name="sidePanel" class="side-panel" picking-mode="Ignore">
                 <ui:VisualElement class="station-info" picking-mode="Ignore">

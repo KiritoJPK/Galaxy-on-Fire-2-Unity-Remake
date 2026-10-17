@@ -1269,3 +1269,40 @@
     background-color: rgba(255, 74, 42, 0.18);
     rotate: 45deg;
 }
+
+/* Remake (immersion): Options > Gameplay "Flight HUD" (Settings.HudMode, the Toggle HUD key). Visibility, not display:
+   the markers' layers, the status panel and the readout set their display in code, which would beat a display rule.
+   Kept always: menus, conversations, the radio, HUD messages, the mining and hacking games, the touch controls (and on
+   touch the secondary plate / weapon strip of the gauge layer, which the touch player picks weapons with), game over.
+   Minimal keeps the crosshair, the lock ring, the action prompt, the missile warning, the charge bar, the mouse reticle
+   and the arrival's orbit information; Off hides those too. Last in the file: it beats .hud-launch .orbit-info. */
+.hud-minimal .radar-ellipse,
+.hud-minimal .nav-markers,
+.hud-minimal .status-panel,
+.hud-minimal .lock-plate,
+.hud-minimal .hud-readout,
+.hud-minimal .hints,
+.hud-minimal .speed-panel,
+.hud-minimal .hit-arcs,
+.hud-minimal.input-keyboard .touch-gauge-layer,
+.hud-minimal.input-gamepad .touch-gauge-layer,
+.hud-off .radar-ellipse,
+.hud-off .nav-markers,
+.hud-off .status-panel,
+.hud-off .lock-plate,
+.hud-off .hud-readout,
+.hud-off .hints,
+.hud-off .speed-panel,
+.hud-off .hit-arcs,
+.hud-off.input-keyboard .touch-gauge-layer,
+.hud-off.input-gamepad .touch-gauge-layer,
+.hud-off .crosshair,
+.hud-off .lock-ring,
+.hud-off .dock-prompt,
+.hud-off .missile-warning,
+.hud-off .jump-charge,
+.hud-off .mouse-reticle,
+.hud-off .mouse-stick,
+.hud-off .orbit-info {
+    visibility: hidden;
+}

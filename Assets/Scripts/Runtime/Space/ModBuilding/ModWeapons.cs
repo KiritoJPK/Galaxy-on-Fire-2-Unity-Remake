@@ -531,7 +531,7 @@ namespace GoF2Remake.Modding
         static GameObject GameModel(Def d, string name, string what, bool own = true)
         {
             var asm = GameModels.Find(Data.Database.Shared, name);
-            var prefab = asm != null ? Visuals.AssembledObject.LoadPrefab(asm) : null;
+            var prefab = asm != null ? Visuals.AssembledObject.LoadPrefab(asm) : GameModels.Prop(name);
             if (prefab == null) { Warn(d.mod, $"{d.where}: {what}: the game has no model \"{name}\""); return null; }
             var copy = Object.Instantiate(prefab, holder.transform, false);
             copy.name = $"{d.mod.Id}:{d.label} {what} ({name})";

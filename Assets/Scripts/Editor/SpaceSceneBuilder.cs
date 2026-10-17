@@ -158,7 +158,7 @@ namespace GoF2Remake.EditorTools
 
             var sun = new GameObject("Sun (LIGHT0)").AddComponent<Light>();
             sun.type = LightType.Directional;
-            sun.shadows = LightShadows.Soft;
+            sun.shadows = LightShadows.None;   // OrbitBuilder.SetupLights: no real-time shadows in space
             var planet = new GameObject("Planet light (LIGHT1)").AddComponent<Light>();
             planet.type = LightType.Directional;
             planet.shadows = LightShadows.None;

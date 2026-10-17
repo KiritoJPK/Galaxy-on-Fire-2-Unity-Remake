@@ -419,8 +419,15 @@ namespace GoF2Remake.UI
             list.Add(Choice("targetLock", OptionPage.Gameplay, () => X("targetLock", "Target lock"), true,
                 () => new[] { X("targetLockSmart", "Smart"), X("targetLockOriginal", "Original") },
                 () => Settings.OriginalTargetLock ? 1 : 0, i => Settings.OriginalTargetLock = i == 1,
-                () => X("targetLockHelp", "Smart: hostile ships are locked first, then the one nearest the crosshair, and a neutral or friendly ship passing through can't take over a hostile lock (your missiles stay on your target). Original: the first ship in the box is locked, whoever it is.") + " "
-                      + X("targetLockBeams", "With Smart, beam lasers also aim only at hostile ships, or at the ship you have locked.")));
+                () => X("targetLockPriorityHelp", "Smart: hostile ships are locked first, then the one nearest the crosshair. Original: the first ship in the box is locked, whoever it is, and any new lock replaces the old one.") + " "
+                      + X("targetLockBeams", "With Smart, beam lasers also aim only at hostile ships, or at the ship you have locked.") + " "
+                      + X("targetLockUnlock", "The Unlock target key (Key bindings, U by default) drops the lock; on touch, tap the lock plate.")));
+            // Remake (players' suggestion): the Smart lock's hold on an enemy, its own option (CombatRadar, TargetLockRules).
+            var keepEnemy = Toggle("keepEnemyLock", OptionPage.Gameplay, () => X("keepEnemyLock", "Keep enemy lock"),
+                () => Settings.KeepEnemyLock, v => Settings.KeepEnemyLock = v);
+            keepEnemy.description = () => X("keepEnemyLockHelp", "While a hostile ship is locked, a neutral or friendly ship passing through the crosshair can't take the lock (your missiles stay on your target). Off: you can lock and scan any ship during a battle. Only with the Smart target lock.");
+            keepEnemy.visible = () => !Settings.OriginalTargetLock;
+            list.Add(keepEnemy);
             // Remake mods: NPC fighters in the mods' ships of their race (Modding.ModTraffic).
             list.Add(Choice("modShipTraffic", OptionPage.Gameplay, () => X("modShipTraffic", "Mod ships in traffic"), true,
                 () => new[] { X("modShipTrafficOff", "Off"), "10 %", "25 %", "50 %" },
@@ -432,6 +439,11 @@ namespace GoF2Remake.UI
                 () => Settings.AnimatedDialogue, v => Settings.AnimatedDialogue = v));
             list.Add(Toggle("inputHints", OptionPage.Gameplay, () => X("inputHintsFlight", "Button hints in flight"),
                 () => Settings.InputHints, v => Settings.InputHints = v));
+            // Remake (immersion): the flight HUD's markings Full / Minimal / Off (FlightHud); also the "Toggle HUD" key (F1).
+            list.Add(Choice("hudMode", OptionPage.Gameplay, () => X("hudMode", "Flight HUD"), true,
+                () => new[] { X("hudFull", "Full"), X("hudMinimal", "Minimal"), X("hudOff", "Off") },
+                () => Settings.HudMode, i => Settings.HudMode = i,
+                () => X("hudModeHelp", "Minimal: only the crosshair, the action prompt, warnings and messages. Off: only messages, for maximum immersion. Menus, conversations and the radio always show. The Toggle HUD key (F1 by default) switches it in flight.")));
             // Remake: Discord Rich Presence (DiscordPresence), desktop only.
             if (!Application.isMobilePlatform)
                 list.Add(Toggle("discordPresence", OptionPage.Gameplay, () => X("discordPresence", "Show what I'm doing in Discord"),

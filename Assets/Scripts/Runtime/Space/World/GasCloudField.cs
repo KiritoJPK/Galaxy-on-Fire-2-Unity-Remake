@@ -84,7 +84,7 @@ namespace GoF2Remake.World
         public bool IsLive(int i) => i >= 0 && i < clouds.Count && !clouds[i].exploded && !clouds[i].done;
         public Vector3 PositionOf(int i) => clouds[i].position;
         public GameObject ObjectOf(int i) => clouds[i].go;
-        public event System.Action<string> Message;
+        public event System.Action<string, HudMessageKind> Message;
 
         static readonly string[] Assemblies = { "sn_gas_cloud_green_anim_lookat_add", "sn_gas_cloud_blue_anim_lookat_add",
                                                 "sn_gas_cloud_violet_anim_lookat_add", "sn_gas_cloud_red_anim_lookat_add" };
@@ -282,7 +282,7 @@ namespace GoF2Remake.World
         void Collect()
         {
             if (collected != null && collected.Length > 0) { sfx.Stop(); sfx.clip = GoF2Remake.Modding.ModSounds.Get(collected[UnityEngine.Random.Range(0, collected.Length)]); sfx.volume = Settings.SfxVolume; sfx.Play(); }
-            if (Shop.FreeCargo(db) < 1) { if (!fullShown) Message?.Invoke(Localization.Get(322)); fullShown = true; return; }   // Cargo hold is full.
+            if (Shop.FreeCargo(db) < 1) { if (!fullShown) Message?.Invoke(Localization.Get(322), HudMessageKind.Normal); fullShown = true; return; }   // Cargo hold is full.
             fullShown = false;
             Shop.AddToCargo(PlasmaItem, 1);
             pendingTons++;
@@ -298,7 +298,7 @@ namespace GoF2Remake.World
             if (pendingTons == 0) { pendingMs = 0f; return; }
             pendingMs += dtMs;
             if (pendingMs < 600f) return;
-            Message?.Invoke($"+{pendingTons}t {GameNames.Item(PlasmaItem)}");
+            Message?.Invoke($"+{pendingTons}t {GameNames.Item(PlasmaItem)}", HudMessageKind.Gain);
             pendingTons = 0;
             pendingMs = 0f;
         }

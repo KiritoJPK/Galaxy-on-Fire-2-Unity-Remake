@@ -3,7 +3,9 @@
 //   ship markers (Radar::draw ship loop, only with a scanner): faction colour red enemy / green friend / yellow neutral;
 //     off screen a dot (ring when locked) on the radar ellipse 657 x 491; on screen far (any axis > 24000 units from the
 //     camera) the dot / ring, plus the distance for the locked ship at (-61, +61); near: the hull bar (114 x 10 frame at
-//     (-59, +63), 110 x 6 fill) and, when locked, the faction bracket 81 x 81
+//     (-59, +63), 110 x 6 fill) and, when locked, the faction bracket 81 x 81; remake (multiplayer, players' request): another
+//     player's ship has a second frame 11 px above with their shield (the status bar's cyan) and the hull bar takes the
+//     status bar's red hull with their yellow armor over it (Target.netShield / netArmor from NetPlayer), like the HUD's own
 //   crates: far a white diamond 0x4f1, near the white bracket 0x4f2, off screen the box 0x451 (0x44d Void); also a
 //     fighter dying with cargo (KIPlayer+0x48) until it explodes
 //   ship lock: the lock ring on the crosshair (24 frames, from t = 0; crates after 500 ms) and the top plate
@@ -32,6 +34,7 @@ namespace GoF2Remake.UI
         class Marker
         {
             public VisualElement dot, bar, fill, bracket, emp, empFill;
+            public VisualElement shieldBar, shieldFill, armorFill;   // another player's pools, made on first use (DrawPools)
             public Label distance;
             public bool used;
         }
@@ -185,7 +188,11 @@ namespace GoF2Remake.UI
                     }
                 foreach (var o in Target.NetShips)   // multiplayer: the other players, the host's ships on a client
                     if (o != null && o.Alive && !o.untargetable)
-                        DrawShip(Get(o), o.transform.position, o.hostileToPlayer ? 0 : o.friendToPlayer ? 1 : 2, o.HullFraction, radar.Locked == o, cam, origin, centre);
+                    {
+                        var m = Get(o);
+                        DrawShip(m, o.transform.position, o.hostileToPlayer ? 0 : o.friendToPlayer ? 1 : 2, o.HullFraction, radar.Locked == o, cam, origin, centre);
+                        DrawPools(m, o.netShield, o.netArmor, radar.Locked == o);
+                    }
                 foreach (var o in Target.RadarObjects)
                     if (o != null && o.Alive && !o.untargetable)
                         DrawShip(Get(o), o.transform.position, o.hostileToPlayer ? 0 : 2, 1f, radar.Locked == o, cam, origin, centre, true);
@@ -249,11 +256,13 @@ namespace GoF2Remake.UI
                 {
                     m.dot.RemoveFromHierarchy(); m.bar.RemoveFromHierarchy(); m.fill.RemoveFromHierarchy();
                     m.bracket.RemoveFromHierarchy(); m.distance.RemoveFromHierarchy(); m.emp.RemoveFromHierarchy(); m.empFill.RemoveFromHierarchy();
+                    m.shieldBar?.RemoveFromHierarchy(); m.shieldFill?.RemoveFromHierarchy(); m.armorFill?.RemoveFromHierarchy();
                     (gone ??= new List<Object>()).Add(kv.Key);
                     continue;
                 }
                 Show(m.dot, false); Show(m.bar, false); Show(m.fill, false); Show(m.bracket, false); Show(m.distance, false);
                 Show(m.emp, false); Show(m.empFill, false);
+                HidePools(m);
             }
             if (gone != null) foreach (var k in gone) markers.Remove(k);
         }
@@ -300,6 +309,7 @@ namespace GoF2Remake.UI
             if (!onScreen && Vr.VrMode.Enabled)
             {
                 Show(m.bar, false); Show(m.fill, false); Show(m.bracket, false); Show(m.dot, false); Show(m.distance, false);
+                HidePools(m);
                 return;
             }
             var t = FactionTextures(faction);
@@ -348,6 +358,59 @@ namespace GoF2Remake.UI
             Place(m.emp, x, y);
             Place(m.empFill, x + 2f, y + 2f);
             m.empFill.style.width = Mathf.Clamp01(emp) * 110f;
+        }
+
+        /// <summary>Remake (multiplayer): another player's shield bar 11 px above their hull bar, and the hull bar in the status
+        /// bar's red with their armor over it in yellow (Player::damage takes shield, then armor, then hull). A pool of -1 isn't
+        /// there; with neither the marker stays as DrawShip drew it.</summary>
+        void DrawPools(Marker m, float shield, float armor, bool locked)
+        {
+            bool bar = m.bar.style.display.value == DisplayStyle.Flex;
+            if (!bar || shield < 0f && armor < 0f) { HidePools(m); return; }
+            if (m.shieldBar == null)
+            {
+                m.shieldBar = NewImage(); m.shieldFill = NewImage(); m.armorFill = NewImage();
+                m.shieldFill.style.backgroundImage = new StyleBackground(Tex("status_shield_fill"));
+                m.armorFill.style.backgroundImage = new StyleBackground(Tex("status_armor_fill"));
+                m.shieldFill.style.height = 6f;
+                m.armorFill.style.height = 6f;
+            }
+            var at = m.bar.style.translate.value;
+            float x = at.x.value, y = at.y.value;
+            // The hull fill (DrawShip's, at the faction colour) in the status bar's red, so the yellow armor reads over it.
+            m.fill.style.backgroundImage = new StyleBackground(Tex("status_hull_fill"));
+            m.fill.style.height = 6f;
+            bool hasShield = shield >= 0f;
+            Show(m.shieldBar, hasShield);
+            Show(m.shieldFill, hasShield);
+            if (hasShield)
+            {
+                m.shieldBar.style.backgroundImage = m.bar.style.backgroundImage;   // the faction's frame
+                m.shieldBar.style.width = m.bar.style.width;
+                m.shieldBar.style.height = m.bar.style.height;
+                Place(m.shieldBar, x, y - 11f);
+                Place(m.shieldFill, x + 1f, y - 9f);
+                m.shieldFill.style.width = Mathf.Clamp01(shield) * 110f;
+            }
+            bool hasArmor = armor >= 0f;
+            Show(m.armorFill, hasArmor);
+            if (hasArmor)
+            {
+                Place(m.armorFill, x + 1f, y + 2f);
+                m.armorFill.style.width = Mathf.Clamp01(armor) * 110f;
+            }
+            // The armor over the hull fill; the locked ship's (which DrawShip brought to the front) its shield too, under the bracket.
+            if (layer.IndexOf(m.armorFill) < layer.IndexOf(m.fill))
+            {
+                m.armorFill.PlaceInFront(m.fill);
+                if (locked) { m.shieldBar.PlaceInFront(m.fill); m.shieldFill.PlaceInFront(m.shieldBar); }
+            }
+        }
+
+        static void HidePools(Marker m)
+        {
+            if (m.shieldBar == null) return;
+            Show(m.shieldBar, false); Show(m.shieldFill, false); Show(m.armorFill, false);
         }
 
         void DrawCrate(Marker m, Vector3 world, bool voidCrate, Camera cam, Vector2 origin, Vector2 centre)

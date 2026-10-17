@@ -467,7 +467,7 @@ namespace GoF2Remake.UI
             ("Nivelian Vaults of Névan", Place), ("Névan", Place), ("Janice's Satellites", Place), ("Silky Way", Place),
             ("Octopod", Place), ("Bobolan", Place), ("Rhinocitroll", Place),
             ("K'mirrk Toad Mutagen", Thing), ("K'mirrk Frog", Thing), ("K'Sarr", Thing), ("Alice Drive", Thing),
-            ("Multirail", Thing), ("S'kloptorr", Thing), ("Flabbergaster", Thing),
+            ("Multirail", Thing), ("Flabbergaster", Thing),   // S'kolptorr (the rum) is the system's name: a place
             ("Mutagen", Thing), ("Empire", Place), ("Berger", Place),
         };
 

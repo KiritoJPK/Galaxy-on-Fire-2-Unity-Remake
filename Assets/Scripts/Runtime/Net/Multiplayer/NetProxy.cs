@@ -93,6 +93,8 @@ namespace GoF2Remake.Multiplayer
         bool shown, viewer;
         int lastAggressors;
         EmpSparks sparks;
+        // Its engine parts dark while the owner's ship is EMP-disabled (NpcShip.UpdateEmpEngines); playerEngines: which parts.
+        bool playerEngines, enginesEmpOff;
         World.NpcCloak cloakLook;   // the cloak drawn on this copy (NpcCloak.Show), like another player's
 
         public int Station => station.Value;
@@ -487,8 +489,10 @@ namespace GoF2Remake.Multiplayer
             bool sane = NetGuard.Finite(s) && Mathf.Abs(s.x) <= 100f && Mathf.Abs(s.y) <= 100f && Mathf.Abs(s.z) <= 100f;
             visual.transform.localScale = sane ? s : Vector3.one;
             var asm = visual.GetComponent<AssembledObject>();
-            asm?.SetPlayerVariant((GoF2Remake.Data.Settings.NpcPlayerEngines || !asm.HasNpcExhaust) && asm.playerVariantParts != null && asm.playerVariantParts.Length > 0
-                                  && asm.playerVariantParts[0] != null);
+            playerEngines = asm != null && (GoF2Remake.Data.Settings.NpcPlayerEngines || !asm.HasNpcExhaust) && asm.playerVariantParts != null
+                            && asm.playerVariantParts.Length > 0 && asm.playerVariantParts[0] != null;
+            asm?.SetPlayerVariant(playerEngines);
+            enginesEmpOff = false;
             name = $"NetProxy {model.Value}";
             // Its turret items, still on their mounts (the owner's game aims and fires them; the shots are mirrored).
             if (NpcMountedTurrets.Unpack(turrets.Value.ToString(), out int turretShip, out var turretItems))
@@ -522,6 +526,11 @@ namespace GoF2Remake.Multiplayer
             target.friendToPlayer = !target.hostileToPlayer && Standing.IsFriend(race.Value);
             if (empDisabled.Value && sparks == null) sparks = new EmpSparks(transform);
             sparks?.SetEmitting(empDisabled.Value);
+            if (empDisabled.Value != enginesEmpOff && visual != null)
+            {
+                enginesEmpOff = empDisabled.Value;
+                visual.GetComponent<AssembledObject>()?.SetExhaust(!enginesEmpOff, playerEngines);
+            }
             // Dying / dead (a tumble, a wreck, destroyed junk): not alive here either, so shots pass it like on the owner's.
             target.hp = life.Value == Flying ? Mathf.Max(0.001f, hull.Value) * target.maxHp : 0f;
             target.radius = radius.Value;
