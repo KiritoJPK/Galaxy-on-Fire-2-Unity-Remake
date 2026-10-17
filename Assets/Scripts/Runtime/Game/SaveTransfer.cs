@@ -182,6 +182,7 @@ namespace GoF2Remake.Data
                 return Fail("writing the saves failed (the old saves were put back): " + e.Message, path);
             }
             Debug.Log($"SaveTransfer: {slots.Count} saves imported from {path} (the replaced ones are in {backup})");
+            SaveFolder.AfterLocalChange();   // remake: the chosen save folder takes the imported slots
             return new Result { outcome = Outcome.Done, path = path, slots = slots.Count };
         }
 

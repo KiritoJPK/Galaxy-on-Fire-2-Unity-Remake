@@ -4,7 +4,7 @@
 // credits, visited(station), systemsvisited, won(main | valkyrie | supernova), option(mod_id:option_id), quest(name)...)
 // that must hold before the item is stocked by shops or found in loot, or the ship is sold by dealers and lounge sellers.
 // ships.json "dealer" { "chance", "systemRace", "minTechLevel" } puts a mod ship in the ordinary dealers' lists
-// (AddDealerShips, from Shop.GenerateShips). A condition that can't be read counts as false and warns once on its mod.
+// (AddDealerShips, from Shop.GenerateShips); a minTechLevel above 10 means the top tech level (10) stations, as for items. A condition that can't be read counts as false and warns once on its mod.
 
 using System;
 using System.Collections.Generic;
@@ -93,7 +93,7 @@ namespace GoF2Remake.Modding
                 var d = c.dealer;
                 if (d == null || ships.Contains(c.index) || db.Ship(c.index) == null) continue;
                 if (d.systemRace >= 0 && d.systemRace != systemRace) continue;
-                if (st != null && st.techLevel < d.minTechLevel) continue;
+                if (st != null && !Shop.StationStocks(st.techLevel, d.minTechLevel)) continue;   // above 10: the top tech level stations
                 if (UnityEngine.Random.value * 100f >= d.chance) continue;
                 if (!ShipAvailable(c.index)) continue;
                 ships.Add(c.index);

@@ -7,7 +7,9 @@
 //   targeting   enemy list = the player (index 0) + ships of other races; attack whatever is inside the +-50000 box; every
 //               5 s: 20 % start / stop flying straight, 30 % re-roll the target else back to the player; neutral and
 //               friendly ships never keep the player but attack the first race-hostile ship; no target -> the patrol
-//               route (a finished route -> toward the player without firing)
+//               route (a finished route -> toward the player without firing); remake option (Settings.SmarterNpcTargeting,
+//               on by default): the nearest hostile target in the box instead, the player's distance x0.7, at most
+//               2 + difficulty attackers per target while another is free (NpcTargetRules, UpdateSmartTargeting)
 //   steering    speed 2 u/ms (boost 5.5), heading += normalize(dir - fwd) * dt * 48 / 65536, snap when within L1 0.0625;
 //               inside +-8000 of the target it steers along its own right vector (circles away), so it never fires
 //               close up; visual bank up to 33 deg from the averaged turn, auto-level after 750 ms
@@ -1245,6 +1247,7 @@ namespace GoF2Remake.World
             if (idx >= n) idx = -1;
             if (!attacking) idx = -1;
             else if (idx >= 0 && !Pursuable(enemies[idx])) attacking = false;
+            if (SmartTargeting && UpdateSmartTargeting(n, idx)) return;
             bool pirate = Race == Standing.Pirate;
             if (reselectTimer < 5001f)
             {
@@ -1310,6 +1313,77 @@ namespace GoF2Remake.World
                 else { route.Update(ToGame(transform.position)); wp = route.Waypoint; targetPos = wp.HasValue ? ToUnity(wp.Value) : transform.position; followingWaypoint = true; }
             }
             else { target = enemies[idx]; targetPos = target.transform.position; }
+        }
+
+        /// <summary>Remake option (Settings.SmarterNpcTargeting, a session rule; NpcTargetRules): the fighter takes the nearest
+        /// hostile target in its box instead of the first of the list (the player), spread over the targets. Not for the ships
+        /// whose targets a script, a mission or the original's special rules decide: story and mission orbits, a script's only
+        /// enemy, mission ships, a turned ship (it goes for the player who shot it, box or not), the Specters (player-only in
+        /// free flight), the fleet battles' fighters (their own nearest pick). Wingmen and turrets never get here.</summary>
+        bool SmartTargeting =>
+            Settings.SmarterNpcTargeting && !NpcTables.InCampaignLevel && NpcTables.LevelFreelanceType < 0 && ScriptEnemy == null
+            && !MissionShip && !turnedEnemy && Race != Standing.Specter && traffic != null
+            && !(Spec.capitalPart && Spec.capitalHost != null && Spec.capitalHost.fleetBattle);
+
+        static readonly List<NpcTargetRules.Candidate> smartCandidates = new List<NpcTargetRules.Candidate>();
+        static readonly List<int> smartIndices = new List<int>();
+
+        /// <summary>A target the smart pick may take: pursuable, and the player's side (the player, its sentry guns) only while
+        /// this ship is hostile to the player, any other ship only when its race is hostile to this one's.</summary>
+        bool SmartEligible(Target e)
+        {
+            if (!Pursuable(e)) return false;
+            return PlayerSide(e) ? Target.hostileToPlayer : Standing.RacesHostile(Race, e.race);
+        }
+
+        static bool PlayerSide(Target e) => e.isPlayer || (e.friendToPlayer && e.GetComponent<SentryGun>() != null);
+
+        /// <summary>The smart pick; false = nothing in the box, the original's rules then (its routes, its far pick).</summary>
+        bool UpdateSmartTargeting(int n, int idx)
+        {
+            bool reroll = reselectTimer >= 5001f;
+            // Between the 5 s re-rolls a target is kept while it can still be taken (the original keeps its pick too).
+            int pick = !reroll && attacking && idx >= 0 && SmartEligible(enemies[idx]) ? idx : SmartPick(n);
+            if (pick < 0) return false;
+            if (reroll) { drift = !drift && Random.Range(0, 100) < 20; reselectTimer = 0f; }
+            targetIdx = pick;
+            attacking = true;
+            followingWaypoint = false;
+            target = enemies[pick];
+            targetPos = target.transform.position;
+            return true;
+        }
+
+        int SmartPick(int n)
+        {
+            smartCandidates.Clear();
+            smartIndices.Clear();
+            var at = transform.position;
+            for (int i = 0; i < n; i++)
+            {
+                var e = enemies[i];
+                if (!SmartEligible(e) || !InBox(e)) continue;
+                smartCandidates.Add(new NpcTargetRules.Candidate
+                {
+                    sqrDistance = (e.NearestPoint(at) - at).sqrMagnitude,
+                    player = PlayerSide(e),
+                });
+                smartIndices.Add(i);
+            }
+            if (smartCandidates.Count == 0) return -1;
+            if (smartCandidates.Count > 1)   // how many others attack each (one candidate is the pick anyway)
+                for (int c = 0; c < smartCandidates.Count; c++)
+                {
+                    var e = enemies[smartIndices[c]];
+                    int count = 0;
+                    foreach (var s in traffic.Ships)
+                        if (s != this && s.attacking && s.target == e && s.Current == State.Fly) count++;
+                    var cand = smartCandidates[c];
+                    cand.attackers = count;
+                    smartCandidates[c] = cand;
+                }
+            int k = NpcTargetRules.Pick(smartCandidates, NpcTargetRules.AttackerCap(Session.Difficulty));
+            return k >= 0 ? smartIndices[k] : -1;
         }
 
         Vector3 targetPos;

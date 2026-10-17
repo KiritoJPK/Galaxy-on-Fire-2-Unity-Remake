@@ -57,7 +57,7 @@ namespace GoF2Remake.UI
             public bool secondary;               // a secondary selected with ammo, not in the turret view
             public string secondaryText;         // "<name> (<n>)"
             public bool menu;                    // the quick menu has entries
-            public int nextCamera;               // FreeLookCamera.Mode of the camera button's icon (0 / 1 / 3), -1 = hidden
+            public int nextCamera;               // FreeLookCamera.Mode of the camera button's icon (0 / 1 / 2 / 3), -1 = hidden
             public bool turret, turretOn;        // the auto-turret toggle
             public bool actionArrow;             // something is locked that fire acts on
             public bool dimStick, dimNav;        // tilt / autopilot / approach / hacking; mining / hacking / docked at a point
@@ -145,7 +145,7 @@ namespace GoF2Remake.UI
             secOff = Tex("touch_secondary"); secOn = Tex("touch_secondary_on");
             turretOff = Tex("touch_turret"); turretOn = Tex("touch_turret_on");
             clusterBottom = Tex("touch_cluster_bottom"); clusterLeft = Tex("touch_cluster_left");
-            foreach (int m in new[] { 0, 1, 3 }) { camOff[m] = Tex($"touch_cam_{m}"); camOn[m] = Tex($"touch_cam_{m}_on"); }
+            foreach (int m in new[] { 0, 1, 2, 3 }) { camOff[m] = Tex($"touch_cam_{m}"); camOn[m] = Tex($"touch_cam_{m}_on"); }
 
             // The empty screen behind everything: throttle drag, dodge, free look.
             gestureZone = new VisualElement();

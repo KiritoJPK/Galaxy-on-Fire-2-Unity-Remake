@@ -327,6 +327,15 @@ namespace GoF2Remake.World
         /// spot, e.g. to keep the menu camera's orbit clear.
         /// </summary>
         public static Transform SpawnAsteroids(Database db, OrbitLayout layout, Transform parent = null, Func<Vector3, bool> reject = null)
+            => SpawnField(db, layout, layout.asteroidCentre, layout.asteroidCount, -1, 60000f, 100000f, -1, parent, reject, "Asteroids");
+
+        /// <summary>
+        /// A field of 'count' asteroids around 'centre' (game units) of the orbit's kind: the first 'big' (-1 = roll 2..9
+        /// like Level::createAsteroids) big in a cube of 'bigSide', the rest small in 'smallSide'. 'ore' >= 0 gives every
+        /// one that ore (a remake Ore Mining site, MiningSite), else the orbit's ores. 'reject' takes Unity positions.
+        /// </summary>
+        public static Transform SpawnField(Database db, OrbitLayout layout, Vector3 centre, int count, int big, float bigSide, float smallSide,
+                                           int ore, Transform parent, Func<Vector3, bool> reject, string name)
         {
             var prefab = AssembledObject.LoadPrefab(db.AssemblyByName(layout.AsteroidAssembly));
             var explosion = AssembledObject.LoadPrefab(db.AssemblyByName(layout.AsteroidAssembly + "_explosion_anim"));
@@ -334,12 +343,12 @@ namespace GoF2Remake.World
             // Remake: Explosion types 2 and 3 share the billboard 0x4213 and its purple fragments (Void Crystals); the ordinary
             // asteroids get a rock-coloured copy (Reference/tools/combat/make_rock_explosion.py).
             var explosionTexture = layout.asteroidType == 0 ? Resources.Load<Texture2D>("GoF2Combat/asteroid_explosion_rock") : null;
-            var root = new GameObject("Asteroids").transform;
+            var root = new GameObject(name).transform;
             root.SetParent(parent, false);
             if (prefab == null) return root;
-            int big = Random.Range(2, 10);
+            if (big < 0) big = Random.Range(2, 10);
             var bigPositions = new Vector3[big];
-            var ores = OreProbabilities(db, layout);
+            var ores = ore >= 0 ? new List<(int item, int p)> { (ore, 100) } : OreProbabilities(db, layout);
             int oreCursor = 0;
             // Level::createAsteroids: a Novanium asteroid is type 3, mesh 18836 sn_asteroid_magma with its own explosion
             // (space_props.md, table UNK_00251fb0), whatever the orbit's own type; the same mesh radius as asteroid_01.
@@ -349,16 +358,16 @@ namespace GoF2Remake.World
                 magma = AssembledObject.LoadPrefab(db.AssemblyByName("sn_asteroid_magma"));
                 magmaExplosion = AssembledObject.LoadPrefab(db.AssemblyByName("sn_asteroid_magma_explosion_anim"));
             }
-            for (int i = 0; i < layout.asteroidCount; i++)
+            for (int i = 0; i < count; i++)
             {
                 bool isBig = i < big;
-                float side = isBig ? 60000f : 100000f;
+                float side = isBig ? bigSide : smallSide;
                 Vector3 pos;
                 int tries = 0;
                 bool bad;
                 do
                 {
-                    pos = layout.asteroidCentre + new Vector3(Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f)) * side;
+                    pos = centre + new Vector3(Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f), Random.Range(-0.5f, 0.5f)) * side;
                     bad = (isBig && TooClose(pos, bigPositions, i))   // intended rule: big ones 8000 apart
                           || (reject != null && reject(OrbitLayout.ToUnity(pos)));
                 } while (bad && ++tries < 40);
@@ -366,11 +375,11 @@ namespace GoF2Remake.World
                 if (isBig) bigPositions[i] = pos;
 
                 float scale = isBig ? Random.Range(120, 220) * 0.01f : Random.Range(30, 100) * 0.01f;
-                int ore = PickOre(ores, ref oreCursor);
+                int rockOre = ore >= 0 ? ore : PickOre(ores, ref oreCursor);
                 // Quality from the scale; the big ones (and the largest small ones) are 50 % A, else D..B.
                 int quality = scale < 0.4f ? 4 : scale < 0.7f ? 5 : scale < 0.92f ? 6 : Random.Range(0, 2) == 0 ? 7 : 4 + Random.Range(0, 3);
                 var euler = new Vector3(Random.Range(0, 100), Random.Range(0, 100), Random.Range(0, 100)) * 0.01f * 2f * Mathf.PI;
-                bool isMagma = ore == Novanium && magma != null;
+                bool isMagma = rockOre == Novanium && magma != null;
                 var model = isMagma ? magma : prefab;
                 var go = Object.Instantiate(model, OrbitLayout.ToUnity(pos), OrbitLayout.RotationToUnity(euler), root);
                 go.name = $"Asteroid {i}";
@@ -384,7 +393,7 @@ namespace GoF2Remake.World
                 target.explosionScale = scale;
                 target.explosionTexture = isMagma ? null : explosionTexture;
                 target.destroyedSound = destroyedSound;
-                target.oreItem = ore;
+                target.oreItem = rockOre;
                 target.quality = quality;
                 target.scale = scale;
                 float spin = 1f - Mathf.Clamp(scale, 0.9f, 1f);   // 0.1 rad/s for small, none for big

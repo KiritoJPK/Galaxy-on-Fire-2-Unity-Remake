@@ -43,7 +43,8 @@ namespace GoF2Remake.Multiplayer
         /// <summary>An orbit nobody has flown in for this long gets its asteroid field back (the destroyed list is cleared). Not
         /// at once: docking to sell ore and launching again would refill the field on every trip.</summary>
         const float AsteroidRespawnSeconds = 120f;      // Maybe add as a future server setting
-        /// <summary>The asteroid indices an orbit's field may have (OrbitBuilder.SpawnAsteroids makes far fewer).</summary>
+        /// <summary>The asteroid indices an orbit may have: its own field from 0 (OrbitBuilder.SpawnAsteroids makes at most 79),
+        /// an Ore Mining site's from MiningSite.IndexBase (1000 + 100 per slot, below 9000).</summary>
         const int MaxAsteroids = 10000;
         /// <summary>The NetProxy / NetCrate objects one player may own at once (a busy orbit's traffic, a mission's ships and
         /// junk, a battle's containers: well below), and how long a spawn request waits for its sender's place to arrive.</summary>

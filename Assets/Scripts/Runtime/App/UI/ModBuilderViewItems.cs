@@ -164,7 +164,7 @@ namespace GoF2Remake.UI
                     BuildItemPage();
                 }, "mbv-step");
             Note(itemPage, T("mbIconNote", "180 x 88 like the game's icons, frame and background included (copy one of the game's to start from)."));
-            Int(itemPage, T("mbTechLevel", "Tech level (1-10)"), it.TechLevel ?? original.techLevel, 1, 10, v => { it.TechLevel = Opt(v, original.techLevel); ItemEdited(); });
+            Int(itemPage, T("mbItemTechLevel", "Tech level (1-10; 11-20 above the game's: sold at tech level 10 stations)"), it.TechLevel ?? original.techLevel, 1, Shop.MaxItemTech, v => { it.TechLevel = Opt(v, original.techLevel); ItemEdited(); });
             Int(itemPage, T("mbOccurrence", "How often shops stock it (0 never - 90)"), it.Occurrence ?? original.occurrence, 0, 100,
                 v => { it.Occurrence = Opt(v, original.occurrence); ItemEdited(); });
             IntegerField minField = null, maxField = null;

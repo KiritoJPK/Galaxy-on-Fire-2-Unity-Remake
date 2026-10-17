@@ -320,7 +320,7 @@ namespace GoF2Remake.UI
             resumeButton = Bind("resumeButton", () => LoadSlot(SaveGame.MostRecentSlot()));
             newGameButton = Bind("newGameButton", () => OpenPanel("campaignPanel"));
             multiplayerButton = Bind("multiplayerButton", OpenMultiplayer);
-            loadButton = Bind("loadButton", () => { BuildSlots(); OpenPanel("loadPanel"); });
+            loadButton = Bind("loadButton", () => { SyncSaveFolder(true); BuildSlots(); OpenPanel("loadPanel"); });
             // Remake: every save to one file and back (SaveTransfer), under the Load game list; main menu only (no game is
             // loaded here). After the click: the system's file dialog is modal.
             Bind("exportSavesButton", () => root.schedule.Execute(ExportSaves).ExecuteLater(1));
@@ -341,6 +341,9 @@ namespace GoF2Remake.UI
             debugButton = Bind("debugButton", OpenDebug);
             UpdateDebugButton();
             exitButton = Bind("exitButton", () => ShowDialog(Localization.Get(390), Localization.Get(53), Quit));
+            // Remake: the chosen save folder's newer saves in first (SaveFolder; a no-op without one), then Resume's test.
+            OptionsCatalog.SaveFolderPressed = ChooseSaveFolder;
+            SyncSaveFolder(true);
             resumeButton.EnableInClassList("menu-button--gone", SaveGame.MostRecentSlot() < 0);   // only with a save
             UpdateColumnFit();
             updateRow = root.Q("updateRow");
@@ -608,6 +611,7 @@ namespace GoF2Remake.UI
             Settings.Changed -= ApplySettings;
             InputMode.Changed -= UpdatePressAnyKey;
             UpdateCheck.Changed -= RefreshUpdateButton;
+            if (OptionsCatalog.SaveFolderPressed == (Action)ChooseSaveFolder) OptionsCatalog.SaveFolderPressed = null;
             anyKey?.Dispose();
         }
 
@@ -2662,5 +2666,136 @@ namespace GoF2Remake.UI
         {
             if (clip != null && sfxSource != null) sfxSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(clip), volume);
         }
+
+        // ---- save folder (remake, a player's request; Data.SaveFolder) ------------------------------------
+        // The Options > Gameplay row's press (OptionsCatalog.SaveFolderPressed) asks whether to pick another folder or go back
+        // to this device only, runs the system's folder picker, and for a folder that already holds saves (or with saves on
+        // this device) asks how to start: keep both (the newer save of each slot wins, the other is kept in Saves/Deleted)
+        // or only the folder's (this device's set aside in Saves/BeforeFolder). The menu also syncs with the folder on entry
+        // and before the Load list, and says once per run when the folder can't be reached.
+
+        static bool saveFolderNoticeShown;
+        bool pickingSaveFolder;
+
+        static string X(string key, string english) => Localization.Extra(key, english);
+        static string SaveFolderTitle => X("saveFolderTitle", "Save folder");
+
+        /// <summary>On entering the menu and before a save list: the folder's newer saves in, this device's out.</summary>
+        void SyncSaveFolder(bool tellIfUnreachable)
+        {
+            if (!SaveFolder.Chosen) return;
+            var r = SaveFolder.Sync();
+            if (r.outcome == SaveFolder.Outcome.Unreachable && tellIfUnreachable && !saveFolderNoticeShown)
+            {
+                saveFolderNoticeShown = true;
+                root.schedule.Execute(() =>
+                {
+                    if (dialog.ClassListContains("dialog-backdrop--shown")) return;
+                    ShowNotice(SaveFolderTitle, string.Format(X("saveFolderUnreachableNotice",
+                        "The save folder {0} can't be reached ({1}).\nYour saves stay on this device and go to the folder once it is back. Options > Gameplay can choose another one."),
+                        SaveFolder.DisplayName, r.problem));
+                }).ExecuteLater(300);
+            }
+            else if (r.outcome == SaveFolder.Outcome.Done) saveFolderNoticeShown = false;
+            if (r.Changed) RefreshAfterSaveFolder();
+        }
+
+        void RefreshAfterSaveFolder()
+        {
+            resumeButton?.EnableInClassList("menu-button--gone", SaveGame.MostRecentSlot() < 0);
+            UpdateColumnFit();
+            foreach (var o in optionControls) o.Refresh();
+            if (openPanel != null && openPanel.name == "loadPanel") BuildSlots();
+        }
+
+        /// <summary>The row's press: pick a folder, or (one is chosen) pick another or go back to this device only.</summary>
+        void ChooseSaveFolder()
+        {
+            if (pickingSaveFolder || dialog.ClassListContains("dialog-backdrop--shown")) return;
+            if (!SaveFolder.Chosen) { root.schedule.Execute(PickSaveFolder).ExecuteLater(1); return; }
+            ShowChoice(SaveFolderTitle,
+                string.Format(X("saveFolderCurrent", "Your saves are also kept in:\n{0}"), SaveFolder.DisplayName),
+                X("saveFolderOther", "Choose another"), () => root.schedule.Execute(PickSaveFolder).ExecuteLater(1),
+                X("saveFolderUseDefault", "This device only"), () =>
+                {
+                    SaveFolder.UseDefault();
+                    ShowNotice(SaveFolderTitle, X("saveFolderDefaultDone", "Your saves are kept on this device only again. The folder keeps the copies it has."));
+                    RefreshAfterSaveFolder();
+                });
+        }
+
+        void PickSaveFolder()
+        {
+            if (pickingSaveFolder) return;
+            pickingSaveFolder = true;
+            var poll = SaveFolderPicker.Pick();
+            SaveFolderPicker.Picked picked = null;
+            root.schedule.Execute(() =>
+            {
+                picked = poll();
+                if (picked != null) { pickingSaveFolder = false; SaveFolderPicked(picked); }
+            }).Every(200).Until(() => picked != null);
+        }
+
+        void SaveFolderPicked(SaveFolderPicker.Picked p)
+        {
+            if (p.cancelled) return;
+            if (p.error != null) { ShowNotice(SaveFolderTitle, X("saveFolderFailed", "The folder can't be used:") + " " + p.error); return; }
+            if (p.target == SaveFolder.Target) { SyncSaveFolder(false); return; }
+            if (SamePlace(p.target, SaveGame.Folder))
+            {
+                ShowNotice(SaveFolderTitle, X("saveFolderOwn", "That is the game's own save folder. Choose another one."));
+                return;
+            }
+            var s = SaveFolder.Inspect(p.target);
+            if (s.problem != null) { ShowNotice(SaveFolderTitle, X("saveFolderFailed", "The folder can't be used:") + " " + s.problem); return; }
+            void Take(SaveFolder.Start start)
+            {
+                var r = SaveFolder.Choose(p.target, p.name, start);
+                RefreshAfterSaveFolder();
+                ShowNotice(SaveFolderTitle, r.outcome == SaveFolder.Outcome.Done
+                    ? string.Format(X("saveFolderDone", "Your saves are now also kept in:\n{0}"), SaveFolder.DisplayName)
+                    : X("saveFolderFailed", "The folder can't be used:") + " " + r.problem);
+            }
+            if (s.localSaves == 0) { Take(SaveFolder.Start.Merge); return; }
+            if (s.folderSaves == 0)
+                ShowChoice(SaveFolderTitle,
+                    string.Format(X("saveFolderCopyQuestion", "Copy your {0} saves into {1}? (Start empty sets them aside in Saves/BeforeFolder.)"), s.localSaves, p.name),
+                    X("saveFolderCopy", "Copy them"), () => Take(SaveFolder.Start.Merge),
+                    X("saveFolderStartEmpty", "Start empty"), () => Take(SaveFolder.Start.FolderOnly));
+            else
+                ShowChoice(SaveFolderTitle,
+                    string.Format(X("saveFolderMergeQuestion",
+                        "{0} already holds {1} saves and this device has {2}. Keep the newer save of each slot (the other one goes to Saves/Deleted), or only the folder's (this device's go to Saves/BeforeFolder)?"),
+                        p.name, s.folderSaves, s.localSaves),
+                    X("saveFolderMerge", "Keep the newer"), () => Take(SaveFolder.Start.Merge),
+                    X("saveFolderUseFolder", "Only the folder's"), () => Take(SaveFolder.Start.FolderOnly));
+        }
+
+        static bool SamePlace(string a, string b)
+        {
+            try
+            {
+                if (a.StartsWith("content://", StringComparison.Ordinal)) return false;
+                return string.Equals(System.IO.Path.GetFullPath(a).TrimEnd('/', '\\'), System.IO.Path.GetFullPath(b).TrimEnd('/', '\\'),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception) { return false; }
+        }
+
+        /// <summary>The dialog with two answers and Cancel (the reset choice's third button).</summary>
+        void ShowChoice(string title, string text, string yesLabel, Action onYes, string altLabel, Action onAlt)
+        {
+            ShowDialog(title, text, onYes);
+            dialogAlt = onAlt;
+            var yes = root.Q<Button>("dialogYes");
+            yes.text = yesLabel.ToUpperInvariant();
+            var alt = root.Q<Button>("dialogAlt");
+            alt.text = altLabel.ToUpperInvariant();
+            alt.style.display = DisplayStyle.Flex;
+            root.Q<Button>("dialogNo").text = Localization.Get(425).ToUpperInvariant();   // Cancel
+            Select(yes);
+        }
+
     }
 }

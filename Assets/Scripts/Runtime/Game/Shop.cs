@@ -56,6 +56,47 @@ namespace GoF2Remake.Data
         static readonly HashSet<int> OnePerShip = new HashSet<int> { 8, 9, 10, 13, 14, 15, 16, 17, 18, 19, 21, 26, 27, 28, 29, 33, 35, 37, 38, 41 };
         public static bool CanInstallMultiple(int category) => !OnePerShip.Contains(category);
 
+        /// <summary>The original's top tech level, of its items and its stations alike (stations 0-10, items 1-10).</summary>
+        public const int TopTech = 10;
+        /// <summary>Remake mods: the highest tech level a mod item may have (ModContent warns and clamps).</summary>
+        public const int MaxItemTech = 20;
+
+        /// <summary>A station of tech level 'stationTech' may stock an item of 'itemTech' (getItemBuyList: techI &lt;= techS).
+        /// Remake mods: no station's tech level is above 10, so a station of the top tech level stocks the items above it too
+        /// (a mod's tech level 11+ gear), the item's occurrence alone setting how often; the original items never reach it.</summary>
+        public static bool StationStocks(int stationTech, int itemTech) => itemTech <= stationTech || stationTech >= TopTech;
+
+        /// <summary>Remake mods: weapons and equipment above the original's top tech level that may be found now: a mod's,
+        /// priced, stocked somewhere (occurrence), no blueprint product, saleable, its "available" condition met and allowed
+        /// by a mod campaign. Empty without mods, so the loot tables that draw on it (a tier-5 pirate outpost) stay the
+        /// original's.</summary>
+        public static List<ItemData> AboveTopTech(Database db)
+        {
+            var list = new List<ItemData>();
+            if (db == null) return list;
+            foreach (var it in db.Items)
+                if (it.modded && it.techLevel > TopTech && it.TypeId <= 3 && it.maxPrice > 0 && it.occurrence > 0 && it.blueprint.Count == 0
+                    && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index)
+                    && Modding.ModUnlocks.ItemAvailable(it.index) && Modding.ModCampaigns.ItemAllowed(db, it.index))
+                    list.Add(it);
+            return list;
+        }
+
+        /// <summary>One of 'items', weighted by occurrence (null for none).</summary>
+        public static ItemData PickByOccurrence(List<ItemData> items)
+        {
+            if (items == null || items.Count == 0) return null;
+            int total = 0;
+            foreach (var it in items) total += Mathf.Max(1, it.occurrence);
+            int r = Random.Range(0, total);
+            foreach (var it in items)
+            {
+                r -= Mathf.Max(1, it.occurrence);
+                if (r < 0) return it;
+            }
+            return items[items.Count - 1];
+        }
+
         /// <summary>DAT_00251d10: Kaamo Club specials, never in a normal shop.</summary>
         static readonly HashSet<int> KaamoSpecials = new HashSet<int> { 200, 220, 208, 213, 216, 228, 229, 230, 231 };
         static readonly HashSet<int> SaoPerulaGoods = new HashSet<int> { 101, 102, 103, 107, 108, 109, 114, 124 };
@@ -312,7 +353,7 @@ namespace GoF2Remake.Data
                 if (!exclusive)
                 {
                     if (it.blueprint.Count > 0 || idx == 217 || idx == 218 || idx == 164 || idx == 175) continue;
-                    if (techS < techI || occ == 0 || it.maxPrice == 0) continue;
+                    if (!StationStocks(techS, techI) || occ == 0 || it.maxPrice == 0) continue;
                     if (it.Attr(60) == 1 && race != 1) continue;                            // Vossk-only gear
                     if (specialty && idx != 132 + system && station != 106) continue;       // one specialty per system
                 }
@@ -327,7 +368,7 @@ namespace GoF2Remake.Data
 
                 if (!exclusive)
                 {
-                    if (!((techI <= techS || specialty) && Random.Range(0, 100) < (int)(k * occ))) continue;
+                    if (!((StationStocks(techS, techI) || specialty) && Random.Range(0, 100) < (int)(k * occ))) continue;
                     if (techI < lowTech && idx != 122 && !(Random.Range(0, 100) < 61)) continue;
                 }
 

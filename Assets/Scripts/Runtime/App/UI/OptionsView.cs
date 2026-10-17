@@ -93,6 +93,7 @@ namespace GoF2Remake.UI
             }
             foreach (var def in defs)
             {
+                if (def.menuOnly) continue;   // only in the main menu (the save folder)
                 var tab = tabs.Find(t => t.page == def.page);
                 if (tab == null) continue;
                 var c = new OptionControl(def);

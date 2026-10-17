@@ -318,7 +318,8 @@ namespace GoF2Remake.Data
                 int tries = 0;
                 do it = db.Items[R(db.Items.Count)];
                 while ((NotForSale.Contains(it.index) || it.blueprint.Count > 0 || SinglePrice(it) == 0 || it.occurrence == 0
-                        || !Modding.ModCampaigns.ItemAllowed(db, it.index)) && ++tries < 5000);   // remake mods: a campaign's own items
+                        || !Modding.ModCampaigns.ItemAllowed(db, it.index) || !Modding.ModUnlocks.ItemAvailable(it.index)) && ++tries < 5000);
+                // remake mods: a campaign's own items, and a mod item only once its "available" condition holds
                 a.sellItem = it.index;
                 a.sellQuantity = it.TypeId <= 3 && it.TypeId != 1 ? 1 : R(15) + 5;   // primary, turret, equipment: 1
                 a.sellPrice = (int)((R(120) + 40) / 100f * SinglePrice(it)) * a.sellQuantity;
@@ -405,7 +406,8 @@ namespace GoF2Remake.Data
             {
                 ItemData it;
                 do it = db.Items[97 + R(db.Items.Count - 97)];
-                while (it.occurrence == 0 || SinglePrice(it) == 0 || NotForPurchase.Contains(it.index) || it.blueprint.Count > 0);
+                while (it.occurrence == 0 || SinglePrice(it) == 0 || NotForPurchase.Contains(it.index) || it.blueprint.Count > 0
+                       || !Modding.ModUnlocks.ItemAvailable(it.index));   // remake mods: not a mod item no shop may stock yet
                 m.good = it.index;
                 m.amount = R(15) + 5;
                 diff = it.techLevel;

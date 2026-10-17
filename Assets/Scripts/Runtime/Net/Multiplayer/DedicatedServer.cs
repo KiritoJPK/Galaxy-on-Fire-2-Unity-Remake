@@ -11,7 +11,7 @@
 //   -allowmods       the session runs every mod in this game's Mods folders (NetMods); off by default
 //   -port N          the local port (default 7777); -fps N the server's frame rate (default 60)
 //   -freepvp         players may fight anywhere (else only in arena matches, NetArena)
-//   -cloakhides -capitalships -informeroriginal -nopirateevents -nokaamostacking -nokaamoequipment -nocloakbay -noempcloak
+//   -cloakhides -capitalships -informeroriginal -nopirateevents -nokaamostacking -nokaamoequipment -nocloakbay -noempcloak -originaltargeting
 //                    the session's gameplay options (NetRules), each the other way from the game's default
 //   -kaamomaxlevel N how many times one Kaamo Club upgrade can be fitted to a ship (2..20, default 5; NetRules)
 //   -flightmodel M   the flight model everyone flies: gof2 (the game's, default), es2 (EVERSPACE 2 style) or player (each

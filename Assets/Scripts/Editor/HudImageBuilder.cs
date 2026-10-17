@@ -81,6 +81,8 @@ namespace GoF2Remake.EditorTools
             (Ipad, "touch_cam_0_on", 1904, 819, 109, 122, 0, false),    // 0x527
             (Ipad, "touch_cam_1", 1, 928, 109, 122, 0, false),          // 0x4e9 next mode: turret
             (Ipad, "touch_cam_1_on", 1, 1624, 109, 122, 0, false),      // 0x4ea
+            (Ipad, "touch_cam_2", 1, 112, 109, 122, 0, false),          // 0x4be next mode: cockpit (the eye; the original never shows it)
+            (Ipad, "touch_cam_2_on", 1390, 807, 109, 122, 0, false),    // 0x4bf
             (Ipad, "touch_cam_3", 888, 1382, 109, 122, 0, false),       // 0x52a next mode: free look
             (Ipad, "touch_cam_3_on", 1, 1160, 109, 122, 0, false),      // 0x529
             (Ipad, "touch_turret", 1, 1, 109, 109, 0, false),           // 0x547 auto turret off

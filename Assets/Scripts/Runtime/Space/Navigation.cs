@@ -116,7 +116,7 @@ namespace GoF2Remake.Flight
             routeTarget = null;
             Targets.RemoveAll(t => t.kind == Kind.Waypoint);
             if (route == null) return;
-            routeTarget = new Target { kind = Kind.Waypoint, name = Localization.Get(548), freelance = freelance };
+            routeTarget = new Target { kind = Kind.Waypoint, name = route.name ?? Localization.Get(548), freelance = freelance };
             routeIndex = route.index;
             UpdateRoute();
         }
@@ -318,7 +318,7 @@ namespace GoF2Remake.Flight
                 if (gate != null) list.Add(gate);
                 // 573 "Waypoint": the player route's last waypoint isn't reached (Route::getLastWaypoint +300).
                 if (playerRoute != null && playerRoute.Waypoint != null && routeTarget != null)
-                    list.Add(new Target { kind = Kind.Waypoint, name = Localization.Get(573) });
+                    list.Add(new Target { kind = Kind.Waypoint, name = playerRoute.name ?? Localization.Get(573) });
                 int prog = Session.ProgrammedStation;
                 if (prog >= 0 && prog != layout.stationIndex)
                     list.Add(new Target { kind = Kind.Destination, station = prog,
@@ -409,7 +409,7 @@ namespace GoF2Remake.Flight
             {
                 // MGame::OnTouchEnd key 0x2000000: HUD event 0xd "Target: Waypoint" + 28; the autopilot follows the route.
                 if (routeTarget == null || playerRoute == null || playerRoute.Waypoint == null) return;
-                Say($"{Localization.Get(546)}: {Localization.Get(573)}", HudMessageKind.Target);
+                Say($"{Localization.Get(546)}: {playerRoute.name ?? Localization.Get(573)}", HudMessageKind.Target);
                 Play(sounds?.autopilotOn);
                 SetAutopilot(routeTarget);
                 return;
@@ -522,7 +522,7 @@ namespace GoF2Remake.Flight
             bool miningBusy = mining != null && (mining.State != Mining.Phase.Idle || mining.Locked != null);
             if (cam != null && !miningBusy)
             {
-                var c = cam.WorldToScreenPoint(ship.transform.position + ship.transform.forward * CrosshairDistanceMeters);
+                var c = cam.WorldToScreenPoint(ChaseCamera.AimOrigin(ship.transform) + ship.transform.forward * CrosshairDistanceMeters);
                 float w = Screen.width, h = Screen.height;
                 float box = w / 16f, centre = w / 6f, planetBox = w / 32f;
                 if (c.z > 0f)

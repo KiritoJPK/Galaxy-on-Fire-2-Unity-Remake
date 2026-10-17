@@ -13,6 +13,9 @@
 //   player status (Hud::draw, top left): shield icon (red 500 ms after a hit) + cyan bar, hull icon (red once the armor is
 //     gone) + red hull bar with the yellow armor bar over it
 //   hit arcs: blue while the shield holds, red without, 300 ms, on the ellipse's left / right / top / bottom
+//   remake options (players' request): a far ship's on-screen marker as the original's dot, a hollow ring or a small dot above
+//     it, and its distance under every far marker (FarShipMarkers, Settings.FarShipMarkers / MarkerDistance)
+//   remake mods: a mod's textures/<name> replaces any of these images by its GoF2Hud name (ModTextures.Hud)
 // Positions are HD pixels = panel units.
 
 using System.Collections.Generic;
@@ -37,6 +40,7 @@ namespace GoF2Remake.UI
             public VisualElement shieldBar, shieldFill, armorFill;   // another player's pools, made on first use (DrawPools)
             public Label distance;
             public bool used;
+            public int distanceKey = int.MinValue, labelLook = -1;   // the label as last written (FarShipMarkers.DistanceKey)
         }
 
         readonly VisualElement layer, lockRing, lockPlate, lockClass, statusPanel, shieldRow, shieldIcon, shieldFill, hullIcon, hullFill, armorFill,
@@ -50,7 +54,7 @@ namespace GoF2Remake.UI
 
         /// <summary>A faction's marker images, looked up once: DrawShip runs per ship per frame, and building the names
         /// ("ship_bar_enemy"...) each time allocated strings.</summary>
-        class MarkerTextures { public Texture2D bar, fill, bracket, ring, dot; }
+        class MarkerTextures { public Texture2D bar, fill, bracket, ring, dot, openRing; }
 
         // The lock plate as last built (Update).
         Target plateTarget;
@@ -58,6 +62,10 @@ namespace GoF2Remake.UI
         string plateName, plateText;
         Texture2D plateIcon;
         readonly MarkerTextures[] factionTextures = new MarkerTextures[3];
+        // The far marker options, read once per frame (Update).
+        int farStyle;
+        bool farDistance;
+        static readonly string[] LabelFaction = { "combat-label--enemy", "combat-label--friend", "combat-label--neutral" };
 
         MarkerTextures FactionTextures(int faction)
         {
@@ -67,13 +75,13 @@ namespace GoF2Remake.UI
             return factionTextures[faction] = new MarkerTextures
             {
                 bar = Tex($"ship_bar_{f}"), fill = Tex($"ship_fill_{f}"), bracket = Tex($"ship_bracket_{f}"),
-                ring = Tex($"ship_ring_{f}"), dot = Tex($"ship_dot_{f}"),
+                ring = Tex($"ship_ring_{f}"), dot = Tex($"ship_dot_{f}"), openRing = Tex($"ship_ring_open_{f}"),
             };
         }
 
         Texture2D Tex(string name)
         {
-            if (!textures.TryGetValue(name, out var t)) textures[name] = t = Resources.Load<Texture2D>("GoF2Hud/" + name);
+            if (!textures.TryGetValue(name, out var t)) textures[name] = t = Modding.ModTextures.Hud(name) ?? Resources.Load<Texture2D>("GoF2Hud/" + name);
             return t;
         }
 
@@ -162,6 +170,8 @@ namespace GoF2Remake.UI
         public void Update(CombatRadar radar, Traffic traffic, PlayerHealth health, Camera cam, bool cinematic, bool plateFree, bool markersOff = false)
         {
             UpdateStatus(health, cinematic);
+            farStyle = Settings.FarShipMarkers;
+            farDistance = Settings.MarkerDistance;
             foreach (var m in markers.Values) m.used = false;
             bool show = radar != null && radar.HasScanner && cam != null && layer.panel != null && !cinematic && !markersOff && health != null && !health.Dead;
             layer.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
@@ -318,7 +328,8 @@ namespace GoF2Remake.UI
             Show(m.fill, bar);
             Show(m.bracket, bar && locked);
             Show(m.dot, !bar);
-            Show(m.distance, !bar && onScreen && locked);
+            bool distance = !bar && onScreen && FarShipMarkers.ShowsDistance(locked, farDistance);
+            Show(m.distance, distance);
             if (bar)
             {
                 Image(m.bar, t.bar);
@@ -333,15 +344,47 @@ namespace GoF2Remake.UI
             }
             else
             {
-                var tex = locked ? t.ring : t.dot;
-                Image(m.dot, tex);
-                if (tex != null) Place(m.dot, p.x - tex.width / 2f, p.y - tex.height / 2f);
-                if (onScreen && locked)
+                // Off screen the original's dot / ring on the radar ellipse; on screen the far marker the option picks.
+                var look = FarShipMarkers.Look(onScreen ? farStyle : Settings.FarMarkerOriginal, locked);
+                var tex = look.shape switch
                 {
-                    m.distance.text = Navigation.FormatDistance((world - cam.transform.position).magnitude / M);
-                    Place(m.distance, p.x - 61f, p.y + 61f);
+                    FarShipMarkers.Shape.Ring => t.ring,
+                    FarShipMarkers.Shape.OpenRing => t.openRing,
+                    FarShipMarkers.Shape.Bracket => t.bracket,
+                    _ => t.dot,
+                };
+                if (tex != null)
+                {
+                    float w = tex.width * look.scale, h = tex.height * look.scale;
+                    m.dot.style.backgroundImage = new StyleBackground(tex);
+                    m.dot.style.width = w;
+                    m.dot.style.height = h;
+                    Place(m.dot, p.x - w / 2f, p.y - look.rise - h / 2f);
                 }
+                if (distance) DrawDistance(m, world, faction, locked, cam, p);
             }
+        }
+
+        /// <summary>The distance under a far on-screen marker: the locked one's as the original (white, at (-61, +61)), the
+        /// others' (the "Distance on ship markers" option) small and centred in the faction's colour. The text is written
+        /// only when it changes (no string per ship per frame in a fleet battle).</summary>
+        void DrawDistance(Marker m, Vector3 world, int faction, bool locked, Camera cam, Vector2 p)
+        {
+            int look = locked ? 0 : 1 + faction;
+            if (look != m.labelLook)
+            {
+                m.labelLook = look;
+                m.distance.EnableInClassList("combat-label--far", !locked);
+                for (int i = 0; i < 3; i++) m.distance.EnableInClassList(LabelFaction[i], !locked && i == faction);
+            }
+            float units = (world - cam.transform.position).magnitude / M;
+            int key = FarShipMarkers.DistanceKey(units);
+            if (key != m.distanceKey)
+            {
+                m.distanceKey = key;
+                m.distance.text = Navigation.FormatDistance(units);
+            }
+            Place(m.distance, p.x - 61f, p.y + FarShipMarkers.LabelTop(farStyle, locked));
         }
 
         /// <summary>Radar::draw (ship_combat.md 7.2): a near ship's EMP bar 8 px under its hull bar while EMP &lt; max.</summary>
@@ -440,6 +483,7 @@ namespace GoF2Remake.UI
             if (onScreen && locked)
             {
                 m.distance.text = Navigation.FormatDistance((world - cam.transform.position).magnitude / M);
+                m.distanceKey = int.MinValue;
                 Place(m.distance, p.x - 61f, p.y + 61f);
             }
         }

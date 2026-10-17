@@ -14,6 +14,7 @@
 // Per object (the Mod Builder's "this ship only"): textures/<assembly>/<name>.png (e.g. textures/ship_028_terran/glow_terran.png)
 // replaces the texture only on that assembled object (AssembledObject.ModScope, its assembly's name), before any textures/<name>
 // of every object; such an object gets material copies of its own.
+// The combat HUD's images (Resources/GoF2Hud, the ship / crate markers...) are replaced by name too (Hud, read by CombatView).
 
 using System;
 using System.Collections.Generic;
@@ -177,6 +178,16 @@ namespace GoF2Remake.Modding
             if (revision != ModManager.Revision) Preload();
             if (textures.Count == 0) return m;
             return CopyFor(m, scope) ?? m;
+        }
+
+        /// <summary>Remake mods: a flight HUD image (Resources/GoF2Hud/&lt;name&gt;, e.g. ship_dot_enemy, ship_ring_open_friend)
+        /// replaced by a mod's textures/&lt;name&gt; file, else null. Read by the combat HUD (CombatView: the ship and crate
+        /// markers, the lock ring, the status bars, the hit arcs, the lock plate's race icons) when it first draws an image.</summary>
+        public static Texture2D Hud(string name)
+        {
+            if (!Application.isPlaying || string.IsNullOrEmpty(name)) return null;
+            if (revision != ModManager.Revision) Preload();
+            return textures.TryGetValue(name, out var t) ? t : null;
         }
 
         /// <summary>The replacement for a texture on an object of 'scope': its own, else every object's.</summary>

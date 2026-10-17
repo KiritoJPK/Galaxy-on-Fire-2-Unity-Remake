@@ -95,7 +95,7 @@ namespace GoF2Remake.Flight
             int armor = armorItem != null ? armorItem.Attr(20) : 0;
             HasShield = shield > 0;
             HasArmor = armor > 0;
-            if (repair != null) { hasRepair = true; bool mk2 = repair.index != 75; repairHullMs = mk2 ? 420f : 600f; repairArmorMs = mk2 ? 700f : 1000f; }
+            if (repair != null) { hasRepair = true; bool mk2 = repair.Look != 75; repairHullMs = mk2 ? 420f : 600f; repairArmorMs = mk2 ? 700f : 1000f; }
 
             Target = gameObject.AddComponent<Target>();
             Target.isPlayer = true;
@@ -142,7 +142,7 @@ namespace GoF2Remake.Flight
             HasShield = shield > 0;
             HasArmor = armor > 0;
             hasRepair = repair != null;
-            if (repair != null) { bool mk2 = repair.index != 75; repairHullMs = mk2 ? 420f : 600f; repairArmorMs = mk2 ? 700f : 1000f; }
+            if (repair != null) { bool mk2 = repair.Look != 75; repairHullMs = mk2 ? 420f : 600f; repairArmorMs = mk2 ? 700f : 1000f; }
             Hp.maxHull = hull; Hp.hull = keepFractions ? Mathf.Clamp(Mathf.RoundToInt(hull * hullShare), 1, hull) : hull;
             Hp.maxShield = shield; Hp.shield = keepFractions ? shield * shieldShare : shield;
             Hp.maxArmor = armor; Hp.armor = keepFractions ? Mathf.RoundToInt(armor * armorShare) : armor;
@@ -270,7 +270,7 @@ namespace GoF2Remake.Flight
             if (rate <= 0f) { Gamma = -1f; Session.PlayerGamma = -1f; return; }
             Gamma = Session.PlayerGamma >= 0f ? Session.PlayerGamma : 100f;
             gammaWarned = Gamma < 15f;
-            var clip = gammaShield == null || assets == null ? null : gammaShield.index == 205 ? assets.gammaShield1 : assets.gammaShield2;   // PlayerEgo::PlayerEgo: 0xcd 2261, else 2260
+            var clip = gammaShield == null || assets == null ? null : gammaShield.Look == 205 ? assets.gammaShield1 : assets.gammaShield2;   // PlayerEgo::PlayerEgo: 0xcd 2261, else 2260
             if (clip != null)
             {
                 // The gamma shield's loop takes the engine sound's slot (PlayerEgo+0x1c): event volume 0.09.

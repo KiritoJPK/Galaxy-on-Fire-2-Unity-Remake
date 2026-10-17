@@ -216,7 +216,7 @@ namespace GoF2Remake.Flight
             Target best = null;
             if (cam != null)
             {
-                var c = cam.WorldToScreenPoint(ship.transform.position + ship.transform.forward * CrosshairDistanceMeters);
+                var c = cam.WorldToScreenPoint(ChaseCamera.AimOrigin(ship.transform) + ship.transform.forward * CrosshairDistanceMeters);
                 float r = Screen.width / 16f, bestDist = float.MaxValue;
                 if (c.z > 0f)
                     foreach (var t in Target.All)
@@ -545,7 +545,7 @@ namespace GoF2Remake.Flight
         bool InBox(Camera cam, Target t, float half)
         {
             if (t == null || !t.Alive) return false;
-            var c = cam.WorldToScreenPoint(ship.transform.position + ship.transform.forward * CrosshairDistanceMeters);
+            var c = cam.WorldToScreenPoint(ChaseCamera.AimOrigin(ship.transform) + ship.transform.forward * CrosshairDistanceMeters);
             var p = cam.WorldToScreenPoint(t.transform.position);
             return c.z > 0f && p.z > 0f && Mathf.Abs(p.x - c.x) < half && Mathf.Abs(p.y - c.y) < half;
         }

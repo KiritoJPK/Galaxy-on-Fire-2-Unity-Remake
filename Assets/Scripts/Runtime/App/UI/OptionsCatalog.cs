@@ -26,6 +26,7 @@ namespace GoF2Remake.UI
         public Func<string> description;   // optional line under the row
         public Func<UnityEngine.UIElements.VisualElement> extra;   // optional element under the row (not focusable)
         public bool inGameOnly;            // only in a running game's menus (pause / station), not the main menu
+        public bool menuOnly;              // only in the main menu (no game loaded), not the pause / station menus
         public Func<bool> visible;         // optional: the row shows only while true (OptionControl.Refresh)
 
         // Slider
@@ -51,9 +52,13 @@ namespace GoF2Remake.UI
         public Flight.ControlRow control;
     }
 
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class OptionsCatalog
     {
         static string X(string key, string english) => Localization.Extra(key, english);
+
+        /// <summary>The save folder row's press: the main menu asks and runs the folder picker (MainMenu.ChooseSaveFolder).</summary>
+        public static Action SaveFolderPressed;
         static string Percent(float v) => $"{Mathf.RoundToInt(v * 100f)} %";
 
         /// <summary>Remake (Modding.ModFlight): who sets the flight style now instead of the Free flight toggle.</summary>
@@ -383,6 +388,10 @@ namespace GoF2Remake.UI
                 () => Settings.EmpBreaksCloak, v => Settings.EmpBreaksCloak = v);
             empCloak.description = () => X("empBreaksCloakHelp", "An EMP hit on a cloaked ship drops its cloak at once, and a cloak still charging fails: yours, the Specters' and other players'. Off: as in the original, nothing ends a cloak early.");
             list.Add(SessionRule(empCloak));
+            var smartTargeting = Toggle("smarterNpcTargeting", OptionPage.Gameplay, () => X("smarterNpcTargeting", "Smarter NPC targeting"),
+                () => Settings.SmarterNpcTargeting, v => Settings.SmarterNpcTargeting = v);
+            smartTargeting.description = () => X("smarterNpcTargetingHelp", "Enemy fighters attack the nearest hostile ship, you a little likelier, and spread out over their targets instead of all going for you. Off: as in the original, every enemy fighter in range goes for you first.");
+            list.Add(SessionRule(smartTargeting));
             var pirateEvents = Toggle("pirateEvents", OptionPage.Gameplay, () => X("pirateEvents", "Pirate outposts and bosses"),
                 () => Settings.PirateEvents, v => Settings.PirateEvents = v);
             pirateEvents.description = () => X("pirateEventsHelp", "Now and then an orbit holds a pirate outpost with its guards or a pirate boss with escorts; destroying them pays a bounty. Not in the original.");
@@ -444,6 +453,16 @@ namespace GoF2Remake.UI
                 () => new[] { X("hudFull", "Full"), X("hudMinimal", "Minimal"), X("hudOff", "Off") },
                 () => Settings.HudMode, i => Settings.HudMode = i,
                 () => X("hudModeHelp", "Minimal: only the crosshair, the action prompt, warnings and messages. Off: only messages, for maximum immersion. Menus, conversations and the radio always show. The Toggle HUD key (F1 by default) switches it in flight.")));
+            // Remake (players' request): a far ship's marker that leaves the ship in view, and its distance (CombatView,
+            // FarShipMarkers).
+            list.Add(Choice("farShipMarkers", OptionPage.Gameplay, () => X("farShipMarkers", "Far ship markers"), true,
+                () => new[] { X("farMarkerOriginal", "Original"), X("farMarkerRing", "Ring"), X("farMarkerSmallDot", "Small dot") },
+                () => Settings.FarShipMarkers, i => Settings.FarShipMarkers = i,
+                () => X("farShipMarkersHelp", "How a distant ship is marked on screen. Original: a filled dot over the ship. Ring: a hollow ring around it. Small dot: a small dot just above it. Both leave the ship in view; a locked ship gets a bracket around it.")));
+            var markerDistance = Toggle("markerDistance", OptionPage.Gameplay, () => X("markerDistance", "Distance on ship markers"),
+                () => Settings.MarkerDistance, v => Settings.MarkerDistance = v);
+            markerDistance.description = () => X("markerDistanceHelp", "Shows the distance under every distant ship's marker, not only under the locked ship's.");
+            list.Add(markerDistance);
             // Remake: Discord Rich Presence (DiscordPresence), desktop only.
             if (!Application.isMobilePlatform)
                 list.Add(Toggle("discordPresence", OptionPage.Gameplay, () => X("discordPresence", "Show what I'm doing in Discord"),
@@ -466,6 +485,19 @@ namespace GoF2Remake.UI
             debug.description = () => X("debugToolsHelp", "A Debug button in the main menu (the mission select) and a Debug page in the pause and station menus (cheats, items, spawns).");
             debug.visible = () => Cheats.Allowed;   // not in a multiplayer session that doesn't allow the Debug menu
             list.Add(debug);
+            // Remake (a player's request): the saves also kept in a folder the player picks, for file managers and sync tools
+            // (Data.SaveFolder); main menu only: no game is loaded there. The main menu runs the choice (SaveFolderPressed).
+            if (SaveFolder.Supported)
+                list.Add(new OptionDef
+                {
+                    id = "saveFolder", page = OptionPage.Gameplay, kind = OptionKind.Button, menuOnly = true,
+                    label = () => string.Format(X("saveFolder", "Save folder: {0}"),
+                        SaveFolder.Chosen ? SaveFolder.DisplayName : X("saveFolderDefault", "this device only")),
+                    description = () => SaveFolder.LastProblem != null
+                        ? string.Format(X("saveFolderUnreachable", "The folder can't be reached ({0}). Your saves stay on this device and go to the folder once it is back."), SaveFolder.LastProblem)
+                        : X("saveFolderHelp", "Keeps your saves and ship presets in a folder you choose as well, where file managers and sync tools (Syncthing) reach them, so the game moves between devices. The game always keeps its own copies too."),
+                    action = () => SaveFolderPressed?.Invoke(),
+                });
             return list;
         }
 

@@ -39,13 +39,16 @@ namespace GoF2Remake.Data
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics() => file = null;
 
-        static string FilePath => Path.Combine(GoF2Remake.GamePaths.Data, "ship_presets.json");
+        static string FilePath => SaveFolder.PresetsPath;   // also kept in the chosen save folder (SaveFolder)
+        static int folderRevision;
 
         static PresetFile Data
         {
             get
             {
-                if (file != null) return file;
+                if (file != null && folderRevision == SaveFolder.Revision) return file;
+                file = null;
+                folderRevision = SaveFolder.Revision;   // a sync brought another device's presets: read them again
                 try { if (File.Exists(FilePath)) file = JsonUtility.FromJson<PresetFile>(File.ReadAllText(FilePath)); }
                 catch (Exception e) { Debug.LogWarning($"Ship presets: {e.Message}"); }
                 file ??= new PresetFile();
@@ -56,7 +59,7 @@ namespace GoF2Remake.Data
 
         static void Write()
         {
-            try { File.WriteAllText(FilePath, JsonUtility.ToJson(Data, true)); }
+            try { File.WriteAllText(FilePath, JsonUtility.ToJson(Data, true)); SaveFolder.AfterLocalChange(); }
             catch (Exception e) { Debug.LogWarning($"Ship presets: {e.Message}"); }
         }
 

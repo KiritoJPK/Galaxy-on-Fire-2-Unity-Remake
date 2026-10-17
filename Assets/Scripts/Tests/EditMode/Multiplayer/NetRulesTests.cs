@@ -5,8 +5,8 @@
 // on / off toggles, saved to server_settings.json beside the profiles, an option given on the command line wins).
 // Expected values: CLAUDE.md's rule list and defaults (cloak shakes off pursuers off, pirate outposts and bosses on,
 // capital ship enhancements off, the informer missions' original rule off, stackable Kaamo upgrades on, stored ships keep
-// their equipment on, the cloak bay on, EMP breaks cloaks on) and flags (-cloakhides, -nopirateevents, -capitalships,
-// -informeroriginal, -nokaamostacking, -nokaamoequipment, -nocloakbay, -noempcloak); the setting ranges (2..100 players,
+// their equipment on, the cloak bay on, EMP breaks cloaks on, smarter NPC targeting on) and flags (-cloakhides, -nopirateevents,
+// -capitalships, -informeroriginal, -nokaamostacking, -nokaamoequipment, -nocloakbay, -noempcloak, -originaltargeting); the setting ranges (2..100 players,
 // 0..100 claims per faction, 1..3650 lapse days).
 
 using System.IO;
@@ -31,10 +31,11 @@ namespace GoF2Remake.Tests
             ("kaamoequipment", "-nokaamoequipment", true),
             ("cloakbay", "-nocloakbay", true),
             ("empcloak", "-noempcloak", true),
+            ("smarttargeting", "-originaltargeting", true),
         };
 
         [Test]
-        public void EightRulesWithTheirFlagsAndDefaults()
+        public void NineRulesWithTheirFlagsAndDefaults()
         {
             Assert.AreEqual(Documented.Length, NetRules.All.Count);
             foreach (var (key, flag, on) in Documented)
@@ -42,7 +43,7 @@ namespace GoF2Remake.Tests
                 var r = NetRules.All.Single(x => x.key == key);
                 Assert.AreEqual(flag, r.flag, key);
                 Assert.AreEqual(on, r.fallback, key + "'s default");
-                Assert.AreEqual(on, flag.StartsWith("-no"), key + ": a rule on by default is turned off by its flag");
+                Assert.AreEqual(on, flag.StartsWith("-no") || flag.StartsWith("-original"), key + ": a rule on by default is turned off by its flag");
                 Assert.IsNotEmpty(r.label);
             }
         }
@@ -72,12 +73,14 @@ namespace GoF2Remake.Tests
             Assert.AreEqual(SessionRules.KaamoKeepsEquipment, NetRules.KaamoKeepsEquipment);
             Assert.AreEqual(SessionRules.CloakBay, NetRules.CloakBay);
             Assert.AreEqual(SessionRules.EmpBreaksCloak, NetRules.EmpBreaksCloak);
+            Assert.AreEqual(SessionRules.SmarterNpcTargeting, NetRules.SmarterNpcTargeting);
         }
 
         [Test]
         public void TheDefaultsAreTheRulesOnByDefault()
         {
-            int expected = NetRules.PirateEvents | NetRules.KaamoStacking | NetRules.KaamoKeepsEquipment | NetRules.CloakBay | NetRules.EmpBreaksCloak;
+            int expected = NetRules.PirateEvents | NetRules.KaamoStacking | NetRules.KaamoKeepsEquipment | NetRules.CloakBay | NetRules.EmpBreaksCloak
+                         | NetRules.SmarterNpcTargeting;
             Assert.AreEqual(expected, NetRules.Defaults);
         }
 

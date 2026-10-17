@@ -84,8 +84,9 @@ namespace GoF2Remake.Tests
             Assert.IsTrue(Settings.KaamoKeepsEquipment, "on by default");
             Assert.IsTrue(Settings.CloakBay, "on by default");
             Assert.IsTrue(Settings.EmpBreaksCloak, "on by default");
+            Assert.IsTrue(Settings.SmarterNpcTargeting, "on by default");
             int expected = SessionRules.PirateEvents | SessionRules.KaamoStacking | SessionRules.KaamoKeepsEquipment
-                         | SessionRules.CloakBay | SessionRules.EmpBreaksCloak;
+                         | SessionRules.CloakBay | SessionRules.EmpBreaksCloak | SessionRules.SmarterNpcTargeting;
             Assert.AreEqual(expected, Settings.LocalRules());
         }
 
@@ -104,7 +105,8 @@ namespace GoF2Remake.Tests
             Assert.AreNotEqual(0, m & SessionRules.InformerOriginalRule);
             // the bits are distinct powers of two
             int[] bits = { SessionRules.CloakLosesPursuers, SessionRules.PirateEvents, SessionRules.CapitalShips, SessionRules.InformerOriginalRule,
-                           SessionRules.KaamoStacking, SessionRules.KaamoKeepsEquipment, SessionRules.CloakBay, SessionRules.EmpBreaksCloak };
+                           SessionRules.KaamoStacking, SessionRules.KaamoKeepsEquipment, SessionRules.CloakBay, SessionRules.EmpBreaksCloak,
+                           SessionRules.SmarterNpcTargeting };
             Assert.AreEqual(bits.Length, bits.Distinct().Count());
             foreach (int b in bits) Assert.AreEqual(0, b & (b - 1), "a single bit");
         }

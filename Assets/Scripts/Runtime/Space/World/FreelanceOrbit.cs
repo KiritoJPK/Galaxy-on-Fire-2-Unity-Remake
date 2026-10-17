@@ -25,7 +25,12 @@
 //   15 Ore Mining    (multiplayer sessions only: the original's generator never rolls it) int((int(0.2d)+1)*hc) race-E
 //                    enemies (always enemy) on a 1-waypoint route (rnd(140000) - 70000, 0, 70000); the mining plant
 //                    (docking type 1) at the asteroid field; 2 client-race haulers looping plant <-> plant - 30000 z, never
-//                    attacking; win: the ore delivered to the plant (ObjectDocking) >= amount (Objective 0x1c)
+//                    attacking; win: the ore delivered to the plant (ObjectDocking) >= amount (Objective 0x1c).
+//                    Remake (players' feedback: 5-6 km in front of the station it felt out of place): all of it at a remote
+//                    site about 10 km out (MiningSite, seeded by the mission, the same in every game of the squad) with a field
+//                    of its own around the plant (5-7 big + 18-25 small rocks of the mission's ore, OrbitBuilder.SpawnField),
+//                    the enemies asleep there (awake from afar they blocked the fast-forward all the way); the player gets
+//                    the lockable "Mining site" waypoint short of the plant and the briefing names it.
 //   12 Challenge     the agent's ship (its race, 9 999 999 hull, speed 3.0, named, friend) flies a createRoute(3..4) past
 //                    an odd number of sleeping pirates (i = int(d/10*4): i+3 for an even i, i+4 for an odd one); win: all
 //                    dead with more kills than the rival (0x14) / fail: all dead, the rival as good or better (0x15)
@@ -123,6 +128,11 @@ namespace GoF2Remake.World
         bool seenEnemies, seenFriends, seenJunk, inheritedEnemies, inheritedFriends;
         float scanMs;
         NpcShip localPlant;   // a follower's stand-in of the runner's mining plant (Ore Mining unloading)
+        MiningSite site;      // Ore Mining: the remote site (the same in every game of the squad)
+        /// <summary>Ore Mining: the site's own asteroid field (built in every game of the squad, runner or not), null = none.</summary>
+        public Transform SiteAsteroids { get; private set; }
+        /// <summary>Multiplayer: the site field's first asteroid index (NetOrbit, NetState's destroyed lists).</summary>
+        public int SiteIndexBase => site != null ? site.IndexBase : -1;
         float levelMs, missionMs, timeCheckMs;
         bool briefed, done;
 
@@ -137,6 +147,7 @@ namespace GoF2Remake.World
             traffic = npcTraffic;
             mission = Freelance.Mission;
             Running = true;
+            BuildSite();
             Build();
             traffic.ConnectPlayers();
             RouteText = EncodeRoute(PlayerRoute);
@@ -151,6 +162,8 @@ namespace GoF2Remake.World
             traffic = npcTraffic;
             mission = Freelance.Mission;
             Running = false;
+            BuildSite();
+            if (site != null) { PlayerRoute = SiteRoute(); RouteText = EncodeRoute(PlayerRoute); level.Navigation?.SetRoute(PlayerRoute, true); }
             GoF2Remake.World.SpaceHooks.MissionResultView = ShowResult;
             Debug.Log($"FreelanceOrbit: {mission.Name} run by a squadmate here");
         }
@@ -365,13 +378,14 @@ namespace GoF2Remake.World
             {
                 RouteText = route;
                 PlayerRoute = DecodeRoute(route);
+                if (PlayerRoute != null && site != null) PlayerRoute.name = SiteName;
                 level.Navigation?.SetRoute(PlayerRoute, true);
             }
-            // Ore Mining: a stand-in of the runner's plant at its route point, to unload at here (ObjectDocking).
-            if (mission.type == MissionType.OreMining && localPlant == null && PlayerRoute != null && PlayerRoute.points.Count > 0)
+            // Ore Mining: a stand-in of the runner's plant at the site, to unload at here (ObjectDocking).
+            if (site != null && localPlant == null)
             {
                 var spec = Traffic.MiningPlant();
-                spec.position = PlayerRoute.points[0];
+                spec.position = site.plant;
                 localPlant = traffic.SpawnShip(spec);
                 localPlant.MissionShip = true;
                 localPlant.LocalOnly = true;   // not shown to the others (the runner's plant is)
@@ -580,15 +594,17 @@ namespace GoF2Remake.World
                     int n = (int)(((int)(0.2f * d) + 1) * hc);
                     var route = new Route(false);
                     // Level::createMission case 0xf: a one-waypoint route (rnd(140000) - 70000, 0, 70000); the enemies awake at
-                    // it (createShip's +-20000 jitter), setAlwaysEnemy.
-                    route.points.Add(new Vector3(Random.Range(0, 140000) - 70000f, 0, 70000f));
-                    for (int i = 0; i < n; i++) Spawn(clientEnemy, route.points[0] + Jitter(), s => { s.alwaysEnemy = true; s.route = route.Clone(); });
-                    var plantAt = HasField ? level.Layout.asteroidCentre : new Vector3(0, 0, 60000);
+                    // it (createShip's +-20000 jitter), setAlwaysEnemy. Remake: the route point beside the remote site
+                    // (MiningSite), the enemies asleep there (sleepers wake on the player within 25000 / their detect range).
+                    route.points.Add(site.plant + new Vector3(Random.Range(0, 60000) - 30000f, Random.Range(0, 20000) - 10000f, Random.Range(0, 60000) - 30000f));
+                    for (int i = 0; i < n; i++) Spawn(clientEnemy, route.points[0] + Jitter(), s => { s.alwaysEnemy = true; s.asleep = true; s.route = route.Clone(); });
+                    // The plant exactly at the site (its field is built around it in every game of the squad), not moved
+                    // out of the others' sight.
+                    var plantAt = site.plant;
                     var spec = Traffic.MiningPlant();
-                    spec.position = GoF2Remake.World.SpaceHooks.OutOfSightOf(plantAt);
+                    spec.position = plantAt;
                     plant = traffic.SpawnShip(spec);
                     plant.MissionShip = true;
-                    plantAt = spec.position;
                     int race = Mathf.Clamp(mission.clientRace, 0, 3);
                     for (int i = 0; i < 2; i++)
                     {
@@ -598,7 +614,7 @@ namespace GoF2Remake.World
                         var hauler = Spawn(race, loop.points[i], s => { s.alwaysFriend = true; s.noLoot = true; s.route = loop; }, false);
                         hauler.shootingEnabled = false;   // they never attack
                     }
-                    MarkRoute(plantAt);
+                    PlayerRoute = SiteRoute();
                     break;
                 }
                 case MissionType.Challenge:
@@ -628,6 +644,32 @@ namespace GoF2Remake.World
         /// <summary>The orbit has an asteroid field: its centre is OrbitLayout.asteroidCentre (game units). The "Asteroids"
         /// root sits at the origin with the asteroids placed around the centre, so its own position is the station's.</summary>
         bool HasField => level.Asteroids != null && level.Asteroids.childCount > 0;
+
+        /// <summary>Ore Mining (remake): the remote site and its asteroid field, from the mission's seed, so every game of
+        /// the squad builds the same (MiningSite). The field's rocks are all the mission's ore.</summary>
+        void BuildSite()
+        {
+            if (mission.type != MissionType.OreMining || site != null) return;
+            site = MiningSite.For(mission, level.Layout);
+            var saved = Random.state;
+            Random.InitState(site.seed);
+            var s = site;
+            SiteAsteroids = OrbitBuilder.SpawnField(level.Database, level.Layout, s.fieldCentre, s.bigCount + s.smallCount, s.bigCount,
+                                                    MiningSite.BigSide, MiningSite.SmallSide, mission.good, transform,
+                                                    u => s.Blocks(ToGame(u)), "Mining site asteroids");
+            Random.state = saved;
+            Debug.Log($"FreelanceOrbit: mining site at {site.plant} ({site.plant.magnitude * M / 1000f:0.0} km out), {SiteAsteroids.childCount} asteroids of item {mission.good}");
+        }
+
+        /// <summary>Remake: the waypoint's name (Route.name) for the Ore Mining site.</summary>
+        public static string SiteName => Localization.Extra("miningSite", "Mining site");
+
+        Route SiteRoute()
+        {
+            var r = new Route(false) { name = SiteName };
+            r.points.Add(site.waypoint);
+            return r;
+        }
 
         void MarkRoute(Vector3 gamePoint)
         {
@@ -737,7 +779,11 @@ namespace GoF2Remake.World
             int t = mission.type;
             if (t == MissionType.Courier || t == MissionType.Purchase || t == MissionType.Passenger) return false;
             int text = t == MissionType.Challenge ? 372 : t == MissionType.JunkRemoval ? 378 : 379 + Random.Range(0, 5);
-            Open(Localization.Get(text), text, () => { if (Running) missionMs = 0f; });
+            string body = Localization.Get(text);
+            // Remake: Ore Mining's site is far out; the briefing gives its coordinates as the waypoint.
+            if (site != null)
+                body += "\n\n" + Localization.Extra("miningSiteBriefing", "The mining plant is at a remote site in this orbit. I've sent you its coordinates: follow the \"Mining site\" waypoint, mine the ore in the asteroid field around the plant and unload it there.");
+            Open(body, text, () => { if (Running) missionMs = 0f; });
             return true;
         }
 

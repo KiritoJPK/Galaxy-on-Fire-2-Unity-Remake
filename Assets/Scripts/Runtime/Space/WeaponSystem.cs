@@ -561,7 +561,7 @@ namespace GoF2Remake.Flight
             bool smart = !Settings.OriginalTargetLock;
             var cam = Camera.main;
             if (cam == null) return null;
-            var aim = cam.WorldToScreenPoint(transform.position + transform.forward * 22000f * M);
+            var aim = cam.WorldToScreenPoint(ChaseCamera.AimOrigin(transform) + transform.forward * 22000f * M);
             float box = Screen.width / 16f, best = float.MaxValue;
             Target found = null;
             foreach (var t in Target.All)

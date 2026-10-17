@@ -20,11 +20,17 @@
 //  * Boost (MGame::OnUpdate): the vertical FOV grows by 0.35 rad x the boost percentage, and
 //    TargetFollowCamera::setBoostPercentage(pct, clamp(boost speed, 2, 8)) jitters the look-at point by
 //    pct x n units per axis each frame. The radial blur on top (post effect 0x1400002) isn't reproduced.
+//  * The cockpit view (MGame::switchCamera mode 2, TargetFollowCamera::enableFirstPersonCam +0xf0, unreachable in this
+//    build: switchCamera and nextCamId turn 2 into 3): the camera on the ship's matrix, looking along its direction, the
+//    ship hidden (PlayerEgo::hideShipForFirstPersonCameraView), the hit shake x0.001 and the rumble x0.0015. Remake
+//    (FreeLookCamera.Mode.FirstPerson): reachable, on the bow instead of the pivot (FirstPersonSeat), the shake and the
+//    rumble as small turns of the view, the boost's FOV at half.
 
 using UnityEngine;
 
 namespace GoF2Remake.Flight
 {
+    [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public class ChaseCamera : MonoBehaviour
     {
         /// <summary>TargetFollowCamera::update's damping for coefficient 'x' over a frame of 'dtMs': the share of the way to the
@@ -84,9 +90,34 @@ namespace GoF2Remake.Flight
         /// <summary>A level script's look-at camera (CutsceneCamera) holds the camera: the launch / arrival camera leaves it
         /// alone and doesn't hand it back (LevelScript: M0 / M1 never end the fly-in, their scripts own the camera).</summary>
         [System.NonSerialized] public bool scriptCamera;
+        /// <summary>Remake: the cockpit view (FreeLookCamera.Mode.FirstPerson): rigidly on the bow with the hull hidden while
+        /// this camera drives (not while 'follow' or another camera holds it: the hull shows again then).</summary>
+        [System.NonSerialized] public bool firstPerson;
+        /// <summary>The cockpit view is on screen now (the hull hidden).</summary>
+        public bool FirstPersonShown => fpShown;
+        static ChaseCamera fpActive;
+
+        /// <summary>Where the aim line along the ship's nose starts for the HUD's crosshair and the lock boxes (FlightHud,
+        /// CombatRadar, Mining, Navigation, the beams' auto-aim; 22000 units ahead): the ship's pivot, or the cockpit camera
+        /// while it shows (on the same line: a big hull's bow camera sits past the pivot's aim point, which hid the crosshair).</summary>
+        public static Vector3 AimOrigin(Transform ship) =>
+            fpActive != null && fpActive.fpShown && fpActive.target != null && fpActive.target.transform == ship ? fpActive.transform.position : ship.position;
 
         void Awake() => cam = GetComponent<Camera>();
         void OnEnable() => lookValid = false;
+        // Disabled = another camera holds it (the launch / arrival fly-in, a cutscene, a jump, mining, object docking, the
+        // death camera, Action Freeze): the hull shows; enabled again, the cockpit view comes back.
+        void OnDisable()
+        {
+            bool wasShown = fpShown;
+            EndFirstPerson();
+            // Some of them leave the camera where it is (the death camera, mining's landing, the planet jump): from behind the
+            // ship as in the standard view, not inside the bow of a tumbling or pitching hull.
+            if (!wasShown || target == null || follow != null) return;
+            PlaceBehind();
+            if (cam != null) cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov, cam.aspect);
+        }
+        void OnDestroy() => EndFirstPerson();
 
         void LateUpdate()
         {
@@ -126,6 +157,7 @@ namespace GoF2Remake.Flight
                 }
                 if (cam != null) cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov, cam.aspect);
                 lookValid = false;
+                EndFirstPerson();   // the turret view, free look, the Liberator: the hull shows
                 return;
             }
 
@@ -139,6 +171,9 @@ namespace GoF2Remake.Flight
                 lookValid = false;
                 return;
             }
+
+            if (firstPerson) { PlaceFirstPerson(ship, dtMs, boosting, boostRumble, mass); return; }
+            EndFirstPerson();
 
             float posK = positionCoefficient, rotK = rotationCoefficient;
             if (handlingDependent)
@@ -219,12 +254,129 @@ namespace GoF2Remake.Flight
         {
             if (target == null) return;
             var ship = target.transform;
+            PlaceBehind();
+            if (GoF2Remake.Data.VrFlags.Enabled) transform.SetPositionAndRotation(ship.TransformPoint(GoF2Remake.Data.VrFlags.CockpitSeat), ship.rotation);
+            else if (firstPerson && follow == null) transform.SetPositionAndRotation(ship.TransformPoint(FirstPersonSeat()), ship.rotation);
+        }
+
+        /// <summary>The standard view's place behind the ship, at once.</summary>
+        void PlaceBehind()
+        {
+            var ship = target.transform;
             transform.position = ship.TransformPoint(offset);
             transform.rotation = Quaternion.LookRotation(ship.TransformPoint(lookOffset) - transform.position, ship.up);
             lookPoint = ship.TransformPoint(lookOffset);
             lookValid = true;
-            if (GoF2Remake.Data.VrFlags.Enabled) transform.SetPositionAndRotation(ship.TransformPoint(GoF2Remake.Data.VrFlags.CockpitSeat), ship.rotation);
             slide = Vector3.zero;
+        }
+
+        // ---- the cockpit view (remake) ----------------------------------------------------------------------------
+
+        const int HiddenLayer = 28;   // VrRig.HiddenLayer: VR's cockpit and Action Freeze hide the hull on it too
+        const float FirstPersonNear = 0.3f;
+        readonly System.Collections.Generic.Dictionary<GameObject, int> fpLayers = new System.Collections.Generic.Dictionary<GameObject, int>();
+        readonly System.Collections.Generic.List<Renderer> fpRenderers = new System.Collections.Generic.List<Renderer>();
+        bool fpShown, fpMaskCleared;
+        float fpNear, fpScanMs;
+        Transform fpModel;
+        Vector3 fpSeat;
+
+        void PlaceFirstPerson(Transform ship, float dtMs, bool boosting, float boostRumble, float mass)
+        {
+            if (!fpShown)
+            {
+                fpShown = true;
+                fpActive = this;
+                fpScanMs = 0f;
+                if (cam != null)
+                {
+                    fpNear = cam.nearClipPlane;
+                    cam.nearClipPlane = Mathf.Min(fpNear, FirstPersonNear);
+                    fpMaskCleared = (cam.cullingMask & (1 << HiddenLayer)) != 0;
+                    cam.cullingMask &= ~(1 << HiddenLayer);
+                }
+            }
+            // The hull's renderers onto the hidden layer: again now and then, since turrets, kit weapons and a hull swap add
+            // renderers (the engine parts are switched every frame: their layer holds, Renderer.enabled wouldn't).
+            fpScanMs -= Time.unscaledDeltaTime * 1000f;
+            if (fpScanMs <= 0f || target.visualModel != fpModel)
+            {
+                fpScanMs = 500f;
+                HideHull();
+                fpSeat = FirstPersonSeat();
+            }
+            var rot = ship.rotation;
+            // The original keeps a thousandth of the hit shake: the remake turns the view a little instead (a hit 0.5 deg, an
+            // own shot 0.16 deg), and the explosions' / the boost's rumble at a third of the chase view's.
+            float j = 0f;
+            if (shakeMs > 0f) { shakeMs -= dtMs; j += shakeUnits * 0.08f; }
+            if (boosting) rumble = Mathf.Max(rumble, boostRumble);
+            j += rumble * 1.3f;
+            rumble = 0f;
+            j *= GoF2Remake.Data.Settings.CameraShake;
+            if (j > 0f) rot *= Quaternion.Euler(Random.Range(-j, j), Random.Range(-j, j), 0f);
+            transform.SetPositionAndRotation(ship.TransformPoint(fpSeat), rot);
+            slide = Vector3.zero;
+            lookValid = false;
+            if (cam != null)
+                cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov + 0.5f * boostFovAdd * target.Model.BoostVisualPercent * Mathf.Lerp(1f, 0.5f, mass), cam.aspect);
+        }
+
+        /// <summary>The cockpit view's place in the ship's frame (metres): on the guns' line (the pivot: the HUD's crosshair,
+        /// the locks and the beams aim along the root's nose from there), a fifth of the hull's half height above its middle
+        /// but at most 1.5 m off that line (a capital hull's 100 m dropped the crosshair 5 deg), four fifths of the way to the
+        /// bow (a big hull's nine tenths), but behind the frontmost primary gun (so its muzzle flash and shots start in view)
+        /// and never behind the middle of the bow half. From the hull's meshes (no glow layers: PlayerHull.HullBounds), so
+        /// game ships, mods' glTF and kit builds and the debug capital hulls alike.</summary>
+        public Vector3 FirstPersonSeat()
+        {
+            if (target == null) return Vector3.zero;
+            var ship = target.transform;
+            var model = target.visualModel != null ? target.visualModel : ship;
+            var b = World.PlayerHull.HullBounds(ship, model);
+            if (b.size == Vector3.zero) return new Vector3(0f, 1f, 2f);
+            bool big = b.extents.z > 150f;   // the debug capital hulls (PlayerHull.Big): no guns, the bow
+            float z = Mathf.Lerp(b.center.z, b.max.z, big ? 0.9f : 0.8f);
+            var weapons = big ? null : target.GetComponent<WeaponSystem>();
+            if (weapons != null)
+            {
+                float gunZ = float.NegativeInfinity;
+                foreach (var g in weapons.Guns) if (!g.isSecondary) gunZ = Mathf.Max(gunZ, g.mountLocal.z);
+                if (gunZ > b.center.z) z = Mathf.Max(Mathf.Lerp(b.center.z, b.max.z, 0.5f), Mathf.Min(z, gunZ - 0.5f));
+            }
+            return new Vector3(0f, Mathf.Clamp(b.center.y + 0.2f * b.extents.y, -1.5f, 1.5f), z);
+        }
+
+        void HideHull()
+        {
+            fpModel = target != null ? target.visualModel : null;
+            if (fpModel == null) return;
+            fpModel.GetComponentsInChildren(true, fpRenderers);
+            foreach (var r in fpRenderers)
+            {
+                var go = r.gameObject;
+                if (go.layer == HiddenLayer) continue;
+                fpLayers[go] = go.layer;
+                go.layer = HiddenLayer;
+            }
+            fpRenderers.Clear();
+        }
+
+        /// <summary>The hull's layers, the near plane and the culling mask back.</summary>
+        void EndFirstPerson()
+        {
+            if (!fpShown) return;
+            fpShown = false;
+            if (fpActive == this) fpActive = null;
+            foreach (var kv in fpLayers) if (kv.Key != null && kv.Key.layer == HiddenLayer) kv.Key.layer = kv.Value;
+            fpLayers.Clear();
+            fpModel = null;
+            if (cam != null)
+            {
+                cam.nearClipPlane = fpNear;
+                if (fpMaskCleared) cam.cullingMask |= 1 << HiddenLayer;
+            }
+            lookValid = false;
         }
     }
 }

@@ -1524,6 +1524,7 @@ namespace GoF2Remake.UI
 
         void BuildSaveSlots()
         {
+            SaveFolder.Sync();   // remake: the chosen save folder's newer saves first (a no-op without one)
             saveSlotList.Clear();
             for (int i = 0; i < SaveGame.SlotCount; i++)
             {

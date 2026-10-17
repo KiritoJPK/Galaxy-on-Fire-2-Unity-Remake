@@ -260,6 +260,11 @@ namespace GoF2Remake.Data
         /// NpcCloak.Break): the player's, a Specter's, another player's. Off = the original: nothing ends a cloak early. A
         /// session rule.</summary>
         public static bool EmpBreaksCloak { get => Rule(R.EmpBreaksCloak, "empBreaksCloak", true); set => SetRule(R.EmpBreaksCloak, "empBreaksCloak", value); }
+        /// <summary>Remake (players' report, 2026-10-17: a raider group ignored the patrols beside it and shredded the
+        /// player): an NPC fighter takes the nearest hostile target in its box, the player a little likelier, and spreads out
+        /// over the targets (NpcShip.UpdateSmartTargeting, NpcTargetRules). Off = the original: the player first. A session
+        /// rule.</summary>
+        public static bool SmarterNpcTargeting { get => Rule(R.SmarterNpcTargeting, "smarterNpcTargeting", true); set => SetRule(R.SmarterNpcTargeting, "smarterNpcTargeting", value); }
         /// <summary>Remake (players' suggestion): the capital ships fight back (World.CapitalShips): escorts, stronger turrets,
         /// a killable carrier and Vossk battleship with loot, the carrier's Inflicts and its resupply dock. Off = the original.
         /// A session rule.</summary>
@@ -282,6 +287,7 @@ namespace GoF2Remake.Data
             if (GetBool("kaamoKeepsEquipment", true)) m |= R.KaamoKeepsEquipment;
             if (GetBool("cloakBay", true)) m |= R.CloakBay;
             if (GetBool("empBreaksCloak", true)) m |= R.EmpBreaksCloak;
+            if (GetBool("smarterNpcTargeting", true)) m |= R.SmarterNpcTargeting;
             return m;
         }
 
@@ -299,6 +305,14 @@ namespace GoF2Remake.Data
         /// the HUD messages. Menus, conversations, the radio, the minigames and the touch controls always show.</summary>
         public const int HudFull = 0, HudMinimal = 1, HudOff = 2;
         public static int HudMode { get => Mathf.Clamp(Mathf.RoundToInt(Get("hudMode", HudFull)), HudFull, HudOff); set => Set("hudMode", Mathf.Clamp(value, HudFull, HudOff)); }
+        /// <summary>Remake (players' request, 2026-10-17: the far ship's dot hid the ship): a far ship's on-screen marker
+        /// (CombatView, UI.FarShipMarkers). 0 Original: the filled dot over the ship, the ring when locked; 1 Ring: the lock
+        /// ring's arcs without its centre around the ship; 2 Small dot: a small dot just above the ship. Locked, the remake's
+        /// styles take the faction bracket around the ship. Per player.</summary>
+        public const int FarMarkerOriginal = 0, FarMarkerRing = 1, FarMarkerSmallDot = 2;
+        public static int FarShipMarkers { get => Mathf.Clamp(Mathf.RoundToInt(Get("farShipMarkers", FarMarkerOriginal)), FarMarkerOriginal, FarMarkerSmallDot); set => Set("farShipMarkers", Mathf.Clamp(value, FarMarkerOriginal, FarMarkerSmallDot)); }
+        /// <summary>Remake: the distance under every far ship's on-screen marker, not only the locked one's (CombatView).</summary>
+        public static bool MarkerDistance { get => GetBool("markerDistance", false); set => SetBool("markerDistance", value); }
         /// <summary>Remake: every primary weapon item sounds its own shots (the original: only the first primary gun).</summary>
         public static bool EachWeaponSound { get => GetBool("eachWeaponSound", false); set => SetBool("eachWeaponSound", value); }
         /// <summary>Remake: the touch fire button's double-press autofire latch on the keyboard / mouse / controller fire
@@ -353,7 +367,8 @@ namespace GoF2Remake.Data
         public static readonly string[] GameplayKeys =
         {
             "launchCamera", "hangarFlights", "tutorialHints", "showStoryStep", "pirateEvents", "capitalShips", "kaamoStacking", "kaamoMaxLevel", "kaamoKeepsEquipment", "cloakBay", "informerOriginalRule",
-            "originalTargetLock", "keepEnemyLock", "modShipTraffic", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "hudMode", "discordPresence",
+            "originalTargetLock", "keepEnemyLock", "modShipTraffic", "dyingCargoMarkers", "cloakLosesPursuers", "empBreaksCloak", "smarterNpcTargeting", "autoAdvanceDialogue", "animatedDialogue", "inputHints", "hudMode", "discordPresence",
+            "farShipMarkers", "markerDistance",
         };
         public static readonly string[] LanguageKeys = { "voiceLanguage" };
 

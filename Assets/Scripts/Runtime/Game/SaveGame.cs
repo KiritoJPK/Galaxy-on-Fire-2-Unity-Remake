@@ -164,6 +164,7 @@ namespace GoF2Remake.Data
                 File.WriteAllText(tmp, JsonUtility.ToJson(s, true));
                 if (File.Exists(PathOf(slot))) File.Delete(PathOf(slot));
                 File.Move(tmp, PathOf(slot));
+                SaveFolder.AfterLocalChange();   // remake: the chosen save folder catches up (a no-op without one)
                 return true;
             }
             catch (Exception e) { Debug.LogError($"SaveGame: saving slot {slot} failed: {e.Message}"); return false; }
@@ -182,6 +183,7 @@ namespace GoF2Remake.Data
                 catch (Exception e) { Debug.LogWarning($"SaveGame: couldn't delete slot {i}: {e.Message}"); }
             }
             Debug.Log($"SaveGame: hardcore death, {deleted} save(s) of the run deleted");
+            if (deleted > 0) SaveFolder.AfterLocalChange();   // gone from the save folder too
             return deleted;
         }
 
@@ -202,6 +204,7 @@ namespace GoF2Remake.Data
                 Array.Sort(old, (a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
                 for (int i = 20; i < old.Length; i++) old[i].Delete();
                 Debug.Log($"SaveGame: slot {slot} deleted (moved to {bin})");
+                SaveFolder.AfterLocalChange();
                 return true;
             }
             catch (Exception e) { Debug.LogWarning($"SaveGame: couldn't delete slot {slot}: {e.Message}"); return false; }

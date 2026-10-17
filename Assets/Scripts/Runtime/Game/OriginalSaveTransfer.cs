@@ -97,6 +97,7 @@ namespace GoF2Remake.Data
             }
             catch (Exception e) { return "writing the save failed: " + e.Message; }
             Debug.Log($"OriginalSaveTransfer: {imported.summary} imported into slot {slot}" + (imported.notes.Count > 0 ? " (" + string.Join("; ", imported.notes) + ")" : ""));
+            SaveFolder.AfterLocalChange();   // remake: into the chosen save folder too
             return null;
         }
 

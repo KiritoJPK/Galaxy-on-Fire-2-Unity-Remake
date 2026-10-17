@@ -250,6 +250,10 @@ namespace GoF2Remake.Modding
         {
             foreach (var f in new[] { "techLevel", "occurrence", "minPrice", "maxPrice", "lowestPriceSystem", "highestPriceSystem", "alwaysSoldAt" })
                 ModJson.Int(o, f, 0, ItemsFile);
+            // Tech levels: the original's run 1-10; a mod's may go up to Shop.MaxItemTech (above 10: stocked by the top tech
+            // level stations, Shop.StationStocks).
+            if (ModJson.Has(o, "techLevel") && ModJson.Int(o, "techLevel", 0, ItemsFile) is int tl && (tl < 0 || tl > Shop.MaxItemTech))
+                mod.Warnings.Add($"{where}: \"techLevel\" {tl} is outside 0-{Shop.MaxItemTech} (clamped)");
             if (ModJson.Get(o, "stats") is JToken st)
             {
                 if (!(st is JObject so)) throw new ModJsonException($"{where}: \"stats\" must be an object {{ \"damage\": 12 }}");
@@ -880,7 +884,7 @@ namespace GoF2Remake.Modding
         static void ApplyFields(ItemData it, JObject o, bool defaultEconomy)
         {
             const string F = ItemsFile;
-            it.techLevel = ModJson.Int(o, "techLevel", it.techLevel, F);
+            it.techLevel = Mathf.Clamp(ModJson.Int(o, "techLevel", it.techLevel, F), 0, Shop.MaxItemTech);
             it.occurrence = ModJson.Int(o, "occurrence", it.occurrence, F);
             if (ModJson.Get(o, "price") is JToken pr)
             {

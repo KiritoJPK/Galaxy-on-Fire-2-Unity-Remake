@@ -224,7 +224,7 @@ namespace GoF2Remake.Flight
             if (!blocked && cam != null && tractorMode == 1 && Salvaging == null) AutoSalvage(cam, true);
             if (!blocked && cam != null)
             {
-                var c = cam.WorldToScreenPoint(transform.position + transform.forward * CrosshairDistanceMeters);
+                var c = cam.WorldToScreenPoint(ChaseCamera.AimOrigin(transform) + transform.forward * CrosshairDistanceMeters);
                 float box = Screen.width / 16f, bestD = float.MaxValue, stealD = float.MaxValue;
                 if (c.z > 0f)
                 {

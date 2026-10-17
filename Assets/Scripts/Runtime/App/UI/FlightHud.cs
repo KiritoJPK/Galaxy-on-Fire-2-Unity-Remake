@@ -412,7 +412,7 @@ namespace GoF2Remake.UI
                 var fl = level.FreeLook;
                 f.nextCamera = fl != null ? (int)fl.Next : -1;
                 f.freeLook = fl != null && fl.FreeLookActive;
-                f.standardCamera = fl == null || fl.Current == FreeLookCamera.Mode.Standard;
+                f.standardCamera = fl == null || fl.ShipView;   // the cockpit view dodges too
                 // Remake: with several turrets the button is the auto-fire switch whenever any of them is an auto turret.
                 var autoTurret = FirstAuto();
                 f.turret = autoTurret != null;
@@ -1563,7 +1563,7 @@ namespace GoF2Remake.UI
             var viewTurret = level != null ? level.Turret : null;
             bool turretView = viewTurret != null && viewTurret.InTurretView;
             var aim = turretView ? viewTurret.GunPosition + viewTurret.AimForward * CrosshairDistanceMeters
-                                 : ship.transform.position + ship.transform.forward * CrosshairDistanceMeters;
+                                 : ChaseCamera.AimOrigin(ship.transform) + ship.transform.forward * CrosshairDistanceMeters;
             bool collector = turretView && viewTurret.IsCollector;
             crosshair.EnableInClassList("crosshair--plasma", collector);
             // PlayerEgo::draw: 0x1f5d while Radar::isPlasmaInRange, else 0x1f5e (#78: the remake showed 0x1f5d all the time).

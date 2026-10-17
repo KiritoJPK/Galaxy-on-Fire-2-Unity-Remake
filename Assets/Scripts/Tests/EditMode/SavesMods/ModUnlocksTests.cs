@@ -154,7 +154,7 @@ namespace GoF2Remake.Tests
             ModUnlocks.AddDealerShips(db, 70, 0, ships);
             CollectionAssert.Contains(ships, Ship("yacht"));
             CollectionAssert.DoesNotContain(ships, Ship("never"), "chance 0");
-            CollectionAssert.DoesNotContain(ships, Ship("hightech"), "tech level 11 is above every station's");
+            CollectionAssert.DoesNotContain(ships, Ship("hightech"), "minTechLevel 11: only the top tech level (10) stations, Dis is 7");
             CollectionAssert.DoesNotContain(ships, Ship("vossk"), "a Vossk system only");
             Assert.AreEqual(1, ships.Count(s => s == Ship("yacht")));
             ModUnlocks.AddDealerShips(db, 70, 0, ships);

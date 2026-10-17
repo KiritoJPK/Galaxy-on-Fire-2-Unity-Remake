@@ -214,7 +214,8 @@ namespace GoF2Remake.World
             {
                 gear = true;
                 var pool = db.Items.FindAll(it => it.maxPrice > 0 && it.blueprint.Count == 0 && it.TypeId <= 3 && it.techLevel >= 5 && it.occurrence > 0
-                                                  && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index));
+                                                  && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index)
+                                                  && Modding.ModUnlocks.ItemAvailable(it.index));   // a mod's gear (tech level 11+ too) once available
                 for (int n = 0; n < 2 && pool.Count > 0; n++)
                 {
                     var it = pool[Random.Range(0, pool.Count)];
@@ -359,7 +360,7 @@ namespace GoF2Remake.World
         static bool ArmoryItem(ItemData it, int race) =>
             it.TypeId <= 3 && it.maxPrice > 0 && it.occurrence > 0 && !IsBlueprintProduct(it) && RaceItem(it, race)
             && it.index != 85 && (it.index < 189 || it.index > 192) && (race == 1 || it.techLevel >= TerranGearTech)
-            && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index);
+            && Hangar.IsSaleable(it.index) && !Modding.ModContent.IsMissingItem(it.index) && Modding.ModUnlocks.ItemAvailable(it.index);
 
         /// <summary>The order of the gear rows: secondaries (after the mounted ones' rounds), primaries, turrets, equipment.</summary>
         static int GearOrder(ItemData it) => it == null ? 9 : it.TypeId == 1 ? 0 : it.TypeId == 0 ? 1 : it.TypeId == 2 ? 2 : 3;

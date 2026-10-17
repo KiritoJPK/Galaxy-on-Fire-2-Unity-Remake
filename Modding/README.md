@@ -200,7 +200,7 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 | Field | |
 |---|---|
 | `name`, `description` | A string, or one text per language (see Texts below). |
-| `techLevel` | 1 to 10. Shops sell only items up to their station's tech level. |
+| `techLevel` | 1 to 10 like the originals, or up to 20 for gear above them (see [Tech levels above 10](#tech-levels-above-10)). Shops sell only items up to their station's tech level. |
 | `occurrence` | How often shops stock it (the originals use 0 to 90; 0 = never in a random shop). |
 | `minPrice`, `maxPrice` | The price range. A station's price lies between them, by distance to the cheapest and dearest systems. |
 | `price` | Shorthand: `1500` (both) or `[1200, 1500]`. |
@@ -276,6 +276,32 @@ earlier). Only the fields you give change. Giving `name` or `description` rename
 Which stats an item uses depends on its category, so copy the stats its base item has (see `items.json` and
 `item_attributes.json` in `Assets/Resources/GoF2Data`). items.json's own stat names (`loadingTimeMs`, `range`,
 `projectileSpeed`...) work too.
+
+### Tech levels above 10
+
+The original game's items and stations both stop at tech level 10, so an item can go higher (`"techLevel": 11`, up to 20;
+past that it is cut back to 20 with a warning) for gear better than anything in the game, like a community "Tech Level
+11" add-on. Where it turns up:
+
+- **Shops**: every station of tech level 10 (16 of them: Anesa, Posého, Binon, Thynome, F'err, Carme, P'arrenkk, Rr'ostam,
+  G'ukkion, K'mirkk, B'akrram, Genoh, Kothar, and the special stations Var Destro, Sao Perula and Quineros, which keep their
+  own rules: Var Destro weapons, Quineros equipment) may stock it, never a station below. Tech levels 11 and 20 are the same
+  there: `occurrence` alone says how often (40 = about every other visit at a mid-story stop, 100 = almost every time), so
+  give the top items a low one. `alwaysSoldAt` still puts it in one station's shop whatever the tech level.
+- **Loot**: a tier 5 ("Extremely dangerous") pirate outpost's two pieces of equipment are each one time in three an item
+  above tech level 10 (picked by `occurrence`) while one is available; an enhanced capital ship's gear (two pieces of tech
+  level 5+) may be one; ordinary pirates and freighters never drop weapons or equipment from tech level 8, as in the original.
+- **Everywhere else** it is an item like any other: lounge sellers may offer it, the item window shows "Tech level 11".
+
+Pair it with the other tools: `available` (e.g. `"won(main)"`, only after the story) holds it back from shops, loot and
+sellers until then, a high `price`, and a [blueprint](#blueprints) with `"autocomplete": false` when it should be built
+rather than bought. A ships.json `dealer` with `minTechLevel` above 10 likewise means the tech level 10 stations' dealers
+(ships have no tech level of their own).
+
+```json
+{ "id": "vanadis", "base": 59, "name": "Vanadis Plating", "techLevel": 11, "occurrence": 8,
+  "price": [420000, 460000], "available": "won(main)", "stats": { "armor": 260 } }
+```
 
 ### Mining beams
 
@@ -512,7 +538,7 @@ styles](#exhaust-styles)), 4 manoeuvring jet (`"direction": [x, y, z]`, the way 
 | `engineFx` | Optional. A Galaxy on Fire 3 style engine effect at every exhaust instead of the flame and its particles, see [Engine effect](#engine-effect). For effects any ship can wear, see [Exhaust styles](#exhaust-styles). |
 | `lounge` | Optional. A visitor in the Space Lounges sells it: in systems of `systemRace` (-1 = any), from story step `minCampaign` (in free play from rank `minRank`), `chance` % each time a bar fills with new visitors. |
 | `npcTurrets` | Optional, also in an `override`. Turret items (numbers or `"mod:id"`, e.g. `[ 48, "my_mod:flak" ]`) the **NPC** ships of this type carry on its turret mounts (`slotType` 2), the n-th item on the n-th mount: in space they aim and fire by themselves at whatever that ship is hostile to (your own turret model, missiles and salvos included), and parked in a hangar they show them. Items that are no turret, or more items than mounts, give a warning. The game's own NPC ships carry none; the Bloodstar (45) and the Rhino (51) swap their built-in turret for yours. |
-| `dealer` | Optional. The ordinary ship dealers may stock it: `{ "chance": 2, "systemRace": -1, "minTechLevel": 0 }`, `chance` % (decimals allowed) each time a station's dealer list is made, at stations of `systemRace` systems (-1 = any) with at least that tech level. Not the special yards (Kothar, Quineros, Thynome...). |
+| `dealer` | Optional. The ordinary ship dealers may stock it: `{ "chance": 2, "systemRace": -1, "minTechLevel": 0 }`, `chance` % (decimals allowed) each time a station's dealer list is made, at stations of `systemRace` systems (-1 = any) with at least that tech level (above 10: the tech level 10 stations). Not the special yards (Kothar, Quineros, Thynome...). |
 | `traffic` | Optional. How NPC fighters fly it: `{ "weight": 1, "races": [8] }`. With the Gameplay option "Mod ships in traffic" (Off / 10 / 25 % (default) / 50 %) that share of the game's NPC fighters (patrols, raiders, pirates, escorts, guards) fly one of the mods' ships of their race instead, picked by `weight` (0 = never); `races` are the races whose fighters fly it (0 Terran, 1 Vossk, 2 Nivelian, 3 Midorian, 8 pirates, 9 Void; default its own `race`). Only ships up to 150 m long, available now (`available`), with their model loaded. Their hull and guns stay those of the fighter they replace. Freighters and capital ships aren't replaced, and a [campaign's](#campaigns) `trafficShips` win. A [customizable ship](#customizable-ships)'s NPCs each fly a random build of it (parts the type may fit, a tier, one of the kit's colour presets or random palette colours, now and then a skin); `"randomBuild": false` keeps them to its default build. The builds use the parts already loaded, and every docking loads a few more in the background, so the variety grows as you play. |
 | `available` | Optional. A [condition](#conditions) that must hold before it is sold anywhere (dealers and lounges), and before NPCs fly it. |
 | `sounds` | Optional. The ship's own engine and boost sounds, see [Ship sounds](#ship-sounds). |
@@ -1632,6 +1658,25 @@ To draw your retextured planets as stars, add a `backdrop.json` to the mod (the 
 | `planetFlare` | The sun's flare at this share of its strength when you look at them: a slight swell and a horizontal streak (0..1, default 0.35; 0 = none) |
 
 Planets you don't retexture stay planets.
+
+### Flight HUD markers
+
+The combat HUD's images are replaced the same way, by their names in the game's `Assets/Resources/GoF2Hud` folder: the ship
+markers `ship_dot_<faction>` (a far ship), `ship_ring_<faction>` (a far locked ship), `ship_ring_open_<faction>` (a far ship
+with the "Far ship markers" option on Ring), `ship_bracket_<faction>` (a locked ship's bracket), `ship_bar_<faction>` /
+`ship_fill_<faction>` (a near ship's hull bar), with `<faction>` `enemy`, `friend` or `neutral`; the containers `crate_dot`,
+`bracket`, `crate_off`; the lock ring's frames `lock_00` ... `lock_23`; the status bars and the hit arcs. Each is drawn at its
+own size, placed where the original's is, so keep the transparent edge and roughly the original's size. Other HUD images
+(the crosshair, the navigation markers, the touch controls) can't be replaced yet.
+
+```
+small_markers/
+  mod.json
+  textures/
+    ship_dot_enemy.png
+    ship_dot_friend.png
+    ship_dot_neutral.png
+```
 
 ## The game's own models
 

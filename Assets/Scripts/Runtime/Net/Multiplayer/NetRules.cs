@@ -19,7 +19,8 @@ namespace GoF2Remake.Multiplayer
         public const int CloakLosesPursuers = SessionRules.CloakLosesPursuers, PirateEvents = SessionRules.PirateEvents,
                          CapitalShips = SessionRules.CapitalShips, InformerOriginalRule = SessionRules.InformerOriginalRule,
                          KaamoStacking = SessionRules.KaamoStacking, KaamoKeepsEquipment = SessionRules.KaamoKeepsEquipment,
-                         CloakBay = SessionRules.CloakBay, EmpBreaksCloak = SessionRules.EmpBreaksCloak;
+                         CloakBay = SessionRules.CloakBay, EmpBreaksCloak = SessionRules.EmpBreaksCloak,
+                         SmarterNpcTargeting = SessionRules.SmarterNpcTargeting;
 
         /// <summary>One rule: its bit, the server setting's key, the command-line flag that sets it the other way from
         /// its default, the server window's label, and the option's default.</summary>
@@ -40,6 +41,7 @@ namespace GoF2Remake.Multiplayer
             new Rule { bit = KaamoKeepsEquipment, key = "kaamoequipment", flag = "-nokaamoequipment", label = "Stored ships keep their equipment", fallback = true },
             new Rule { bit = CloakBay, key = "cloakbay", flag = "-nocloakbay", label = "Cloak bay on cloaking ships", fallback = true },
             new Rule { bit = EmpBreaksCloak, key = "empcloak", flag = "-noempcloak", label = "EMP breaks cloaks", fallback = true },
+            new Rule { bit = SmarterNpcTargeting, key = "smarttargeting", flag = "-originaltargeting", label = "Smarter NPC targeting", fallback = true },
         };
 
         /// <summary>Every rule at its option's default (a dedicated server's start).</summary>

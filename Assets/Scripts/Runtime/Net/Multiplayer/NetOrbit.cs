@@ -2,7 +2,10 @@
 // Multiplayer: the local player's Space level in the shared world (SpaceLevel adds it while a session runs).
 //   Asteroids: the field is built from the orbit's seed (SpaceLevel.SpawnNetworkAsteroids), the same for every player
 //     there; on arrival the ones already destroyed this session are removed (NetState's list), and a destruction here
-//     (shot, mined, rammed) or elsewhere in this orbit reaches everyone (by index in the field).
+//     (shot, mined, rammed) or elsewhere in this orbit reaches everyone (by index in the field). An Ore Mining mission's
+//     remote site (FreelanceOrbit.SiteAsteroids, built from the mission's seed in every game of its squad) has a field of
+//     its own, indexed from its MiningSite.IndexBase so its indices never clash with the orbit's field (other players here
+//     don't have it and ignore them).
 //   The orbit authority (the first player in an empty orbit, SpaceLevel.NetAuthority: only then is new traffic built) runs
 //   the orbit's NPC traffic and shows it to the
 //     others: one NetProxy per living ship (by its index in Traffic.Ships) and one NetCrate per crate, spawned for it by
@@ -33,7 +36,8 @@ namespace GoF2Remake.Multiplayer
         public static NetOrbit Current { get; private set; }
 
         SpaceLevel level;
-        readonly List<Target> asteroids = new List<Target>();
+        readonly Dictionary<int, Target> asteroids = new Dictionary<int, Target>();
+        readonly Dictionary<Target, int> asteroidIndex = new Dictionary<Target, int>();
         readonly HashSet<int> requestedShips = new HashSet<int>();
         readonly Dictionary<NpcShip, NetProxy> proxies = new Dictionary<NpcShip, NetProxy>();
         readonly Dictionary<int, Crate> crates = new Dictionary<int, Crate>();
@@ -65,15 +69,28 @@ namespace GoF2Remake.Multiplayer
         {
             level = spaceLevel;
             Current = this;
-            if (level.Asteroids == null) return;
-            foreach (Transform t in level.Asteroids)
+            AddField(level.Asteroids, 0);
+            var mission = level.FreelanceOrbit;
+            if (mission != null && mission.SiteAsteroids != null) AddField(mission.SiteAsteroids, mission.SiteIndexBase);
+        }
+
+        /// <summary>A field's asteroids by their place in it, from 'baseIndex' (the same in every game that builds it).</summary>
+        void AddField(Transform field, int baseIndex)
+        {
+            if (field == null || baseIndex < 0) return;
+            int index = baseIndex;
+            foreach (Transform t in field)
             {
                 var target = t.GetComponent<Target>();
-                int index = asteroids.Count;
-                asteroids.Add(target);
-                if (target != null) target.Died += _ => OnLocalAsteroidDied(index);
+                int i = index++;
+                asteroids[i] = target;
+                if (target == null) continue;
+                asteroidIndex[target] = i;
+                target.Died += _ => OnLocalAsteroidDied(i);
             }
         }
+
+        Target AsteroidAt(int index) => asteroids.TryGetValue(index, out var t) ? t : null;
 
         void OnDestroy()
         {
@@ -309,8 +326,8 @@ namespace GoF2Remake.Multiplayer
         /// else shot / rammed / a blast): gone here too (with its explosion).</summary>
         public void OnAsteroidGone(int station, int index, string by, bool mined)
         {
-            if (station != Station || index < 0 || index >= asteroids.Count) return;
-            var t = asteroids[index];
+            if (station != Station) return;
+            var t = AsteroidAt(index);
             if (t == null || !t.Alive || !t.isActiveAndEnabled) return;
             goneBy[t] = (by ?? "", mined);
             applyingRemote = true;
@@ -333,7 +350,7 @@ namespace GoF2Remake.Multiplayer
         }
 
         /// <summary>This orbit's index of an asteroid (the same for every player: the seeded field), -1 = none.</summary>
-        public int IndexOf(Target asteroid) => asteroid != null ? asteroids.IndexOf(asteroid) : -1;
+        public int IndexOf(Target asteroid) => asteroid != null && asteroidIndex.TryGetValue(asteroid, out int i) ? i : -1;
 
         readonly HashSet<int> held = new HashSet<int>(), heldNow = new HashSet<int>();
 
@@ -356,8 +373,9 @@ namespace GoF2Remake.Multiplayer
 
         void SetSpin(int index, bool on)
         {
-            if (index < 0 || index >= asteroids.Count || asteroids[index] == null) return;
-            var spin = asteroids[index].GetComponent<GoF2Remake.Visuals.Spin>();
+            var t = AsteroidAt(index);
+            if (t == null) return;
+            var spin = t.GetComponent<GoF2Remake.Visuals.Spin>();
             if (spin != null) spin.enabled = on;
         }
 
@@ -383,7 +401,10 @@ namespace GoF2Remake.Multiplayer
         {
             if (station != Station || indices == null) return;
             foreach (int i in indices)
-                if (i >= 0 && i < asteroids.Count && asteroids[i] != null) asteroids[i].gameObject.SetActive(false);
+            {
+                var t = AsteroidAt(i);
+                if (t != null) t.gameObject.SetActive(false);
+            }
         }
 
         // ---- the authority's ships and crates ---------------------------------------------------------------

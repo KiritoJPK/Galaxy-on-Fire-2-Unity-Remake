@@ -345,7 +345,9 @@ namespace GoF2Remake.World
 
         /// <summary>The model's bounds in 'root's space, from every mesh's own bounds (works on prefab assets too). The
         /// additive layers (glows, halos: the Void ship's glow sheet is 15 km across, its hull 1.6 km) don't count, unless
-        /// the model has nothing else.</summary>
+        /// the model has nothing else. (Also ChaseCamera's cockpit view: the bow.)</summary>
+        public static Bounds HullBounds(Transform root, Transform model) => LocalBounds(root, model);
+
         static Bounds LocalBounds(Transform root, Transform model)
         {
             var b = LocalBounds(root, model, false);

@@ -370,6 +370,31 @@ namespace GoF2Remake.Flight
         /// Fluxed Matter Shield, Rhoda Blackhole).</summary>
         static readonly int[] DangerousLootLow = { 8, 21, 30, 27, 53 };
         static readonly int[] DangerousLootHigh = { 11, 58, 59, 49, 54, 67 };
+        /// <summary>Remake mods: the odds (1 in N) that a tier-5 outpost's piece of equipment is a mod's tech level 11+ gear.</summary>
+        public const int TopTechOdds = 3;
+
+        /// <summary>A tier 4 / 5 outpost's equipment: one piece (tier 5 two different ones) of DangerousLootHigh (tier 5 or rank
+        /// 10+) else DangerousLootLow. Remake mods: at tier 5 each piece is one time in TopTechOdds a mod's gear above the
+        /// original's top tech level (Shop.AboveTopTech, weighted by occurrence) while any may be found; without such gear
+        /// the original's tables alone, with the same random draws.</summary>
+        public static List<int> OutpostGear(Database db, int tier, int rank)
+        {
+            var table = tier == 5 || rank >= 10 ? DangerousLootHigh : DangerousLootLow;
+            var gear = new List<int> { table[Random.Range(0, table.Length)] };
+            if (tier != 5) return gear;
+            int second = table[Random.Range(0, table.Length)];
+            if (second == gear[0]) second = table[(System.Array.IndexOf(table, second) + 1) % table.Length];
+            gear.Add(second);
+            var top = Shop.AboveTopTech(db);
+            for (int k = 0; k < gear.Count && top.Count > 0; k++)
+            {
+                if (Random.Range(0, TopTechOdds) != 0) continue;
+                var it = Shop.PickByOccurrence(top);
+                gear[k] = it.index;
+                top.Remove(it);
+            }
+            return gear;
+        }
         /// <summary>A Dangerous outpost's turrets (game units from its centre, the outpost unrotated): the four corners of the
         /// raised hub on top and two under the deck, turned over (measured on the station_pirates mesh).</summary>
         static readonly (Vector3 pos, Vector3 rot)[] OutpostTurrets =
@@ -443,14 +468,9 @@ namespace GoF2Remake.Flight
                 if (tier == 1) loot.amount = Mathf.Max(1, loot.amount / 2);
                 if (tier >= 4)
                 {
-                    var table = tier == 5 || rank >= 10 ? DangerousLootHigh : DangerousLootLow;
-                    loot = (table[Random.Range(0, table.Length)], 1);
-                    if (tier == 5)
-                    {
-                        int second = table[Random.Range(0, table.Length)];
-                        if (second == loot.item) second = table[(System.Array.IndexOf(table, second) + 1) % table.Length];
-                        extra.Add(new ItemStack(second, 1));
-                    }
+                    var gear = OutpostGear(db, tier, rank);
+                    loot = (gear[0], 1);
+                    for (int g = 1; g < gear.Count; g++) extra.Add(new ItemStack(gear[g], 1));
                     extra.Add(new ItemStack(DangerousBossLoot[Random.Range(0, DangerousBossLoot.Length)],
                                             tier == 5 ? Random.Range(8, 13) : Random.Range(3, 7)));
                 }

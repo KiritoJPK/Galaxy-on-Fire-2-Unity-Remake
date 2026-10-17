@@ -20,12 +20,14 @@ namespace GoF2Remake.Flight
         public readonly List<Vector3> points = new List<Vector3>();   // game units
         public bool loop;
         public int index;
+        /// <summary>Remake: the player's route target's name on the HUD (null = 548 "Waypoint"; Ore Mining's "Mining site").</summary>
+        public string name;
 
         public Route(bool loop) => this.loop = loop;
 
         public Route Clone()
         {
-            var r = new Route(loop) { index = 0 };
+            var r = new Route(loop) { index = 0, name = name };
             r.points.AddRange(points);
             return r;
         }
