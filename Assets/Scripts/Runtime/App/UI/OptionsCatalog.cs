@@ -28,6 +28,7 @@ namespace GoF2Remake.UI
         public bool inGameOnly;            // only in a running game's menus (pause / station), not the main menu
         public bool menuOnly;              // only in the main menu (no game loaded), not the pause / station menus
         public Func<bool> visible;         // optional: the row shows only while true (OptionControl.Refresh)
+        public Func<bool> enabled;         // optional: the row is greyed out and skipped by the keys / controller while false
 
         // Slider
         public float min, max;
@@ -217,9 +218,9 @@ namespace GoF2Remake.UI
                 quality.visible = DlssOrFsrOn;
                 list.Add(quality);
             }
-            // MSAA with a temporal upscaler on (STP, DLSS, FSR 2+, MetalFX Temporal): its anti-aliasing takes the place (shown as off); picking MSAA
-            // turns the upscaler off.
-            list.Add(Choice("msaa", OptionPage.Graphics, () => X("antiAliasing", "Anti-aliasing"), true,
+            // MSAA with a temporal upscaler on (STP, DLSS, FSR 2+, MetalFX Temporal): its anti-aliasing takes the place, so the row
+            // is greyed out (a player's request: with DLAA it read as if it did something) and says why.
+            var msaa = Choice("msaa", OptionPage.Graphics, () => X("antiAliasing", "Anti-aliasing"), true,
                 () => new[] { X("off", "Off"), "MSAA 2×", "MSAA 4×", "MSAA 8×" },
                 () => Bootstrap.IsTemporal(Bootstrap.ActiveUpscaler) ? 0
                     : Math.Max(0, Array.IndexOf(MsaaSamples, Settings.Msaa > 0 ? Settings.Msaa : Bootstrap.DefaultMsaa)),
@@ -227,7 +228,11 @@ namespace GoF2Remake.UI
                 {
                     if (i > 0 && Bootstrap.IsTemporal(Bootstrap.ActiveUpscaler)) Settings.Upscaler = Settings.UpscalerOff;
                     Settings.Msaa = MsaaSamples[i];
-                }));
+                },
+                () => Bootstrap.IsTemporal(Bootstrap.ActiveUpscaler)
+                    ? X("msaaByUpscaler", "The upscaler does the anti-aliasing: turn it off to use MSAA") : "");
+            msaa.enabled = () => !Bootstrap.IsTemporal(Bootstrap.ActiveUpscaler);
+            list.Add(msaa);
             list.Add(Choice("brightness", OptionPage.Graphics, () => Localization.Get(503), true,
                 () => new[] { Localization.Get(513), Localization.Get(514), Localization.Get(515) },
                 () => Settings.Brightness, i => Settings.Brightness = i));
@@ -251,6 +256,10 @@ namespace GoF2Remake.UI
                 () => Settings.FieldOfView, v => Settings.FieldOfView = Mathf.Round(v), v => $"{Mathf.RoundToInt(v)}°"));
             list.Add(Slider("cameraShake", OptionPage.Graphics, () => X("cameraShake", "Camera shake"), 0f, 1f,
                 () => Settings.CameraShake, v => Settings.CameraShake = v, Percent));
+            list.Add(Choice("chaseCamera", OptionPage.Graphics, () => X("chaseCamera", "Chase camera"), true,
+                () => new[] { X("chaseCameraRemake", "Remake"), X("chaseCameraOriginal", "Original") },
+                () => Settings.OriginalChaseCamera ? 1 : 0, i => Settings.OriginalChaseCamera = i == 1,
+                () => X("chaseCameraHelp", "Remake: the camera stays close behind the ship, which stays near the middle of the screen. Original: the camera follows more slowly, as in the original game: in a turn the ship swings out to the side and the crosshair moves off centre.")));
             list.Add(Toggle("showFps", OptionPage.Graphics, () => X("showFps", "Show FPS"), () => Settings.ShowFps, v => Settings.ShowFps = v));
 
             // ---- controls
@@ -293,6 +302,15 @@ namespace GoF2Remake.UI
             list.Add(Toggle("invertYaw", OptionPage.Controls, () => X("invertX", "Invert left / right"), () => Settings.InvertYaw, v => Settings.InvertYaw = v));
             list.Add(Toggle("invertDrillY", OptionPage.Controls, () => X("invertDrillY", "Mining drill: invert up / down"), () => Settings.InvertDrillY, v => Settings.InvertDrillY = v));
             list.Add(Toggle("invertDrillX", OptionPage.Controls, () => X("invertDrillX", "Mining drill: invert left / right"), () => Settings.InvertDrillX, v => Settings.InvertDrillX = v));
+            // Remake (#121): the cameras turned round the ship (free look, Action Freeze, Inspect ship) have their own pair.
+            var orbitY = Toggle("invertOrbitY", OptionPage.Controls, () => X("invertOrbitY", "Camera views: invert up / down"),
+                () => Settings.InvertOrbitY, v => Settings.InvertOrbitY = v);
+            orbitY.description = () => X("invertOrbitHelp", "The cameras you turn around the ship: free look, Action Freeze, Inspect ship and the Mod Builder, by drag, stick or keys. Separate from the flight controls' inversion.");
+            list.Add(orbitY);
+            var orbitX = Toggle("invertOrbitX", OptionPage.Controls, () => X("invertOrbitX", "Camera views: invert left / right"),
+                () => Settings.InvertOrbitX, v => Settings.InvertOrbitX = v);
+            orbitX.description = orbitY.description;
+            list.Add(orbitX);
             if (Flight.ControllerGyro.Supported)
             {
                 list.Add(Toggle("gyroSteering", OptionPage.Controls, () => X("gyroSteering", "Controller gyro (DualSense, DualShock 4, Switch Pro)"),

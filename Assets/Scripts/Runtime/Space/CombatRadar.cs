@@ -86,6 +86,9 @@ namespace GoF2Remake.Flight
         }
         public event Action<string, int, HudMessageKind> Message;   // text, colour (0 white, 1 red, 2 green), kind
 
+        /// <summary>A HUD message of the level's own (SpaceLevel), through the same plate.</summary>
+        public void Say(string text, int colour = 0) => Message?.Invoke(text, colour, HudMessageKind.Normal);
+
         Database db;
         ShipController ship;
         Navigation nav;

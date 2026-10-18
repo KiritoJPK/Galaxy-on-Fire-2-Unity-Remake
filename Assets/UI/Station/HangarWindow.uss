@@ -436,10 +436,6 @@
 }
 
 /* Remake: the item window's hint in place of a ship's name and race, as a title bar like "Description". */
-.detail-help {
-    white-space: normal;
-}
-
 /* Remake: a ship's buy / use buttons centred under its view, as wide as their text (FitActions wraps the price). */
 .detail-action--side {
     align-self: center;
@@ -834,6 +830,19 @@
     border-color: #FF6B5E;
 }
 
+/* Remake: a multiplayer session's restock countdown, between the two (HangarWindow.UpdateRestock). */
+.footer-restock {
+    padding: 8px 18px;
+    background-color: rgba(4, 10, 18, 0.6);
+    border-width: 2px;
+    border-color: var(--gof-line);
+    border-radius: 4px;
+    -unity-text-align: middle-center;
+    font-size: 21px;
+    letter-spacing: 1px;
+    color: var(--gof-text-dim);
+}
+
 .footer-credits {
     font-size: 25px;
     color: var(--gof-amber);
@@ -1123,9 +1132,17 @@
     height: 800px;
 }
 
-/* Remake: the hangar details' description title (the item window's), under a ship's view. */
+/* Remake: the hangar details' description title, under a ship's view: a section header like the list's (.list-header:
+   cyan, spaced capitals, no fill) over a thin line, not the item window's filled title bar. */
 .detail-desc-title {
     margin-top: 4px;
+    padding: 10px 0 6px 0;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--gof-cyan);
+    background-color: rgba(0, 0, 0, 0);
+    border-bottom-width: 1px;
+    border-bottom-color: var(--gof-line);
 }
 
 .info-text {

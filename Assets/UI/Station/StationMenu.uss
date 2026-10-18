@@ -495,21 +495,25 @@
     display: none;
 }
 
-/* The Debug page (StationMenu.BuildStationDebug): wider, the tabs over its rows; the list fills the menu's 92 % of the
-   screen and scrolls (its fixed 480 px overflowed short screens and wasted tall ones). */
+/* The Debug page (StationMenu.BuildStationDebug): wider, the tabs over its rows. The list is 570 px, room for Give
+   items' rows, icon grid and buttons, and the page as tall as that; on a short screen it stops at 92 % and the list
+   shrinks and scrolls (a fixed 480 px list overflowed short screens; filling 92 % on every screen made the page needlessly
+   tall). */
 .system-menu--wide {
     max-width: 1180px;   /* the Give items grid: seven icons to a row */
-    height: 92%;
+    height: auto;
+    max-height: 92%;
 }
 
 .system-menu--wide .system-menu-page--shown {
-    flex-grow: 1;
+    flex-shrink: 1;
+    min-height: 0;
 }
 
 .system-menu--wide .system-slot-list {
-    flex-grow: 1;
+    flex-grow: 0;
     flex-shrink: 1;
-    height: auto;
+    height: 570px;
     min-height: 140px;
 }
 

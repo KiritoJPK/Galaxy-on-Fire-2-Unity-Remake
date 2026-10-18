@@ -1201,6 +1201,7 @@ namespace GoF2Remake.Multiplayer
                 return;
             }
             int done = NetStock.HostItem(station, item, delta, out int vatUnits);
+            NetAudit.Trade(client, station, item, delta < 0 ? -done : done, price);   // the money log: what was granted
             if (delta < 0 && done < -delta)
                 ItemRefusedRpc(station, item, price, -delta - done, RpcTarget.Single(client, RpcTargetUse.Temp));
             if (delta < 0 && vatUnits > 0 && NetProfiles.Enabled) NetFactions.OnPurchase(client, station, item, price, vatUnits);   // a faction station's VAT
@@ -1524,6 +1525,7 @@ namespace GoF2Remake.Multiplayer
             NetTradeClient.Tick();   // this player's trade offer goes out, kept within the hold
             if (!IsServer || !IsSpawned) return;
             NetTrade.Tick();      // trade requests and trades that ran out, sides that left the hangar
+            NetAudit.Tick();      // the shop runs that stopped, into the money log
             NetProfiles.Tick();   // link codes and handovers that ran out
             NetArena.Tick();      // queues, countdowns, time limits
             if (NetProfiles.Enabled) NetFactions.Tick();   // claims kept by docking members, lapses, stale deposits

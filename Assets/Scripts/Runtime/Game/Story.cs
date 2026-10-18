@@ -331,7 +331,7 @@ namespace GoF2Remake.Data
                 case 20: EnsureMounted(db, 6, 41, 10); break;                       // Kappa's free EMP GL I (531: none, no launch at 21)
                 case 50: Session.Standing[0] = 100; break;                          // LevelScript 0x32: Standing::setStanding(0, 100), the Vossk hostile
                 case 58: Shop.AddToCargo(179, 10); break;                           // the 10 Liberators built (kept: 59's kill bonus)
-                case 77: TakeShip(db, 37, 100); break;                              // Khador's Cronus at Kothar (326: no launch in another ship)
+                case 77: TakeShip(db, 37, 100, gift: true); break;                  // Khador's Cronus at Kothar (326: no launch in another ship), free
                 case 91: Session.StoryCounter = 10; EnsureMounted(db, 20, 93); break;   // the 10 miners aboard, in a Large Cabin
                 case 92: Session.StoryCounter = 0; break;                           // dropped at the transporter
                 case 118: Shop.AddToCargo(209, 1); break;                           // the K'mirkk Toad Mutagen bought at Bak S'ondorr
@@ -348,12 +348,13 @@ namespace GoF2Remake.Data
 
         /// <summary>A dealer ship bought at 'station' like Hangar.BuyShip: the old hull traded in at its price there, every
         /// mounted item to the first free slot of its type, the rest to the hold; mods stay with the old hull.</summary>
-        static void TakeShip(Database db, int ship, int station)
+        static void TakeShip(Database db, int ship, int station, bool gift = false)
         {
             if (Session.ShipIndex == ship || db.Ship(ship) == null) return;
-            Session.Credits += Mathf.Max(0, Shop.ShipPrice(db, Session.ShipIndex, station) - Shop.ShipPrice(db, ship, station));
+            // A gift (the Cronus at 77, #122) costs nothing: the old ship's trade-in is credited whole.
+            Session.Credits += Mathf.Max(0, Shop.ShipPrice(db, Session.ShipIndex, station) - (gift ? 0 : Shop.ShipPrice(db, ship, station)));
             var slots = db.Ship(ship).slots;
-            var mounted = Session.Equipment;
+            var mounted = Session.Equipment.Where(e => !e.builtIn).ToList();   // the old hull's built-ins stay with it
             Session.ShipIndex = ship;
             Session.ShipMods = new List<int>();
             Session.Equipment = new List<ItemStack>();
@@ -367,6 +368,7 @@ namespace GoF2Remake.Data
                     Session.Equipment.Add(e);
                 else Shop.AddToCargo(e.item, Mathf.Max(1, e.amount));
             }
+            Hangar.SyncBuiltIn(db);
         }
 
         /// <summary>The debug start: the equipment the step's planet-jump checks ask for (RequirementRefusal, 532), so a jump
@@ -862,7 +864,7 @@ namespace GoF2Remake.Data
         public static void AfterDockedAdvance(int n, int station)
         {
             if (station != 100) return;
-            if (n == 77) AddDealerShip(100, 37);
+            if (n == 77) { AddDealerShip(100, 37); Session.KhadorCronusGift = true; }   // makeShip(37, 0): the row is free (#122)
             if (n == 84)
             {
                 AddDealerShip(100, 38);

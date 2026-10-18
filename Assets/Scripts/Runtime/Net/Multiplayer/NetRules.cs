@@ -42,7 +42,7 @@ namespace GoF2Remake.Multiplayer
             new Rule { bit = KaamoKeepsEquipment, key = "kaamoequipment", flag = "-nokaamoequipment", label = "Stored ships keep their equipment", fallback = true },
             new Rule { bit = CloakBay, key = "cloakbay", flag = "-nocloakbay", label = "Cloak bay on cloaking ships", fallback = true },
             new Rule { bit = EmpBreaksCloak, key = "empcloak", flag = "-noempcloak", label = "EMP breaks cloaks", fallback = true },
-            new Rule { bit = SmarterNpcTargeting, key = "smarttargeting", flag = "-originaltargeting", label = "Smarter NPC targeting", fallback = true },
+            new Rule { bit = SmarterNpcTargeting, key = "smarttargeting", flag = "-smarttargeting", label = "Smarter NPC targeting", fallback = false },
         };
 
         /// <summary>Every rule at its option's default (a dedicated server's start).</summary>

@@ -21,6 +21,9 @@
 // turntable (AttachWeapons), the turret also on other players' ships (PlayerTurret.BuildStatic). A mount's "nodes" (parts of
 // the ship's own model, a hardpoint's pylon) show only while the mount carries a weapon (ShowMountNodes, from AttachWeapons:
 // any ship with such mounts, every time the weapons change).
+// "toggle": true lets the player hide them (the Customize screen's Weapon models row, Build.weapons "weapons=off", Hidden): no
+// weapon or turret models, every pylon hidden, the shots from the mounts themselves (the turret an invisible stand-in), the
+// hangar height without them.
 
 using System;
 using System.Collections.Generic;
@@ -46,10 +49,12 @@ namespace GoF2Remake.Modding
         public sealed class Set
         {
             public string turret;
+            /// <summary>"toggle": the player may hide the weapon models, pylons and turret (Build.weapons).</summary>
+            public bool toggle;
             public readonly List<Rule> weapons = new List<Rule>();
         }
 
-        static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "turret", "weapons" };
+        static readonly HashSet<string> Fields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "turret", "weapons", "toggle" };
         static readonly HashSet<string> RuleFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "slot", "model", "items", "categories", "sound" };
         static readonly string[] Slots = { "primary", "secondary", "turret" };
 
@@ -60,7 +65,7 @@ namespace GoF2Remake.Modding
             if (!(t is JObject o)) throw new ModJsonException($"{where}: \"hardpoints\" must be an object {{ \"turret\": ..., \"weapons\": [ ... ] }}");
             foreach (var prop in o.Properties())
                 if (!Fields.Contains(prop.Name)) Warn(mod, $"{ModJson.Where(prop, file)}: unknown field \"{prop.Name}\" (ignored)");
-            var set = new Set { turret = ModJson.Str(o, "turret") };
+            var set = new Set { turret = ModJson.Str(o, "turret"), toggle = ModJson.Bool(o, "toggle", false, file) };
             if (!string.IsNullOrEmpty(set.turret) && !mod.Source.Exists(set.turret))
                 throw new ModJsonException($"{where}: the turret model \"{set.turret}\" isn't in the mod");
             if (ModJson.Get(o, "weapons") is JToken wt)
@@ -97,6 +102,13 @@ namespace GoF2Remake.Modding
         }
 
         static ModShipKits.Kit KitOfShip(int ship) => ModShipKits.KitOf(ModShipKits.KitShip(ship)) is ModShipKits.Kit k && k.hardpoints != null ? k : null;
+
+        /// <summary>Whether a kit ship lets the player hide its weapon models ("toggle": true).</summary>
+        public static bool Toggles(int ship) => KitOfShip(ship)?.hardpoints.toggle == true;
+
+        /// <summary>The weapon models, pylons and turret model hidden on 'ship' by 'shown' (null = the local player's build).</summary>
+        public static bool Hidden(int ship, ModShipKits.Build shown = null) =>
+            Toggles(ship) && (shown ?? ModShipKits.PlayerBuild(ship))?.WeaponsHidden == true;
 
         static bool Matches(Rule r, ItemData item)
         {
@@ -206,7 +218,7 @@ namespace GoF2Remake.Modding
         public static GameObject TurretModel(int ship, ItemData item, ModShipKits.Build shown = null)
         {
             var kit = KitOfShip(ship);
-            if (kit == null || string.IsNullOrEmpty(kit.hardpoints.turret)) return null;
+            if (kit == null || string.IsNullOrEmpty(kit.hardpoints.turret) || Hidden(ship, shown)) return null;
             var t = ModShips.PartTemplate(kit, kit.hardpoints.turret);
             if (t == null) return null;
             var p = Find(t.transform, n => n == "pivot");
@@ -261,9 +273,10 @@ namespace GoF2Remake.Modding
         public static GameObject AttachWeapons(Database db, int ship, IList<ItemStack> equipment, Transform shipModel, ModShipKits.Build shown = null)
         {
             if (shipModel == null) return null;
-            ShowMountNodes(db, ship, equipment, shipModel, shown);
+            bool hidden = Hidden(ship, shown);
+            ShowMountNodes(db, ship, hidden ? null : equipment, shipModel, shown);
             var kit = KitOfShip(ship);
-            if (kit == null || kit.hardpoints.weapons.Count == 0) return null;
+            if (kit == null || kit.hardpoints.weapons.Count == 0 || hidden) return null;
             GameObject root = null;
             foreach (bool secondary in new[] { false, true })
             {
@@ -292,7 +305,8 @@ namespace GoF2Remake.Modding
         }
 
         /// <summary>Each primary / secondary mount's "nodes" (WeaponMount.nodes: its pylon in the ship's model) shown while the
-        /// mount carries a weapon (the n-th weapon of its type on the n-th mount), hidden while it is empty.</summary>
+        /// mount carries a weapon (the n-th weapon of its type on the n-th mount), hidden while it is empty ('equipment' null:
+        /// every one hidden, the weapon models hidden by the build).</summary>
         static void ShowMountNodes(Database db, int ship, IList<ItemStack> equipment, Transform shipModel, ModShipKits.Build shown)
         {
             Dictionary<string, Transform> byName = null;
@@ -332,6 +346,7 @@ namespace GoF2Remake.Modding
         public static Vector3 MuzzleOffset(int ship, ItemData shown, bool secondary, WeaponMount mount)
         {
             var kit = KitOfShip(ship);
+            if (kit == null || Hidden(ship)) return Vector3.zero;   // no model: the shots leave from the mount
             string file = ModelFile(kit, secondary ? "secondary" : "primary", shown);
             var t = file != null ? ModShips.PartTemplate(kit, file) : null;
             var mz = t != null ? MuzzleOf(t.transform) : null;
@@ -358,6 +373,7 @@ namespace GoF2Remake.Modding
         {
             if (ModShipKits.KitShip(ship) == null || string.IsNullOrEmpty(assembly)) return null;
             if (heightsRevision != ModManager.Revision) { heights.Clear(); heightsRevision = ModManager.Revision; }
+            if (Hidden(ship, shown)) equipment = null;   // no weapon models under the hull
             string key = assembly + "|" + (equipment == null ? "" : string.Join(",", equipment.Select(e => e.item)));
             if (heights.TryGetValue(key, out float known)) return known;
             var t = ModShips.Template(assembly);

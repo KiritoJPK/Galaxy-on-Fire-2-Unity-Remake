@@ -4,7 +4,9 @@
 //            linear motor), else createOneShot(ms, DEFAULT_AMPLITUDE) with the length scaled down for weaker pulses
 //   older    Vibrator.vibrate(ms), the length scaled the same way
 // A new one-shot replaces the one running, so a weaker pulse never cuts a stronger one short. The VIBRATE permission is
-// added to the Gradle project's manifest by AndroidVibratePermission (Editor). Plain C#; elsewhere Supported is false.
+// added to the Gradle project's manifest by AndroidVibratePermission (Editor).
+// iOS: the Taptic Engine through Core Haptics (Plugins/iOS/PhoneHaptics.mm): every pulse at its own intensity (amplitude
+// control), none on devices without one (iPads). Plain C#; elsewhere Supported is false.
 
 using UnityEngine;
 
@@ -20,6 +22,11 @@ namespace GoF2Remake.Flight
 
         static bool initialised, supported, amplitudeControl;
         static float busyUntil, busyAmplitude;
+#if UNITY_IOS && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern bool GoF2Haptics_Supported();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void GoF2Haptics_Pulse(float seconds, float intensity);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void GoF2Haptics_Stop();
+#endif
 #if UNITY_ANDROID && !UNITY_EDITOR
         static int sdk;
         static AndroidJavaObject vibrator;
@@ -33,7 +40,7 @@ namespace GoF2Remake.Flight
             busyAmplitude = 0f;
         }
 
-        /// <summary>The device has a vibration motor this code can drive (Android only).</summary>
+        /// <summary>The device has a vibration motor this code can drive (Android, an iPhone's Taptic Engine).</summary>
         public static bool Supported
         {
             get
@@ -69,6 +76,13 @@ namespace GoF2Remake.Flight
             {
                 supported = false;
                 Debug.LogWarning("PhoneVibrator: no vibration (" + e.Message + ")");
+            }
+#elif UNITY_IOS && !UNITY_EDITOR
+            try { supported = amplitudeControl = GoF2Haptics_Supported(); }
+            catch (System.Exception e)
+            {
+                supported = amplitudeControl = false;
+                Debug.LogWarning("PhoneVibrator: no haptics (" + e.Message + ")");
             }
 #else
             supported = amplitudeControl = false;
@@ -108,6 +122,8 @@ namespace GoF2Remake.Flight
                 supported = false;   // don't try again every frame
                 Debug.LogWarning("PhoneVibrator: vibrate failed (" + e.Message + ")");
             }
+#elif UNITY_IOS && !UNITY_EDITOR
+            GoF2Haptics_Pulse(ms / 1000f, amplitude);
 #endif
         }
 
@@ -120,6 +136,8 @@ namespace GoF2Remake.Flight
 #if UNITY_ANDROID && !UNITY_EDITOR
             try { vibrator.Call("cancel"); }
             catch (System.Exception) { }
+#elif UNITY_IOS && !UNITY_EDITOR
+            GoF2Haptics_Stop();
 #endif
         }
     }

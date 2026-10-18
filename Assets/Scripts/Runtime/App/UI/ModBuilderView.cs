@@ -1366,7 +1366,7 @@ namespace GoF2Remake.UI
             float left = kb.leftArrowKey.isPressed || kb.aKey.isPressed ? 1f : 0f, right = kb.rightArrowKey.isPressed || kb.dKey.isPressed ? 1f : 0f;
             float up = kb.upArrowKey.isPressed || kb.wKey.isPressed ? 1f : 0f, dn = kb.downArrowKey.isPressed || kb.sKey.isPressed ? 1f : 0f;
             var d = new Vector2(left - right, up - dn) * 4f * frames;
-            if (d != Vector2.zero) level.Inspect.Turn(d.x * 0.005f, d.y * 0.005f);
+            if (d != Vector2.zero) TurnOrbit(d);
             float zoom = (kb.minusKey.isPressed || kb.numpadMinusKey.isPressed ? 1f : 0f) - (kb.equalsKey.isPressed || kb.numpadPlusKey.isPressed ? 1f : 0f);
             if (zoom != 0f) level.Inspect.Zoom(Mathf.Pow(1.03f, zoom * frames));
         }
@@ -1377,6 +1377,14 @@ namespace GoF2Remake.UI
             if (placing >= 0) { placing = -1; BuildHardpointsPage(); return true; }
             if (gizmo.Selected >= 0) { gizmo.Selected = -1; gizmo.Refresh(); BuildHardpointsPage(); return true; }
             return EscapeKind();
+        }
+
+        /// <summary>The orbit turned by 'pixels' of drag (PhotoMode's 0.005 rad per pixel), the camera views' own inversion
+        /// applied (#121).</summary>
+        void TurnOrbit(Vector2 pixels)
+        {
+            var d = Settings.OrbitTurn(pixels);
+            level.Inspect.Turn(d.x * 0.005f, d.y * 0.005f);
         }
 
         void UpdateCamera(float dt)
@@ -1402,12 +1410,12 @@ namespace GoF2Remake.UI
                 var step = pendingTurn * (1f - Mathf.Exp(-dt / OrbitEaseMs));
                 if (pendingTurn.sqrMagnitude < 0.01f) step = pendingTurn;
                 pendingTurn -= step;
-                level.Inspect.Turn(step.x * 0.005f, step.y * 0.005f);
+                TurnOrbit(step);
             }
             if (drag == Drag.None && fling != Vector2.zero)
             {
                 float frames = dt / (1000f / 30f);
-                level.Inspect.Turn(fling.x * frames * 0.005f, fling.y * frames * 0.005f);
+                TurnOrbit(fling * frames);
                 fling *= Mathf.Pow(0.9f, frames);
                 if (fling.magnitude <= 0.5f) fling = Vector2.zero;
             }

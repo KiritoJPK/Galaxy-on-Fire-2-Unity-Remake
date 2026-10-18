@@ -31,6 +31,8 @@
 // keyboard shows its own input box again (TouchScreenKeyboard.hideInput false): with it hidden, holding Backspace stopped
 // after one letter and the line stayed hidden under the keyboard; the box is the system's own editing (hold to delete,
 // the cursor, selection). The line never selects all on focus: after a send the next line's letters showed highlighted.
+// Nothing writes to the keyboard while it is up (PhoneKeyboard's header: on GameActivity a write restarts the IME, which ends
+// a held Backspace's repeat); the row's buttons (Local / Global, Send, close) keep the typing and the keyboard.
 // The Chat button sits next to the Multiplayer button (MultiplayerWindow moves it: left of it in the station's top bar, at
 // its height in the flight HUD's column), the size of the Menu button.
 // Styles: Resources/GoF2Net/Chat.uss.
@@ -67,7 +69,7 @@ namespace GoF2Remake.UI
         AudioClip messageClip;
         bool open, hooked, large;
         float nextScaleCheck;
-        int focusTries, swallowFrame = -1, openFrame = -10, suspendFrame = -10;
+        int focusTries, swallowFrame = -1, openFrame = -10, suspendFrame = -10, rowPressFrame = -10;
 
         /// <summary>The panel on 'parent' (again after a UI reload), on the HUD's own GameObject.</summary>
         public static void Attach(GameObject host, VisualElement parent)
@@ -139,6 +141,7 @@ namespace GoF2Remake.UI
             field.RegisterCallback<FocusOutEvent>(e =>
             {
                 if (e.relatedTarget is VisualElement to && (to == channel || to == sendButton || to == closeButton)) return;
+                if (Time.frameCount - rowPressFrame <= 1) return;   // a press on the row's buttons (their focus may not move)
                 if (focusTries > 0) return;   // still opening
                 Suspend();
             });
@@ -151,6 +154,9 @@ namespace GoF2Remake.UI
             closeButton.AddToClassList("chat-channel");
             closeButton.AddToClassList("chat-close");
             row.Add(closeButton);
+            // The row's buttons keep the typing (a player's report: Local / Global closed the phone's keyboard).
+            foreach (var b in new[] { channel, sendButton, closeButton })
+                b.RegisterCallback<PointerDownEvent>(_ => rowPressFrame = Time.frameCount, TrickleDown.TrickleDown);
             box.Add(row);
             parent.Add(box);
             stats = new Label { name = "netstats", pickingMode = PickingMode.Ignore };
@@ -417,6 +423,7 @@ namespace GoF2Remake.UI
         {
             NetChat.Sending = NetChat.Sending == NetChat.Channel.Global ? NetChat.Channel.Local : NetChat.Channel.Global;
             RefreshChannel();
+            if (open) focusTries = FocusFrames;   // the line takes the focus back (Update); the keyboard stays up
         }
 
         /// <summary>The tab and the empty line name the current keys (they are rebindable).</summary>

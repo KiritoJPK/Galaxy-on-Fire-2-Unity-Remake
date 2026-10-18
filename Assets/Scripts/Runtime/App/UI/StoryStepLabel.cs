@@ -129,6 +129,11 @@ namespace GoF2Remake.UI
             nextRefresh = Time.unscaledTime + RefreshSeconds;
             string text = Text();
             if (label.text != text) label.text = text;
+            // Clear of a cutout on the right (the iPhone's Dynamic Island / notch side, SafeArea). Only the side inset: lifted by
+            // the home indicator's it sat on the station's news ticker; small non-interactive text may stay beside the indicator.
+            var inset = SafeArea.Panel(label.parent, Screen.width, Screen.height, runtimePanel != null && runtimePanel.targetTexture != null);
+            float right = 4f + inset.y;
+            if (label.style.right != right) label.style.right = right;
         }
     }
 }

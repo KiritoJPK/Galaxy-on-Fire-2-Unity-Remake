@@ -114,6 +114,9 @@ namespace GoF2Remake.UI
 
             status = new Label { pickingMode = PickingMode.Ignore };
             status.AddToClassList("mbv-status");
+            // Clear of the notch / Dynamic Island and the home indicator on phones (the 3D view stays full screen).
+            foreach (var e in new[] { uiTop, uiLeft, uiRight, status }) e.AddToClassList(SafeArea.EdgeClass);
+            SafeArea.KeepClear(root);
             modal = new VisualElement();
             modal.AddToClassList("mbv-modal");
             modal.RegisterCallback<PointerDownEvent>(e => { if (e.target == modal) CloseModal(); });

@@ -184,6 +184,10 @@ namespace GoF2Remake.UI
                 // Radar::draw: the Void station and the gate get the distance only, the wormhole its name only.
                 if (t.kind == Navigation.Kind.Station && t.station != Session.VoidOrbit) { m.tech = Text(layer, "nav-label--dim"); m.tech.text = techLine; }
                 if (t.kind != Navigation.Kind.Planet && !wormhole) m.distance = Text(layer, "nav-label--dim");
+                // Hidden until Update places them: a label never placed sat at the layer's top left.
+                m.name.style.display = DisplayStyle.None;
+                if (m.tech != null) m.tech.style.display = DisplayStyle.None;
+                if (m.distance != null) m.distance.style.display = DisplayStyle.None;
                 markers.Add(m);
             }
         }
@@ -227,6 +231,7 @@ namespace GoF2Remake.UI
                     if (m.freelance != null) m.freelance.style.display = DisplayStyle.None;
                     if (m.faction != null) m.faction.style.display = DisplayStyle.None;
                     m.name.style.display = DisplayStyle.None;
+                    if (m.tech != null) m.tech.style.display = DisplayStyle.None;   // it stayed: "Tech level" over the status bars (78)
                     if (m.distance != null) m.distance.style.display = DisplayStyle.None;
                     continue;
                 }

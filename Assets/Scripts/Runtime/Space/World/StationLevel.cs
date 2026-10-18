@@ -191,6 +191,7 @@ namespace GoF2Remake.World
             // Remake debug (PlayerHull): a hull the player can't normally fly never sits in a hangar (an old save from the
             // battleship toggle): back in the player's own ship.
             if (!PlayerHull.PlayerShip) PlayerHull.ForceOwnShip();
+            Hangar.SyncBuiltIn(db);  // remake mods: the flown ship's built-in items (ships.json "integrated": "items")
             Hangar.FitToSlots(db);   // remake: no more mounted than the ship has slots (a mod's lower slot count, a debug swap)
             shipIndex = shipOverride >= 0 ? shipOverride : Session.ShipIndex;
             Station = db.Stations.Find(s => s.index == station);
@@ -402,6 +403,7 @@ namespace GoF2Remake.World
             if (dbRevision != Modding.ModManager.Revision) { db = Database.Load(); dbRevision = Modding.ModManager.Revision; }
             if (playerShip != null) Destroy(playerShip.gameObject);
             shipIndex = index;
+            if (index == Session.ShipIndex) Hangar.SyncBuiltIn(db);   // its built-in items (a purchase, a stored hull, a debug swap)
             var ship = SpawnShip(index, PadPosition(index), Quaternion.identity, hangarRoot, "Player ship");
             playerShip = ship != null ? ship.transform : null;
             if (playerShip != null) PlayerHull.FitHangar(playerShip);   // remake debug: a freighter / capital ship shrunk
@@ -1302,16 +1304,20 @@ namespace GoF2Remake.World
                     // The photo tools' field of view (UI.PhotoTools), eased in with the orbit.
                     if (Inspect.FovDeg > 0f) mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, Inspect.FovDeg, Mathf.SmoothStep(0f, 1f, Inspect.Blend));
                     // A panel over part of the screen (the Customize screen): the view turns aside so the ship stands in the
-                    // middle of the free part (InspectFrameX), eased, with the orbit's blend.
-                    inspectFrame = Mathf.MoveTowards(inspectFrame, InspectFrameX, Time.unscaledDeltaTime * 1000f / InspectFrameMs);
-                    float off = (inspectFrame - 0.5f) * Inspect.Blend;
+                    // middle of the free part (InspectFrameX). The turn comes and goes with the orbit's own eased blend, so
+                    // the Customize screen moves in and out like Inspect ship (a separate linear ease times the raw blend
+                    // started and stopped abruptly, and the target reset on leaving swung the view back before the orbit
+                    // did); a change of the panel's width once in eases over InspectFrameMs.
+                    if (!Inspect.Active || Inspect.Blend < 1f) inspectFrame = InspectFrameX;
+                    else inspectFrame = Mathf.MoveTowards(inspectFrame, InspectFrameX, Time.unscaledDeltaTime * 1000f / InspectFrameMs);
+                    float off = (inspectFrame - 0.5f) * Mathf.SmoothStep(0f, 1f, Inspect.Blend);
                     if (Mathf.Abs(off) > 0.0005f)
                     {
                         float halfTanX = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * mainCamera.aspect;
                         cam.rotation *= Quaternion.AngleAxis(-Mathf.Atan(halfTanX * 2f * off) * Mathf.Rad2Deg, Vector3.up);
                     }
                 }
-                else inspectFrame = 0.5f;
+                else inspectFrame = InspectFrameX = 0.5f;   // the blend back has ended: the frame back in the middle
             }
             else
             {
@@ -1379,7 +1385,8 @@ namespace GoF2Remake.World
         /// over ChatZoomMs.</summary>
         const float ChatZoomIn = 0.25f, ChatZoomMs = 800f;
         /// <summary>Where the visitor talked to stands across the screen, from the left (0) to the right (1): the middle of
-        /// the room left of the chat window (LoungePanel sets it from the window's place).</summary>
+        /// the room beside the chat window, left of it or (the window on the left) right of it (LoungePanel sets it from the
+        /// window's place).</summary>
         public float ChatFrameX = 0.24f;
         int chatVisitor = -1;
         Vector3 chatTarget;

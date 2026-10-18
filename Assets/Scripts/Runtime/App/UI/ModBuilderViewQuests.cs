@@ -635,6 +635,7 @@ namespace GoF2Remake.UI
                 switch (f.kind)
                 {
                     case QuestFieldKind.Station: s = RefLabel(RefKind.Station, s, s); break;
+                    case QuestFieldKind.System: s = RefLabel(RefKind.System, s, s); break;
                     case QuestFieldKind.Ship: s = RefLabel(RefKind.Ship, s, s); break;
                     case QuestFieldKind.Item: s = RefLabel(RefKind.Item, s, s); break;
                     case QuestFieldKind.Bool: s = (bool)v ? T("mb_" + f.key, f.english) : ""; break;
@@ -793,6 +794,9 @@ namespace GoF2Remake.UI
                     break;
                 case QuestFieldKind.Ship:
                     RefField(card, label, RefKind.Ship, Cur(), v => Set(string.IsNullOrEmpty(v) ? null : ProjectEntry.RefToken(v), true), null, f.optional);
+                    break;
+                case QuestFieldKind.System:
+                    RefField(card, label, RefKind.System, Cur(), v => Set(string.IsNullOrEmpty(v) ? null : ProjectEntry.RefToken(v), true), null, f.optional);
                     break;
                 case QuestFieldKind.Item:
                     RefField(card, label, RefKind.Item, Cur(), v => Set(string.IsNullOrEmpty(v) ? null : ProjectEntry.RefToken(v), true), null, f.optional);

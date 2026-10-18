@@ -341,6 +341,34 @@ namespace GoF2Remake.UI
             options.Select(InputMode.Current != InputKind.Touch ? items[optionIndex] : null);
         }
 
+        // Held directions repeat (HeldRepeat): up / down walk on, left / right step a slider or a stepper on; a toggle, the tab
+        // row and the Debug page's grid move once per press.
+        readonly HeldRepeat moveRepeat = new HeldRepeat(), sideRepeat = new HeldRepeat();
+
+        static int Dir(bool negative, bool positive) => positive ? 1 : negative ? -1 : 0;
+
+        int Vertical(UnityEngine.InputSystem.Keyboard kb, Gamepad pad)
+        {
+            bool upPressed = (kb != null && (kb.wKey.wasPressedThisFrame || kb.upArrowKey.wasPressedThisFrame))
+                             || (pad != null && (pad.dpad.up.wasPressedThisFrame || pad.leftStick.up.wasPressedThisFrame));
+            bool downPressed = (kb != null && (kb.sKey.wasPressedThisFrame || kb.downArrowKey.wasPressedThisFrame))
+                               || (pad != null && (pad.dpad.down.wasPressedThisFrame || pad.leftStick.down.wasPressedThisFrame));
+            bool upHeld = (kb != null && (kb.wKey.isPressed || kb.upArrowKey.isPressed)) || (pad != null && (pad.dpad.up.isPressed || pad.leftStick.up.isPressed));
+            bool downHeld = (kb != null && (kb.sKey.isPressed || kb.downArrowKey.isPressed)) || (pad != null && (pad.dpad.down.isPressed || pad.leftStick.down.isPressed));
+            return moveRepeat.Tick(Dir(upPressed, downPressed), Dir(upHeld, downHeld));
+        }
+
+        int Sideways(UnityEngine.InputSystem.Keyboard kb, Gamepad pad)
+        {
+            bool leftPressed = (kb != null && (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame))
+                               || (pad != null && (pad.dpad.left.wasPressedThisFrame || pad.leftStick.left.wasPressedThisFrame));
+            bool rightPressed = (kb != null && (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame))
+                                || (pad != null && (pad.dpad.right.wasPressedThisFrame || pad.leftStick.right.wasPressedThisFrame));
+            bool leftHeld = (kb != null && (kb.aKey.isPressed || kb.leftArrowKey.isPressed)) || (pad != null && (pad.dpad.left.isPressed || pad.leftStick.left.isPressed));
+            bool rightHeld = (kb != null && (kb.dKey.isPressed || kb.rightArrowKey.isPressed)) || (pad != null && (pad.dpad.right.isPressed || pad.leftStick.right.isPressed));
+            return sideRepeat.Tick(Dir(leftPressed, rightPressed), Dir(leftHeld, rightHeld));
+        }
+
         /// <summary>The Options page's keys, like the main menu's: up / down walk the tab row, the tab's rows and the footer
         /// (stopping at the ends); left / right switch tabs on the tab row, step a row, or move between Back and Default
         /// settings (or the defaults prompt's buttons); Q / E and LB / RB switch tabs anywhere; Enter / A takes the row or button.</summary>
@@ -353,11 +381,7 @@ namespace GoF2Remake.UI
             if (tab != 0) { options.StepTab(tab); return; }
 
             var items = options.NavItems();
-            int move = 0;
-            if (kb != null && (kb.wKey.wasPressedThisFrame || kb.upArrowKey.wasPressedThisFrame)) move = -1;
-            if (kb != null && (kb.sKey.wasPressedThisFrame || kb.downArrowKey.wasPressedThisFrame)) move = 1;
-            if (pad != null && (pad.dpad.up.wasPressedThisFrame || pad.leftStick.up.wasPressedThisFrame)) move = -1;
-            if (pad != null && (pad.dpad.down.wasPressedThisFrame || pad.leftStick.down.wasPressedThisFrame)) move = 1;
+            int move = Vertical(kb, pad);
             if (move != 0)
             {
                 // The footer (Back and Default settings, or the defaults prompt's buttons) is one row: down from it stays,
@@ -370,17 +394,13 @@ namespace GoF2Remake.UI
                 HighlightOptions();
                 return;
             }
-            int side = 0;
-            if (kb != null && (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame)) side = -1;
-            if (kb != null && (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame)) side = 1;
-            if (pad != null && (pad.dpad.left.wasPressedThisFrame || pad.leftStick.left.wasPressedThisFrame)) side = -1;
-            if (pad != null && (pad.dpad.right.wasPressedThisFrame || pad.leftStick.right.wasPressedThisFrame)) side = 1;
+            int side = Sideways(kb, pad);
             var current = items[optionIndex];
             var row = options.RowOf(current);
             if (side != 0)
             {
-                if (options.IsTab(current)) options.StepTab(side);
-                else if (row != null) { row.Step(side); KeepOptionSelected(current); }
+                if (options.IsTab(current)) { if (sideRepeat.Fresh) options.StepTab(side); }
+                else if (row != null) { if (sideRepeat.Fresh || row.StepsSideways) row.Step(side); KeepOptionSelected(current); }
                 else if (options.IsFooter(current)) { optionIndex = items.IndexOf(options.FooterStep(current, side)); HighlightOptions(); }
                 return;
             }
@@ -601,11 +621,7 @@ namespace GoF2Remake.UI
                 if ((kb != null && kb.eKey.wasPressedThisFrame) || (pad != null && pad.rightShoulder.wasPressedThisFrame)) tab = 1;
                 if (tab != 0) { debugTab = (debugTab + tab + debugTabCount) % debugTabCount; Show(Page.Debug); return; }
             }
-            int move = 0;
-            if (kb != null && (kb.wKey.wasPressedThisFrame || kb.upArrowKey.wasPressedThisFrame)) move = -1;
-            if (kb != null && (kb.sKey.wasPressedThisFrame || kb.downArrowKey.wasPressedThisFrame)) move = 1;
-            if (pad != null && (pad.dpad.up.wasPressedThisFrame || pad.leftStick.up.wasPressedThisFrame)) move = -1;
-            if (pad != null && (pad.dpad.down.wasPressedThisFrame || pad.leftStick.down.wasPressedThisFrame)) move = 1;
+            int move = Vertical(kb, pad);
             bool debugGrid = page == Page.Debug && items.Count > 0 && index >= 0 && index < items.Count;
             if (debugGrid && move != 0 && optionRows.TryGetValue(items[index], out var gridRow) && CheatsCatalog.MoveVertical(gridRow.Field, move))
                 move = 0;   // the item grid moved its pick a row
@@ -624,16 +640,13 @@ namespace GoF2Remake.UI
             }
             if (move != 0 && items.Count > 0)
             {
-                index = (index + move + items.Count) % items.Count;
+                // A press wraps round at the ends, a held key stops there.
+                index = moveRepeat.Fresh ? (index + move + items.Count) % items.Count : Mathf.Clamp(index + move, 0, items.Count - 1);
                 Highlight();
                 if (scroll != null && scroll.contentContainer.Contains(items[index])) scroll.ScrollTo(items[index]);
                 else if (scroll != null) scroll.scrollOffset += new Vector2(0f, move * 120f);
             }
-            int side = 0;
-            if (kb != null && (kb.aKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame)) side = -1;
-            if (kb != null && (kb.dKey.wasPressedThisFrame || kb.rightArrowKey.wasPressedThisFrame)) side = 1;
-            if (pad != null && (pad.dpad.left.wasPressedThisFrame || pad.leftStick.left.wasPressedThisFrame)) side = -1;
-            if (pad != null && (pad.dpad.right.wasPressedThisFrame || pad.leftStick.right.wasPressedThisFrame)) side = 1;
+            int side = Sideways(kb, pad);
             var current = index < items.Count ? items[index] : null;
             optionRows.TryGetValue(current ?? backdrop, out var option);
             if (side != 0 && debugGrid && (option == null || !option.StepsSideways))
@@ -642,7 +655,7 @@ namespace GoF2Remake.UI
                 var next = SpatialNav.Next(items, current, side, 0, v => v.resolvedStyle.display != DisplayStyle.None);
                 if (next != null) { index = items.IndexOf(next); Highlight(); current = next; optionRows.TryGetValue(current, out option); }
             }
-            else if (side != 0 && option != null) option.Step(side);
+            else if (side != 0 && option != null && (sideRepeat.Fresh || option.StepsSideways)) option.Step(side);
             bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame))
                            || (pad != null && pad.buttonSouth.wasPressedThisFrame);
             if (!confirm || current == null) return;

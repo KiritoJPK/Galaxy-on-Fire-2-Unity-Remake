@@ -37,6 +37,18 @@ namespace GoF2Remake.UI
 
         static string T(string key, string english) => Localization.Extra(key, english);
 
+        /// <summary>A folder or file as the player finds it. iOS: the app's Documents folder is the Files app's "On My iPhone
+        /// › GoF2 Remake" (Info.plist UIFileSharingEnabled, the home screen name), not the sandbox path; elsewhere the path.</summary>
+        static string Shown(string path)
+        {
+            if (Application.platform != RuntimePlatform.IPhonePlayer || string.IsNullOrEmpty(path)) return path;
+            string docs = Application.persistentDataPath.TrimEnd('/');
+            if (!path.StartsWith(docs, System.StringComparison.Ordinal)) return path;
+            string device = SystemInfo.deviceModel.StartsWith("iPad", System.StringComparison.Ordinal)
+                ? T("filesOnMyIpad", "Files › On My iPad") : T("filesOnMyIphone", "Files › On My iPhone");
+            return device + " › GoF2 Remake" + path.Substring(docs.Length).Replace("/", " › ");
+        }
+
         /// <param name="rebuildCache">The footer's "Rebuild cache": every mod cache deleted and the mods loaded again (MainMenu,
         /// behind its loading screen); none = no button.</param>
         /// <param name="ask">The menu's Yes / No dialog (title, text, on Yes): Delete and replacing a mod by an import.</param>
@@ -149,8 +161,8 @@ namespace GoF2Remake.UI
                 rows[m.Id] = row;
             }
             empty.text = ModImport.Available && Application.isMobilePlatform
-                ? string.Format(T("modsEmptyImport", "No mods installed. Press Import mod and pick a mod's .zip file, or put it into the Mods folder:\n{0}\nthen press Refresh."), ModManager.MainFolder)
-                : string.Format(T("modsEmpty", "No mods installed. Put a mod's folder or .zip into the Mods folder:\n{0}\nthen press Refresh."), ModManager.MainFolder);
+                ? string.Format(T("modsEmptyImport", "No mods installed. Press Import mod and pick a mod's .zip file, or put it into the Mods folder:\n{0}\nthen press Refresh."), Shown(ModManager.MainFolder))
+                : string.Format(T("modsEmpty", "No mods installed. Put a mod's folder or .zip into the Mods folder:\n{0}\nthen press Refresh."), Shown(ModManager.MainFolder));
             empty.style.display = mods.Count == 0 ? DisplayStyle.Flex : DisplayStyle.None;
             if (selected == null || !rows.ContainsKey(selected)) selected = mods.FirstOrDefault()?.Id;
             Refresh();
@@ -193,7 +205,7 @@ namespace GoF2Remake.UI
             int enabled = ModManager.Installed.Count(m => ModManager.IsEnabled(m.Id));
             count.text = string.Format(T("modsCount", "{0} installed  ·  {1} on"), ModManager.Installed.Count, enabled);
             note.text = T("modsNote", "Mods only change your own games: they apply when a game starts or loads. A mod lower in the list wins where two change the same thing.")
-                        + (Application.isMobilePlatform ? "\n" + ModManager.MainFolder : "");   // no folder button on a phone: where to copy them
+                        + (Application.isMobilePlatform ? "\n" + Shown(ModManager.MainFolder) : "");   // no folder button on a phone: where to copy them
 
             var mod = selected != null ? ModManager.Find(selected) : null;
             detail.style.visibility = mod != null ? Visibility.Visible : Visibility.Hidden;
@@ -205,7 +217,7 @@ namespace GoF2Remake.UI
             if (!string.IsNullOrEmpty(mod.Manifest?.author)) metaParts.Add(string.Format(T("modsBy", "by {0}"), mod.Manifest.author));
             metaParts.Add(mod.Id);
             if (!string.IsNullOrEmpty(mod.Manifest?.website)) metaParts.Add(mod.Manifest.website);
-            meta.text = string.Join("  ·  ", metaParts) + "\n" + mod.Source.Location;   // where it is installed
+            meta.text = string.Join("  ·  ", metaParts) + "\n" + Shown(mod.Source.Location);   // where it is installed
             description.text = mod.Manifest?.Description ?? "";
             if (!string.IsNullOrEmpty(mod.Manifest?.Credits))
                 description.text += "\n\n" + T("modsCredits", "Credits").ToUpperInvariant() + "\n" + mod.Manifest.Credits;

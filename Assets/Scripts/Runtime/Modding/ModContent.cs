@@ -707,6 +707,7 @@ namespace GoF2Remake.Modding
             db.ShipOwnTextures.Clear();
             db.IntegratedDrives = new HashSet<int>(Database.DefaultIntegratedDrives);
             db.IntegratedCloaks = new Dictionary<int, int>(Database.DefaultIntegratedCloaks);
+            db.IntegratedItems = new Dictionary<int, List<ItemStack>>();
             foreach (var mod in ModManager.Active)
                 foreach (var d in Parse(mod).ships)
                 {
@@ -824,7 +825,9 @@ namespace GoF2Remake.Modding
         /// Drive (37 / 38 / 40) and the Specter's / Scimitar's cloak (44 / 49): "khadorDrive" true / false (Database.IntegratedDrives:
         /// GalaxyMap.HasJumpDrive, the Khador entry and its hints), "cloak" true (the U'tool's stats, 95), a cloak item (a number or
         /// "mod:id", category 21) or false (Database.IntegratedCloaks: PlayerCloak, the cloak bay). An override can take an
-        /// original ship's away; the later mod wins.</summary>
+        /// original ship's away; the later mod wins. "items": any items built in (Database.IntegratedItems, Hangar.SyncBuiltIn):
+        /// [n | "mod:id" | { "item", "amount" }] (amount: a secondary's starting ammo, default 10; else 1 each); an empty list
+        /// takes them away.</summary>
         static void ApplyIntegrated(Database db, ModInfo mod, ShipDef d, int ship)
         {
             if (!(ModJson.Get(d.json, "integrated") is JObject o)) return;
@@ -849,7 +852,29 @@ namespace GoF2Remake.Modding
                     if (db.Item(item).categoryId != 21) { Report(mod, $"{d.where}: \"integrated\": \"cloak\": {db.Item(item).name} ({item}) is no cloak"); continue; }
                     db.IntegratedCloaks[ship] = item;
                 }
-                else mod.Warnings.Add($"{d.where}: \"integrated\": unknown field \"{prop.Name}\" (ignored; \"khadorDrive\", \"cloak\")");
+                else if (string.Equals(prop.Name, "items", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!(v is JArray list)) { Report(mod, $"{d.where}: \"integrated\": \"items\" must be a list"); continue; }
+                    var items = new List<ItemStack>();
+                    foreach (var entry in list)
+                    {
+                        var itemToken = entry is JObject eo ? eo["item"] : entry;
+                        string reference = itemToken?.Type == JTokenType.Integer ? ((int)itemToken).ToString() : itemToken?.Type == JTokenType.String ? (string)itemToken : null;
+                        if (reference == null || !TryResolveItem(reference, out int item) || db.Item(item) == null)
+                        { Report(mod, $"{d.where}: \"integrated\": \"items\": {entry.ToString(Newtonsoft.Json.Formatting.None)} is no item"); continue; }
+                        int type = db.Item(item).TypeId;
+                        if (type > 3) { Report(mod, $"{d.where}: \"integrated\": \"items\": {db.Item(item).name} ({item}) is no equipment (a commodity can't be built in)"); continue; }
+                        int amount = type == 1 ? 10 : 1;
+                        if (entry is JObject e2 && e2["amount"] is JToken a)
+                        {
+                            if (a.Type != JTokenType.Integer || (int)a < 0) { Report(mod, $"{d.where}: \"integrated\": \"items\": \"amount\" must be 0 or more"); continue; }
+                            if (type == 1) amount = (int)a;
+                        }
+                        items.Add(new ItemStack(item, amount) { builtIn = true });
+                    }
+                    if (items.Count > 0) db.IntegratedItems[ship] = items; else db.IntegratedItems.Remove(ship);
+                }
+                else mod.Warnings.Add($"{d.where}: \"integrated\": unknown field \"{prop.Name}\" (ignored; \"khadorDrive\", \"cloak\", \"items\")");
             }
         }
 

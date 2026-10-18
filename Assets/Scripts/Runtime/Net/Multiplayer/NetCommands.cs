@@ -166,6 +166,8 @@ namespace GoF2Remake.Multiplayer
                 run = (a, by) => NetAdmin.Simple(a, by, NetAdmin.Order.Ammo), description = () => X("mpCmdAmmo", "admins: every mounted secondary to 50") },
             new Command { name = "reveal", usage = "[players]", arg = Arg.Player, optional = true, self = true, available = () => LocalIsAdmin, allowed = IsAdmin,
                 run = (a, by) => NetAdmin.Simple(a, by, NetAdmin.Order.Reveal), description = () => X("mpCmdReveal", "admins: every system on the star map") },
+            new Command { name = "system", usage = "[players] <system> <show | hide | reset>", arg = Arg.PlayerText, self = true, available = () => LocalIsAdmin, allowed = IsAdmin,
+                run = NetAdmin.SystemShow, description = () => X("mpCmdSystem", "admins: a system shown or hidden on their star map (routes and jumps too) until reset; its number, name or \"mod_id:id\"") },
             new Command { name = "peace", usage = "[players]", arg = Arg.Player, optional = true, self = true, available = () => LocalIsAdmin, allowed = IsAdmin,
                 run = (a, by) => NetAdmin.Simple(a, by, NetAdmin.Order.Peace), description = () => X("mpCmdPeace", "admins: neutral standings, no station grudges") },
             new Command { name = "cheat", usage = "[players] <god | ammo | cooldown | primary | boost | onehit | locks | shopping | jumps> [on | off]", arg = Arg.PlayerText,

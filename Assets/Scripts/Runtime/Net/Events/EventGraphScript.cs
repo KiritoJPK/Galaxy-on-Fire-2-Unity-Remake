@@ -38,6 +38,8 @@ namespace GoF2Remake.Events
     public enum EventFade { Out, In, Clear }
     /// <summary>The Set Flight Model node (/flightstyle): free flight, the original, or the player's own option again.</summary>
     public enum EventFlightModel { FreeFlight, Original, PlayersChoice }
+    /// <summary>The Show / Hide System node (/system): on the map, off it, or as the map has it again.</summary>
+    public enum EventSystemAction { Show, Hide, Reset }
     /// <summary>What a ship does when its Fly To / Fly Route order is done (NpcOrder.Then).</summary>
     public enum EventShipThen { Resume, Hold, Vanish, JumpOut }
     /// <summary>The Ship Action node.</summary>
@@ -664,6 +666,14 @@ namespace GoF2Remake.Events
                     case "EventClearWaypointNode":
                         Line(Join("waypoint", Text(n, "Players"), "off"));
                         break;
+                    case "EventSystemNode":
+                    {
+                        string system = Text(n, "System");
+                        if (system.Trim().Length == 0) Error(n, "System: the system's number, name or \"mod_id:id\".");
+                        var action = (EventSystemAction)Int(n, "Action");
+                        Line(Join("system", Text(n, "Players"), system, action.ToString().ToLowerInvariant()));
+                        break;
+                    }
                     case "EventClearRespawnNode":
                         Line(Join("respawn", Text(n, "Players"), "off"));
                         break;

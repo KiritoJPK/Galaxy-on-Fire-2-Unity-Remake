@@ -537,8 +537,9 @@ namespace GoF2Remake.UI
             }
             else if (roomDragging)
             {
-                roomYaw += delta.x * 0.005f;
-                roomPitch = Mathf.Clamp(roomPitch - delta.y * 0.005f, -1.45f, 1.45f);
+                var turn = Settings.OrbitTurn(delta);   // #121: the camera views' own inversion
+                roomYaw += turn.x * 0.005f;
+                roomPitch = Mathf.Clamp(roomPitch - turn.y * 0.005f, -1.45f, 1.45f);
             }
             return true;
         }

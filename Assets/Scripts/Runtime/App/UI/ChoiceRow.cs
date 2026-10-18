@@ -1,7 +1,8 @@
 // ChoiceRow.cs
 // One option with a fixed set of values (remake UI, styled by GoF2Common.uss .choice-*): a label, then either
 // segments (every value as a clickable button, for a few short values) or a stepper (‹ value ›, for long lists).
-// The row itself is the focusable element: left / right step through it (MainMenu, PauseMenu call Step).
+// The row itself is the focusable element: left / right step through it (MainMenu, PauseMenu call Step); Enter / A leave
+// it as it is (they cycled it, a player's report: A should only take the value shown).
 
 using System;
 using UnityEngine.UIElements;
@@ -88,9 +89,6 @@ namespace GoF2Remake.UI
 
         /// <summary>One step left (-1) or right (+1), clamped to the ends.</summary>
         public void Step(int dir) => Pick(index + dir);
-
-        /// <summary>Confirm on the row (Enter / A): the next value, wrapping round.</summary>
-        public void Cycle() { if (choices.Length > 0) Pick((index + 1) % choices.Length); }
 
         void Pick(int i)
         {

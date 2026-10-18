@@ -424,7 +424,18 @@ namespace GoF2Remake.UI
             {
                 // Space typed into a field is a space, not a press of the menu's button.
                 if (TextFieldKeys.IsTyping(e, root.focusController?.focusedElement as VisualElement)) { e.StopPropagation(); root.focusController?.IgnoreEvent(e); return; }
-                if (screen == MenuState.Menu && root.focusController?.focusedElement is ChoiceRow row) { row.Cycle(); e.StopPropagation(); }
+                // A choice keeps its value (left / right pick it; A cycled it, a player's report).
+                if (screen == MenuState.Menu && root.focusController?.focusedElement is ChoiceRow) { e.StopPropagation(); root.focusController?.IgnoreEvent(e); return; }
+                // A on an Options tab opens it and goes into it (it only selected the tab).
+                if (screen == MenuState.Menu && root.focusController?.focusedElement is Button tab && OptionsTabPage(tab) is string tabPage
+                    && !dialog.ClassListContains("dialog-backdrop--shown"))
+                {
+                    Play(buttonRelease);
+                    SelectTab(tabPage);
+                    FocusPageStart(tab);
+                    e.StopPropagation();
+                    root.focusController?.IgnoreEvent(e);
+                }
             }, TrickleDown.TrickleDown);
             root.RegisterCallback<PointerDownEvent>(OnPointerDown, TrickleDown.TrickleDown);
             root.RegisterCallback<PointerMoveEvent>(e => { DragScroll.NotePointer(); if (e.pointerType == PointerType.mouse) SetTouchMode(false); }, TrickleDown.TrickleDown);
@@ -520,6 +531,7 @@ namespace GoF2Remake.UI
             if (pad != null && pad.buttonWest.wasPressedThisFrame && modBrowser != null && openPanel == modBrowser.Panel
                 && !dialog.ClassListContains("dialog-backdrop--shown"))
                 modBrowser.ToggleSelected();
+            UpdateOptionTabs(pad);
             if (lastScreen != ScreenSize() || lastSafeArea != Screen.safeArea) UpdateLayout();
             KeepControllerFocus();
         }
@@ -582,21 +594,9 @@ namespace GoF2Remake.UI
             ApplySafeArea(w, h, offscreen);
         }
 
-        /// <summary>Safe area insets (pixels -> panel units) once the panel is laid out (its size is NaN before).</summary>
-        void ApplySafeArea(float w, float h, bool offscreen)
-        {
-            root.schedule.Execute(() =>
-            {
-                if (safeArea == null) return;
-                if (!(root.layout.width > 0f)) { ApplySafeArea(w, h, offscreen); return; }   // also catches NaN
-                float k = root.layout.width / w;
-                var sa = offscreen ? new Rect(0f, 0f, w, h) : Screen.safeArea;
-                safeArea.style.paddingLeft = sa.xMin * k;
-                safeArea.style.paddingRight = (w - sa.xMax) * k;
-                safeArea.style.paddingTop = (h - sa.yMax) * k;
-                safeArea.style.paddingBottom = sa.yMin * k;
-            }).ExecuteLater(1);
-        }
+        /// <summary>Safe area insets (the notch / Dynamic Island, the home indicator, cutouts) as the safe area's margins,
+        /// see SafeArea (its children are all absolutely placed: the padding it had before never moved them).</summary>
+        void ApplySafeArea(float w, float h, bool offscreen) => SafeArea.Apply(root, safeArea, w, h, offscreen, SafeArea.Mode.Margins);
 
         void OnDestroy()
         {
@@ -643,7 +643,8 @@ namespace GoF2Remake.UI
         void HookFocusSound(VisualElement e)
         {
             // Mouse only: a finger sliding over the UI must not drag the selection along with it.
-            e.RegisterCallback<PointerEnterEvent>(ev => { if (ev.pointerType == PointerType.mouse && e.enabledInHierarchy && e.focusable) e.Focus(); });
+            // Only when the mouse moved: a row that slides under a resting cursor as the list scrolls doesn't take the focus.
+            e.RegisterCallback<PointerEnterEvent>(ev => { if (ev.pointerType == PointerType.mouse && InputMode.MouseMovedRecently && e.enabledInHierarchy && e.focusable) e.Focus(); });
             e.RegisterCallback<FocusInEvent>(_ => { if (screen == MenuState.Menu) Play(buttonPush, 0.45f); });
         }
 
@@ -2518,6 +2519,7 @@ namespace GoF2Remake.UI
             }
 
             if (NavigateGameOptions(e, focused)) return;
+            if (NavigateOptions(e, focused)) return;
 
             var scope = dialog.ClassListContains("dialog-backdrop--shown") ? dialog : openPanel ?? mainButtons;
             var items = Focusables(scope);
@@ -2530,6 +2532,132 @@ namespace GoF2Remake.UI
             items[next].Focus();
             e.StopPropagation();
             root.focusController?.IgnoreEvent(e);
+        }
+
+        /// <summary>The Options panel (a player's report; the in-game Options' rules, OptionsView): up / down walk the active
+        /// tab, the active page's items and the footer (Back and Default settings as one row), stopping at the ends; left /
+        /// right switch tabs on the tab row, flip a toggle (sliders, choices and bindings step themselves, above), move
+        /// between the language buttons and between the footer's buttons, and leave the other rows alone. Before, the whole
+        /// panel was one list: down stepped through the tabs, right ran on to the next row. LB / RB (Q / E) switch tabs
+        /// anywhere (UpdateOptionTabs), A on a tab goes into it. False: not this panel, or a dialog is open.</summary>
+        bool NavigateOptions(NavigationMoveEvent e, VisualElement focused)
+        {
+            if (dialog.ClassListContains("dialog-backdrop--shown")) return false;
+            if (!panels.TryGetValue("optionsPanel", out var panel) || openPanel != panel) return false;
+            var activeTab = ActiveOptionsTab();
+            var items = OptionPageItems();
+            var footer = Focusables(panel.Q(className: "options-footer"));
+            bool onTab = focused is Button fb && OptionsTabPage(fb) != null;
+            bool inFooter = focused != null && footer.Contains(focused);
+            int i = focused != null ? items.IndexOf(focused) : -1;
+            bool languagePage = currentOptionsPage == "languagePage";
+            VisualElement to = focused;
+            switch (e.direction)
+            {
+                case NavigationMoveEvent.Direction.Down:
+                    if (onTab) to = items.Count > 0 ? items[0] : footer.Count > 0 ? footer[0] : focused;
+                    else if (i >= 0)
+                    {
+                        var below = languagePage ? SpatialNav.Next(items, focused, 0, 1) : i + 1 < items.Count ? items[i + 1] : null;
+                        to = below ?? (footer.Count > 0 ? footer[0] : focused);
+                    }
+                    else if (!inFooter) to = activeTab;   // nothing of this page had the focus
+                    break;
+                case NavigationMoveEvent.Direction.Up:
+                    if (inFooter) to = items.Count > 0 ? items[items.Count - 1] : activeTab;
+                    else if (i >= 0)
+                    {
+                        var above = languagePage ? SpatialNav.Next(items, focused, 0, -1) : i > 0 ? items[i - 1] : null;
+                        to = above ?? activeTab;
+                    }
+                    else if (!onTab) to = activeTab;
+                    break;
+                case NavigationMoveEvent.Direction.Left:
+                case NavigationMoveEvent.Direction.Right:
+                {
+                    int dir = e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1;
+                    if (onTab) { StepOptionsTab(dir, false); return Swallow(e); }
+                    if (inFooter) to = footer[Mathf.Clamp(footer.IndexOf(focused) + dir, 0, footer.Count - 1)];
+                    else if (focused is Toggle) optionControls.Find(c => c.Field == focused)?.Step(dir);
+                    else if (languagePage && focused is Button && i >= 0) to = SpatialNav.Next(items, focused, dir, 0) ?? focused;
+                    break;
+                }
+                default:
+                    return false;
+            }
+            if (to != null && to != focused) Select(to);
+            return Swallow(e);
+        }
+
+        bool Swallow(NavigationMoveEvent e)
+        {
+            e.StopPropagation();
+            root.focusController?.IgnoreEvent(e);
+            return true;
+        }
+
+        /// <summary>The page an Options tab button shows (null: not a tab).</summary>
+        static string OptionsTabPage(Button b)
+        {
+            if (b == null) return null;
+            foreach (var (tab, page) in OptionPages) if (b.name == tab) return page;
+            return null;
+        }
+
+        Button ActiveOptionsTab()
+        {
+            foreach (var (tab, page) in OptionPages) if (page == currentOptionsPage) return root.Q<Button>(tab);
+            return null;
+        }
+
+        /// <summary>What the keys walk on the active Options page, top to bottom (a greyed-out row not).</summary>
+        List<VisualElement> OptionPageItems()
+        {
+            var page = root.Q(currentOptionsPage);
+            return page != null ? Focusables(page, scopeShown: true) : new List<VisualElement>();
+        }
+
+        /// <summary>The Options tab beside the active one, wrapping round (LB / RB, Q / E, left / right on the tab row). The focus
+        /// goes with it: to the new tab from the tab row, else to the new page's first item.</summary>
+        void StepOptionsTab(int dir, bool intoPage)
+        {
+            int at = 0;
+            for (int k = 0; k < OptionPages.Length; k++) if (OptionPages[k].page == currentOptionsPage) at = k;
+            var (tab, page) = OptionPages[((at + dir) % OptionPages.Length + OptionPages.Length) % OptionPages.Length];
+            SelectTab(page);
+            var tabButton = root.Q<Button>(tab);
+            Select(tabButton);
+            if (intoPage) FocusPageStart(tabButton);
+        }
+
+        /// <summary>The active page's first item takes the focus once the page is laid out (a page just shown has no layout
+        /// in this frame, so its items don't count as shown yet); the tab keeps it meanwhile, and when the page has none.</summary>
+        void FocusPageStart(Button tab)
+        {
+            string page = currentOptionsPage;
+            root.schedule.Execute(() =>
+            {
+                if (currentOptionsPage != page || !panels.TryGetValue("optionsPanel", out var panel) || openPanel != panel) return;
+                var first = OptionPageItems().Find(v => true);
+                if (first != null && root.focusController?.focusedElement == tab) Select(first);
+            }).ExecuteLater(1);
+        }
+
+        /// <summary>LB / RB (Q / E) on the Options panel switch tabs, like the in-game Options and the hangar's (they did
+        /// nothing here). Not with both shoulders held (the Debug panel's LB + RB).</summary>
+        void UpdateOptionTabs(Gamepad pad)
+        {
+            if (screen != MenuState.Menu || dialog.ClassListContains("dialog-backdrop--shown")) return;
+            if (!panels.TryGetValue("optionsPanel", out var panel) || openPanel != panel) return;
+            var kb = Keyboard.current;
+            int dir = 0;
+            if (pad != null && pad.leftShoulder.wasPressedThisFrame && !pad.rightShoulder.isPressed) dir = -1;
+            else if (pad != null && pad.rightShoulder.wasPressedThisFrame && !pad.leftShoulder.isPressed) dir = 1;
+            else if (kb != null && kb.qKey.wasPressedThisFrame) dir = -1;
+            else if (kb != null && kb.eKey.wasPressedThisFrame) dir = 1;
+            if (dir == 0) return;
+            var focused = root.focusController?.focusedElement as VisualElement;
+            StepOptionsTab(dir, !(focused is Button b && OptionsTabPage(b) != null));
         }
 
         VisualElement lastOptionCard, lastOptionToggle;
@@ -2580,12 +2708,15 @@ namespace GoF2Remake.UI
             return true;
         }
 
-        static List<VisualElement> Focusables(VisualElement scope)
+        /// <summary>What the keys can reach in 'scope', in order. 'scopeShown': the scope itself counts as shown whatever its
+        /// resolved style says (an Options page just switched to: its style resolves with the next repaint).</summary>
+        static List<VisualElement> Focusables(VisualElement scope, bool scopeShown = false)
         {
             var list = new List<VisualElement>();
-            scope.Query<VisualElement>().Where(v => v.focusable && v.canGrabFocus && v.enabledInHierarchy && v.resolvedStyle.display != DisplayStyle.None
+            var stop = scopeShown ? scope : scope.parent;
+            scope.Query<VisualElement>().Where(v => v.focusable && v.canGrabFocus && v.enabledInHierarchy && (v == scope || v.resolvedStyle.display != DisplayStyle.None)
                                                      && !(v.parent is BaseField<float>) && !(v.parent is BaseField<int>) && !(v.parent is Toggle)
-                                                     && !InsideTextField(v) && IsShown(v, scope))
+                                                     && !InsideTextField(v) && IsShown(v, stop))
                 .ForEach(list.Add);
             return list;
         }
@@ -2600,9 +2731,10 @@ namespace GoF2Remake.UI
             return false;
         }
 
-        static bool IsShown(VisualElement v, VisualElement scope)
+        /// <summary>No element from 'v' up to (not including) 'stop' is display: none.</summary>
+        static bool IsShown(VisualElement v, VisualElement stop)
         {
-            for (var p = v; p != null && p != scope.parent; p = p.parent)
+            for (var p = v; p != null && p != stop; p = p.parent)
                 if (p.resolvedStyle.display == DisplayStyle.None) return false;
             return true;
         }

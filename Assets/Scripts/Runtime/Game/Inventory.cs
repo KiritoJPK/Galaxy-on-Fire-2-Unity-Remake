@@ -16,9 +16,12 @@ namespace GoF2Remake.Data
     {
         public int item;
         public int amount;
+        /// <summary>Remake mods: built into the flown ship (ships.json "integrated": "items", Hangar.SyncBuiltIn): it works
+        /// like a mounted item but takes no slot and can't be demounted, sold, stored or moved to another ship.</summary>
+        public bool builtIn;
 
         public ItemStack(int item, int amount) { this.item = item; this.amount = amount; }
-        public ItemStack Clone() => new ItemStack(item, amount);
+        public ItemStack Clone() => new ItemStack(item, amount) { builtIn = builtIn };
     }
 
     [Serializable]

@@ -4743,10 +4743,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventScoreBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventScoreBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventScoreBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventScoreBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004855
       type: {class: 'Constant`1[[GoF2Remake.EditorTools.Flow, Assembly-CSharp-Editor]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data: {}
@@ -4854,19 +4854,19 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventRace, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventRace, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 5
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventRace, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventRace, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004885
       type: {class: EnumConstant, ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventBehaviour, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventBehaviour, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventBehaviour, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventBehaviour, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004886
       type: {class: 'Constant`1[[GoF2Remake.EditorTools.Flow, Assembly-CSharp-Editor]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data: {}
@@ -4894,10 +4894,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 5
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004893
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -4914,10 +4914,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 2
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004897
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -4944,10 +4944,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004904
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -4964,10 +4964,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 4
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004908
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -4984,19 +4984,19 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventRace, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventRace, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 5
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventRace, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventRace, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004912
       type: {class: EnumConstant, ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventBehaviour, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventBehaviour, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventBehaviour, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventBehaviour, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004913
       type: {class: 'Constant`1[[GoF2Remake.EditorTools.Flow, Assembly-CSharp-Editor]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data: {}
@@ -5038,10 +5038,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventLogicOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventLogicOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 1
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventLogicOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventLogicOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004924
       type: {class: 'Constant`1[[System.Boolean, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5058,10 +5058,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004928
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5078,10 +5078,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004932
       type: {class: EventStateNode, ns: GoF2Remake.EditorTools, asm: Assembly-CSharp-Editor}
       data: 
@@ -5090,10 +5090,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004934
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5110,10 +5110,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 3
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004938
       type: {class: EventStateNode, ns: GoF2Remake.EditorTools, asm: Assembly-CSharp-Editor}
       data: 
@@ -5132,10 +5132,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004943
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5152,10 +5152,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 3
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventGameValue, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventGameValue, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004947
       type: {class: EventStateNode, ns: GoF2Remake.EditorTools, asm: Assembly-CSharp-Editor}
       data: 
@@ -5196,10 +5196,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventWinnerBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventWinnerBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventWinnerBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventWinnerBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004958
       type: {class: 'Constant`1[[GoF2Remake.EditorTools.Flow, Assembly-CSharp-Editor]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data: {}
@@ -5227,10 +5227,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 2
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventCompareOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventCompareOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004966
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5301,10 +5301,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 2
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939004985
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5395,10 +5395,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 2
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventMathOp, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventMathOp, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939005010
       type: {class: 'Constant`1[[System.Single, System.Private.CoreLib]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data:
@@ -5425,10 +5425,10 @@ MonoBehaviour:
       data:
         m_Value:
           m_EnumType:
-            m_Identification: GoF2Remake.Events.EventWinnerBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+            m_Identification: GoF2Remake.Events.EventWinnerBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
           m_Value: 0
         m_EnumType:
-          m_Identification: GoF2Remake.Events.EventWinnerBy, Assembly-CSharp, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
+          m_Identification: GoF2Remake.Events.EventWinnerBy, GoF2.Net, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null
     - rid: 7146566187939005017
       type: {class: 'Constant`1[[GoF2Remake.EditorTools.Flow, Assembly-CSharp-Editor]]', ns: Unity.GraphToolkit.Editor, asm: UnityEditor.GraphToolkitModule}
       data: {}

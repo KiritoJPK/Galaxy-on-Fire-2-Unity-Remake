@@ -560,7 +560,11 @@ namespace GoF2Remake.Multiplayer
                 Debug.LogWarning($"Server: profile {account.id} ({account.name}): {cut} Kaamo upgrade level(s) past {Session.MaxModLevel} per mod removed.");
             }
             long worth = Worth(save);
-            if (!NetGame.HostAllowsDebug && !IsHostClient(client) && Implausible(login, save, worth) is string why)
+            string why = !NetGame.HostAllowsDebug && !IsHostClient(client) ? Implausible(login, save, worth) : null;
+            // The money log (NetAudit): big growth since the last accepted upload, per part, and every refusal.
+            if (why != null || worth - account.worth >= 100_000) NetAudit.Upload(account.id, account.name, client, ReadSaved(account.id), save,
+                account.worth, Mathf.Max(0f, now - login.acceptedAt) / 60f, why);
+            if (why != null)
             {
                 Reject(login, why);
                 return;
@@ -616,21 +620,17 @@ namespace GoF2Remake.Multiplayer
         }
 
         /// <summary>What a profile owns: credits, the ships (their price) and every item at its lowest price.</summary>
-        static long Worth(SaveData s)
+        static long Worth(SaveData s) => NetAudit.Of(s).Total;
+
+        /// <summary>The profile's last accepted save on disk (NetAudit's comparison), null when none or unreadable.</summary>
+        static SaveData ReadSaved(string id)
         {
-            var db = NetGame.Db;
-            long sum = s.credits;
-            long Items(List<ItemStack> list)
+            try
             {
-                long v = 0;
-                if (list != null) foreach (var st in list) if (st != null) v += (long)(db.Item(st.item)?.minPrice ?? 0) * Math.Max(0, st.amount);
-                return v;
+                string path = ProfilePath(id);
+                return File.Exists(path) ? JsonUtility.FromJson<SaveData>(File.ReadAllText(path)) : null;
             }
-            long ShipPrice(int ship) => db.Ship(ship)?.price ?? 0;
-            sum += ShipPrice(s.ship) + Items(s.equipment) + Items(s.cargo) + Items(s.kaamoItems);
-            if (s.kaamoShips != null) foreach (var k in s.kaamoShips) if (k != null) sum += ShipPrice(k.ship) + Items(k.equipment);
-            if (s.hasParkedShip && s.parkedShip != null) sum += ShipPrice(s.parkedShip.ship) + Items(s.parkedShip.equipment) + Items(s.parkedShip.cargo);
-            return sum;
+            catch (Exception) { return null; }
         }
 
         // ---- chat commands ----------------------------------------------------------------------------------

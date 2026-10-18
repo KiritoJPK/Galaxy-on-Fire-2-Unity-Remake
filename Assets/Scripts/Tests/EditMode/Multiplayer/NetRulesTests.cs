@@ -7,7 +7,7 @@
 // capital ship enhancements off, the informer missions' original rule off, stackable Kaamo upgrades on, stored ships keep
 // their equipment on, the cloak bay on, EMP breaks cloaks on, smarter NPC targeting on; the ship collision mode, mixed by default, a setting of its own) and flags (-cloakhides,
 // -nopirateevents, -capitalships, -informeroriginal, -nokaamostacking, -nokaamoequipment, -nocloakbay, -noempcloak,
-// -originaltargeting, -shipcollision exact|mixed|original, the old -precisecollision = exact); the setting ranges (2..100 players,
+// -smarttargeting, -shipcollision exact|mixed|original, the old -precisecollision = exact); the setting ranges (2..100 players,
 // 0..100 claims per faction, 1..3650 lapse days).
 
 using System.IO;
@@ -32,7 +32,7 @@ namespace GoF2Remake.Tests
             ("kaamoequipment", "-nokaamoequipment", true),
             ("cloakbay", "-nocloakbay", true),
             ("empcloak", "-noempcloak", true),
-            ("smarttargeting", "-originaltargeting", true),
+            ("smarttargeting", "-smarttargeting", false),
         };
 
         [Test]
@@ -82,8 +82,7 @@ namespace GoF2Remake.Tests
         [Test]
         public void TheDefaultsAreTheRulesOnByDefault()
         {
-            int expected = NetRules.PirateEvents | NetRules.KaamoStacking | NetRules.KaamoKeepsEquipment | NetRules.CloakBay | NetRules.EmpBreaksCloak
-                         | NetRules.SmarterNpcTargeting;
+            int expected = NetRules.PirateEvents | NetRules.KaamoStacking | NetRules.KaamoKeepsEquipment | NetRules.CloakBay | NetRules.EmpBreaksCloak;
             Assert.AreEqual(expected, NetRules.Defaults);
         }
 

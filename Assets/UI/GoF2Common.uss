@@ -968,6 +968,16 @@
     border-left-color: var(--gof-amber);
 }
 
+/* A row that doesn't apply now (OptionDef.enabled: MSAA under a temporal upscaler): greyed out, no hover. */
+.option-row.unity-disabled {
+    opacity: 0.4;
+}
+
+.can-hover .option-row.unity-disabled:hover {
+    background-color: rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+}
+
 .options-scroll {
     height: 560px;
     flex-shrink: 1;

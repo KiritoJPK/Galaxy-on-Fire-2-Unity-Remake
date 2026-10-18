@@ -7,7 +7,9 @@
 // MeshColliders built on the ship's meshes, layer PickLayer). Under the ship a flat arrow on the floor points at its nose
 // (game +z). Sizes follow the camera distance, so the handles keep their size on screen.
 // Mount positions are game units in the ship's frame; the ship's Unity space has x mirrored (WeaponSystem.MountToLocal).
-// Input comes from the view (screen pixels, origin bottom-left, like Camera.ScreenPointToRay).
+// Input comes from the view (screen pixels, origin bottom-left, like Camera.ScreenPointToRay). With touch input the balls
+// and arrows are drawn larger and picked within a fingertip (Reach: the screen's dpi), the arrows from further out (a tap
+// on the ball moves the ball).
 
 using System;
 using System.Collections.Generic;
@@ -196,6 +198,20 @@ namespace GoF2Remake.World
 
         static float PixelScale => Mathf.Max(1f, Screen.height) / 1080f;
 
+        static bool Touch => GoF2Remake.UI.InputMode.Current == GoF2Remake.UI.InputKind.Touch;
+        /// <summary>The balls and arrows larger with touch input.</summary>
+        static float TouchSize => Touch ? 1.5f : 1f;
+
+        /// <summary>How far from a handle a pointer still picks it (screen pixels): 'pixels' at 1080 p, and with touch input at
+        /// least a fingertip, 'touchInches' at the screen's dpi (48 px at 1080 p when the dpi is unknown): 16 px on a phone's
+        /// 1080 p screen is about a millimetre.</summary>
+        static float Reach(float pixels, float touchInches)
+        {
+            float r = pixels * PixelScale;
+            if (!Touch) return r;
+            return Mathf.Max(r, Screen.dpi > 0f ? Screen.dpi * touchInches : 48f * PixelScale);
+        }
+
         // ---- per frame --------------------------------------------------------------------------------------------
 
         void LateUpdate()
@@ -211,7 +227,7 @@ namespace GoF2Remake.World
             for (int i = 0; i < Mounts.Count && i < markers.Count; i++)
             {
                 var p = WorldOf(Mounts[i]);
-                float s = Scale(p) * MarkerScreen * (i == Selected ? 1.5f : 1f);
+                float s = Scale(p) * MarkerScreen * TouchSize * (i == Selected ? 1.5f : 1f);
                 var t = markers[i].go.transform;
                 t.SetPositionAndRotation(p, Ship.rotation);
                 t.localScale = Vector3.one * s;
@@ -228,7 +244,7 @@ namespace GoF2Remake.World
                 arrows[a].SetActive(sel);
                 if (!sel) continue;
                 var p = WorldOf(Mounts[Selected]);
-                float len = Scale(p) * ArrowScreen;
+                float len = Scale(p) * ArrowScreen * TouchSize;
                 arrows[a].transform.SetPositionAndRotation(p, Quaternion.LookRotation(Axis(a), a == 1 ? Ship.forward : Ship.up));
                 arrows[a].transform.localScale = new Vector3(len, len, len);
                 arrowMats[a].SetColor("_Color", grab == (Grab)(a + 1) || grab == Grab.None && hoverAxis == a ? Hot : AxisColours[a]);
@@ -252,7 +268,7 @@ namespace GoF2Remake.World
         {
             if (Ship == null || cam == null || Mounts == null) return -1;
             int best = -1;
-            float bestD = PickPixels * PixelScale;
+            float bestD = Reach(PickPixels, 0.17f);
             for (int i = 0; i < Mounts.Count; i++)
             {
                 var sp = cam.WorldToScreenPoint(WorldOf(Mounts[i]));
@@ -268,17 +284,17 @@ namespace GoF2Remake.World
         {
             if (Ship == null || cam == null || Selected < 0 || Selected >= (Mounts?.Count ?? 0)) return -1;
             var p = WorldOf(Mounts[Selected]);
-            float len = Scale(p) * ArrowScreen;
+            float len = Scale(p) * ArrowScreen * TouchSize;
             var a = (Vector2)cam.WorldToScreenPoint(p);
             int best = -1;
-            float bestD = 12f * PixelScale;
+            float bestD = Reach(12f, 0.12f);
             for (int i = 0; i < 3; i++)
             {
                 var bp = cam.WorldToScreenPoint(p + Axis(i) * len);
                 if (bp.z <= 0f) continue;
                 var b = (Vector2)bp;
                 // Only the arrow's outer 80 % (the ball itself drags over the surface).
-                var from = Vector2.Lerp(a, b, 0.2f);
+                var from = Vector2.Lerp(a, b, Touch ? 0.45f : 0.2f);
                 float d = DistanceToSegment(screen, from, b);
                 if (d < bestD) { bestD = d; best = i; }
             }

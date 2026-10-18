@@ -318,7 +318,7 @@ namespace GoF2Remake.Data
             r.ship = ship;
             r.shipRace = ship < Shop.ShipRace.Length ? Shop.ShipRace[ship] : 0;
             var cargo = (s.cargo ?? new List<ItemStack>()).Where(c => c != null).Select(c => c.Clone()).ToList();
-            r.equipment = Slots(db, ship, s.equipment, s.shipMods, unsaleable, cargo, notes, ref modItems);
+            r.equipment = Slots(db, ship, s.equipment?.Where(e => !e.builtIn).ToList(), s.shipMods, unsaleable, cargo, notes, ref modItems);   // built-ins are the remake mods' ships'
             r.cargo = Goods(cargo, db, s.station, unsaleable, ref modItems);
 
             // The station memory: the 3 stations, newest first, then the current one

@@ -1,6 +1,6 @@
 // NpcTargetRules.cs
 // The remake's NPC fighter target pick (NpcShip.UpdateTargetingLocal; CLAUDE.md "NPCs and combat", AI), plain C# so it can
-// be tested. Option Settings.SmarterNpcTargeting (a session rule), on by default; off = the original.
+// be tested. Option Settings.SmarterNpcTargeting (a session rule), off by default (#121) = the original.
 //   original   PlayerFighter::update: the enemy list has the player first, then the other races' ships; a fighter takes the
 //              first one inside its +-50 000-unit box, so every hostile fighter in the orbit went for the player and none
 //              for the local patrols beside it (players' report, 2026-10-17: a raider group arriving shredded the player).

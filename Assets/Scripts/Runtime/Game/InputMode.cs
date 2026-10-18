@@ -148,15 +148,35 @@ namespace GoF2Remake.UI
                 case Mouse mouse:
                     // Touches on some platforms also arrive as a simulated mouse: ignore those.
                     if (Current == InputKind.Touch && Touchscreen.current != null && Touchscreen.current.primaryTouch.isInProgress) return;
+                    if (mouse.delta.ReadValueFromEvent(e, out Vector2 moved) && moved != Vector2.zero) lastMouseMove = Time.unscaledTime;
                     if (!MouseUsed(e, mouse)) return;
                     kind = InputKind.KeyboardMouse;
                     break;
                 default:
                     return;
             }
+            ApplyCursor(kind);
             if (kind == Current) return;
             Current = kind;
             Changed?.Invoke();
+        }
+
+        static float lastMouseMove = -1f;
+
+        /// <summary>The mouse itself moved in the last moment. A menu that gives the focus to what the pointer enters asks this
+        /// first: a list scrolled by the keys or a controller slides its rows under a resting cursor, and they took the focus
+        /// (a player's report: scrolling up, the selection jumped back to the row under the cursor at the bottom).</summary>
+        public static bool MouseMovedRecently => Time.unscaledTime - lastMouseMove < 0.15f;
+
+        /// <summary>Remake (a player's report): the mouse cursor shows only while the keyboard and mouse (or touch) are in use,
+        /// not with a controller; a mouse move brings it back. Desktop only; a captured cursor (mouse steering) stays hidden.</summary>
+        public static bool CursorShown => Application.isMobilePlatform || Current != InputKind.Gamepad;
+
+        static void ApplyCursor(InputKind kind)
+        {
+            if (Application.isMobilePlatform || Cursor.lockState == CursorLockMode.Locked) return;
+            bool shown = kind != InputKind.Gamepad;
+            if (Cursor.visible != shown) Cursor.visible = shown;
         }
 
         /// <summary>True if the event sets any control of the device to at least this magnitude (a pressed button = 1).</summary>

@@ -48,6 +48,9 @@
 //     keeps the model's own. No skin = the model's own look. A skin's textures load only when a build shows it.
 //   Every kit ship also has a weapon colour (Build.weaponColor, "weaponcolor=<id or #RRGGBB>"; none = the weapons' own look):
 //   the energy weapons' shots in that colour (Flight.WeaponTint), picked from the kit's "weapons" palette, else WeaponPalette.
+//   A kit whose "hardpoints" have "toggle": true lets the player hide its weapon models, the mounts' pylons and its turret
+//   model (Build.weapons, "weapons=off"; ships.json's "build" may start a ship with "weapons": false): the guns then fire from
+//   the mounts themselves (ModHardpoints.Hidden).
 // Customizations of other ships (the game's own, and mod ships built from one model): a ships.json entry ("override": n or
 // "mod:id", or a new ship without "kit") with "skins" (the format above, for that ship) and / or "weaponColors" (a palette list,
 // or true for the built-in one). Such a ship gets a kit of its own with no parts (CustomizationOf: the skins of every mod that
@@ -663,14 +666,20 @@ namespace GoF2Remake.Modding
             public string exhaust, exhaustColor, exhaustColor2;
             /// <summary>The exhaust style's size ("exhaustsize=1.2": x its fitted size, ModExhausts.MinSize .. MaxSize; null = 1).</summary>
             public string exhaustSize;
+            /// <summary>The kit's weapon models, pylons and turret shown or not (written "weapons=off" / "on"; null = the default
+            /// build's choice, else shown): only for a kit whose "hardpoints" have "toggle": true (ModHardpoints.Hidden).</summary>
+            public string weapons;
+            public const string WeaponsOff = "off", WeaponsOn = "on";
+            public bool WeaponsHidden => string.Equals(weapons, WeaponsOff, StringComparison.OrdinalIgnoreCase);
             const string ColorPrefix = "color.", SkinKey = "skin", WeaponColorKey = "weaponcolor";
-            const string ExhaustKey = "exhaust", ExhaustColorKey = "exhaustcolor", ExhaustColor2Key = "exhaustcolor2", ExhaustSizeKey = "exhaustsize";
+            const string ExhaustKey = "exhaust", ExhaustColorKey = "exhaustcolor", ExhaustColor2Key = "exhaustcolor2", ExhaustSizeKey = "exhaustsize", WeaponsKey = "weapons";
 
             /// <summary>Names a kit can't use for a slot: the build text's own keys.</summary>
             public static bool Reserved(string slot) => string.Equals(slot, "tier", StringComparison.OrdinalIgnoreCase)
                                                         || string.Equals(slot, "ship", StringComparison.OrdinalIgnoreCase)
                                                         || string.Equals(slot, SkinKey, StringComparison.OrdinalIgnoreCase)
                                                         || string.Equals(slot, WeaponColorKey, StringComparison.OrdinalIgnoreCase)
+                                                        || string.Equals(slot, WeaponsKey, StringComparison.OrdinalIgnoreCase)
                                                         || slot.StartsWith(ExhaustKey, StringComparison.OrdinalIgnoreCase)
                                                         || slot.StartsWith(ColorPrefix, StringComparison.OrdinalIgnoreCase);
 
@@ -690,6 +699,7 @@ namespace GoF2Remake.Modding
                     else if (k == ExhaustColorKey) b.exhaustColor = v.Length > 0 ? v : null;
                     else if (k == ExhaustColor2Key) b.exhaustColor2 = v.Length > 0 ? v : null;
                     else if (k == ExhaustSizeKey) b.exhaustSize = v.Length > 0 ? v : null;
+                    else if (k == WeaponsKey) b.weapons = v.Length > 0 ? v.ToLowerInvariant() : null;
                     else if (k.StartsWith(ColorPrefix)) { if (v.Length > 0) b.colors[k.Substring(ColorPrefix.Length)] = v; }
                     else if (v.Length > 0) b.parts[k] = v;
                 }
@@ -716,6 +726,13 @@ namespace GoF2Remake.Modding
                             : prop.Value.Type == JTokenType.String ? (string)prop.Value : null;
                         continue;
                     }
+                    if (string.Equals(prop.Name, WeaponsKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // "weapons": false / "off" hides them, true / "on" shows them.
+                        b.weapons = prop.Value.Type == JTokenType.Boolean ? ((bool)prop.Value ? WeaponsOn : WeaponsOff)
+                                  : prop.Value.Type == JTokenType.String ? ((string)prop.Value).ToLowerInvariant() : null;
+                        continue;
+                    }
                     if (string.Equals(prop.Name, "colors", StringComparison.OrdinalIgnoreCase) && prop.Value is JObject co)
                     {
                         foreach (var c in co.Properties()) if (c.Value.Type == JTokenType.String) b.colors[c.Name] = (string)c.Value;
@@ -728,7 +745,7 @@ namespace GoF2Remake.Modding
 
             public Build Clone()
             {
-                var b = new Build { tier = tier, skin = skin, weaponColor = weaponColor, exhaust = exhaust, exhaustColor = exhaustColor, exhaustColor2 = exhaustColor2, exhaustSize = exhaustSize };
+                var b = new Build { tier = tier, skin = skin, weaponColor = weaponColor, exhaust = exhaust, exhaustColor = exhaustColor, exhaustColor2 = exhaustColor2, exhaustSize = exhaustSize, weapons = weapons };
                 foreach (var kv in parts) b.parts[kv.Key] = kv.Value;
                 foreach (var kv in colors) b.colors[kv.Key] = kv.Value;
                 return b;
@@ -741,7 +758,8 @@ namespace GoF2Remake.Modding
                 .Concat(string.IsNullOrEmpty(exhaust) ? Enumerable.Empty<string>() : new[] { ExhaustKey + "=" + exhaust })
                 .Concat(string.IsNullOrEmpty(exhaustColor) ? Enumerable.Empty<string>() : new[] { ExhaustColorKey + "=" + exhaustColor })
                 .Concat(string.IsNullOrEmpty(exhaustColor2) ? Enumerable.Empty<string>() : new[] { ExhaustColor2Key + "=" + exhaustColor2 })
-                .Concat(string.IsNullOrEmpty(exhaustSize) ? Enumerable.Empty<string>() : new[] { ExhaustSizeKey + "=" + exhaustSize }).Append("tier=" + tier));
+                .Concat(string.IsNullOrEmpty(exhaustSize) ? Enumerable.Empty<string>() : new[] { ExhaustSizeKey + "=" + exhaustSize })
+                .Concat(string.IsNullOrEmpty(weapons) ? Enumerable.Empty<string>() : new[] { WeaponsKey + "=" + weapons }).Append("tier=" + tier));
         }
 
         /// <summary>'b' made valid for this kit and ship type: every slot one part the type may fit ('fallback''s part, else the
@@ -790,6 +808,14 @@ namespace GoF2Remake.Modding
                 n.exhaustColor2 = ModExhausts.ResolveColor(style, src?.exhaustColor2, out _) ? src.exhaustColor2 : null;
                 n.exhaustSize = ModExhausts.SizeText(ModExhausts.ParseSize(src?.exhaustSize));
             }
+            // The weapon models shown or hidden, only where the kit lets the player choose ("on" = shown over a fallback that
+            // hides them).
+            if (kit.hardpoints != null && kit.hardpoints.toggle)
+            {
+                bool fallbackHides = fallback != null && fallback.WeaponsHidden;
+                bool hide = b != null && b.weapons == Build.WeaponsOn ? false : b != null && b.WeaponsHidden || fallbackHides;
+                n.weapons = hide ? Build.WeaponsOff : fallbackHides ? Build.WeaponsOn : null;
+            }
             return n;
         }
 
@@ -829,11 +855,12 @@ namespace GoF2Remake.Modding
         {
             // The weapon colour isn't part of the model (Flight.WeaponTint colours the shots): no variant of its own.
             // Nor the exhaust style (ModExhausts.Apply puts it on the instance).
+            // Nor the weapon models' toggle (ModHardpoints shows or hides them, and the pylons, on the instance).
             if (build != null && (!string.IsNullOrEmpty(build.weaponColor) || !string.IsNullOrEmpty(build.exhaust) || !string.IsNullOrEmpty(build.exhaustColor)
-                                  || !string.IsNullOrEmpty(build.exhaustColor2) || !string.IsNullOrEmpty(build.exhaustSize)))
+                                  || !string.IsNullOrEmpty(build.exhaustColor2) || !string.IsNullOrEmpty(build.exhaustSize) || !string.IsNullOrEmpty(build.weapons)))
             {
                 build = build.Clone();
-                build.weaponColor = build.exhaust = build.exhaustColor = build.exhaustColor2 = build.exhaustSize = null;
+                build.weaponColor = build.exhaust = build.exhaustColor = build.exhaustColor2 = build.exhaustSize = build.weapons = null;
             }
             if (KitShip(ship) == null)
             {

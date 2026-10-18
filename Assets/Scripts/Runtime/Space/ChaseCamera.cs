@@ -8,15 +8,16 @@
 //      position  0.01h * 0.011 + 0.001        look-at  (1 - 0.01h) * 0.015 + 0.003
 //    The damping curve (aproximateCooefficientsForAproximationOfDampingFunktion: per coefficient x, a factor
 //    k(dt) = c0 / dt + c1 + c2 dt + c3 dt^2 + c4 dt^3, the c's fitted polynomials in x) is 1 - e^(-x dt / 2) within 2 % for
-//    dt up to 50 ms (Ease; ChaseCameraTests checks it against the polynomial). #114: the remake used 1 - e^(-x dt), a camera
-//    that caught up twice as fast: the crosshair stayed near the middle while pitching and the ship near the centre in a
-//    turn, where the original's swing well out to the side.
-//  * The camera looks at a point, not along a rotation: +0x14, eased toward the ship's matrix x the target offset (+0x2c),
-//    and MatrixGetLookAt(position, that point, the ship's up) from where the camera really is. translateNoUpdate moves
-//    both. The dodge (PlayerEgo::updateManeuver) shifts the target offset sideways by -3 x the yaw rate: with the look
-//    point only ~34 m ahead of the camera (offsets (0, 600, -1338) / (0, 600, -650) units) the camera turns ~40 deg and
-//    keeps the sliding ship in view. (The remake used to put that offset on the camera's position and ease a rotation
-//    aimed from where the camera should be: the ship slid out of the frame.)
+//    dt up to 50 ms (Ease; ChaseCameraTests checks it against the polynomial).
+//  * The camera looks at a point (+0x14, eased toward the ship's matrix x the target offset +0x2c) through
+//    MatrixGetLookAt from where the camera really is; translateNoUpdate moves both. The dodge (PlayerEgo::updateManeuver)
+//    shifts the target offset sideways by -3 x the yaw rate: with the look point only ~34 m ahead of the camera (offsets
+//    (0, 600, -1338) / (0, 600, -650) units) the camera turns ~40 deg and keeps the sliding ship in view.
+//  * Two follows (Graphics option "Chase camera", Settings.OriginalChaseCamera): Original (#114, the 2026.10.17 release)
+//    = the above, Ease and the look point: in a turn the ship swings out to the side and the crosshair off centre. Remake
+//    (default; players found #114 worse) = 2026.10.09's: 1 - e^(-x dt) (Follow, twice the rate) and a rotation slerped
+//    toward the look-at point as seen from where the camera should be, during a dodge from where it is (aimed from where
+//    it should be, the sliding ship left the frame).
 //  * Boost (MGame::OnUpdate): the vertical FOV grows by 0.35 rad x the boost percentage, and
 //    TargetFollowCamera::setBoostPercentage(pct, clamp(boost speed, 2, 8)) jitters the look-at point by
 //    pct x n units per axis each frame. The radial blur on top (post effect 0x1400002) isn't reproduced.
@@ -25,6 +26,10 @@
 //    ship hidden (PlayerEgo::hideShipForFirstPersonCameraView), the hit shake x0.001 and the rumble x0.0015. Remake
 //    (FreeLookCamera.Mode.FirstPerson): reachable, on the bow instead of the pivot (FirstPersonSeat), the shake and the
 //    rumble as small turns of the view, the boost's FOV at half.
+//  * The shake and the rumble draw a new random offset each frame of the original's 30 fps. Remake (players' reports
+//    2026-10-18, extreme shaking): each offset is held for that 33 ms (HeldJitter) instead of a new one every rendered
+//    frame (at 144 fps an explosion's rumble jolted the view 2.8 deg every 7 ms), and laid on top of the follow, taken
+//    off again the next frame (UndoJitter): drawn into the eased pose, it piled up through the easing.
 
 using UnityEngine;
 
@@ -36,6 +41,10 @@ namespace GoF2Remake.Flight
         /// <summary>TargetFollowCamera::update's damping for coefficient 'x' over a frame of 'dtMs': the share of the way to the
         /// goal (the original's fitted polynomial is 1 - e^(-x dt / 2) within 2 % up to 50 ms frames; frame-rate independent).</summary>
         public static float Ease(float x, float dtMs) => 1f - Mathf.Exp(-0.5f * x * dtMs);
+
+        /// <summary>The remake's follow for coefficient 'x' over 'dtMs' (2026.10.09's): 1 - e^(-x dt), twice the original's
+        /// rate (Ease); a tighter camera players preferred.</summary>
+        public static float Follow(float x, float dtMs) => 1f - Mathf.Exp(-x * dtMs);
 
         public ShipController target;
 
@@ -62,11 +71,64 @@ namespace GoF2Remake.Flight
 
         Camera cam;
         Vector3 slide;
-        // TargetFollowCamera+0x14: the eased look-at point (world); invalid = start from where it should be.
+        // The Original follow: TargetFollowCamera+0x14, the eased look-at point (world); invalid = start from the view.
         Vector3 lookPoint;
         bool lookValid;
         float shakeMs, shakeUnits, rumble;
         bool wasBoosting;
+        // The shake / rumble on top of the follow (header): the held random directions, the pose without them and the one
+        // shown with them.
+        Vector3 shakeDir, rumbleDir;
+        float jitterAgeMs = JitterMs;
+        Vector3 basePos, shownPos;
+        Quaternion baseRot, shownRot;
+        bool jittered;
+
+        /// <summary>The original's frame (30 fps): a shake or rumble offset lasts this long.</summary>
+        public const float JitterMs = 1000f / 30f;
+
+        /// <summary>A random direction in [-1, 1] per axis, drawn again once 'ageMs' reaches JitterMs (the original's frame)
+        /// rather than every rendered frame. Shared with the cutscene camera's rumble.</summary>
+        public static Vector3 HeldJitter(ref Vector3 dir, ref float ageMs, float dtMs)
+        {
+            ageMs += dtMs;
+            if (ageMs >= JitterMs || dir == Vector3.zero)
+            {
+                ageMs = ageMs >= 2f * JitterMs ? 0f : ageMs - JitterMs;
+                dir = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), Random.Range(-1f, 1f));
+            }
+            return dir;
+        }
+
+        /// <summary>Last frame's shake / rumble comes off before the follow eases on (unless something else has moved the
+        /// camera since: a snap, another camera).</summary>
+        void UndoJitter()
+        {
+            if (jittered && transform.position == shownPos && transform.rotation == shownRot)
+                transform.SetPositionAndRotation(basePos, baseRot);
+            jittered = false;
+        }
+
+        void BeginJitter()
+        {
+            basePos = transform.position;
+            baseRot = transform.rotation;
+        }
+
+        void EndJitter()
+        {
+            shownPos = transform.position;
+            shownRot = transform.rotation;
+            jittered = shownPos != basePos || shownRot != baseRot;
+        }
+
+        /// <summary>The rumble as a turn of the view: the look-at 'look' moved by 'jitter' (metres), seen from the camera.</summary>
+        void TurnBy(Vector3 look, Vector3 jitter)
+        {
+            var from = look - transform.position;
+            if (from.sqrMagnitude < 1e-6f) return;
+            transform.rotation = Quaternion.FromToRotation(from, from + jitter) * transform.rotation;
+        }
 
         /// <summary>TargetFollowCamera::hit / hitSmall: the camera position jitters rnd(2a) - a units per axis per frame
         /// ('ms' 1000 / a 6 when the player is hit, 50 / 2 per own shot).</summary>
@@ -125,9 +187,12 @@ namespace GoF2Remake.Flight
             var ship = target.transform;
             var model = target.Model;
             float dtMs = Time.deltaTime * 1000f * TimeExtender.PlayerFactor;   // TargetFollowCamera gets the player's dt
+            UndoJitter();
             // TargetFollowCamera::update 0x186e40 does everything inside `if (0 < dt)`: paused, the camera neither follows,
             // shakes nor rumbles (the shake timer would never run out, the jitter piled up every frame).
             if (dtMs <= 0f) { rumble = 0f; return; }
+            HeldJitter(ref shakeDir, ref jitterAgeMs, dtMs);
+            rumbleDir = new Vector3(shakeDir.y, shakeDir.z, shakeDir.x);   // drawn with it, its own mix of the axes
             if (constantRumble > 0f) rumble = Mathf.Max(rumble, constantRumble);
             // Remake: the same rumble on the controller / phone (Haptics; its own option, not the camera shake's): explosions,
             // the Liberator, the boost below; the boost's start as a pulse.
@@ -149,12 +214,14 @@ namespace GoF2Remake.Flight
                 float k = followRigid ? 1f : 1f - Mathf.Exp(-0.01f * dtMs);
                 transform.position = Vector3.Lerp(transform.position, fp, k);
                 transform.rotation = Quaternion.Slerp(transform.rotation, fr, k);
+                BeginJitter();
                 if (rumble > 0f)
                 {
                     float j = rumble * 0.6f;
-                    transform.rotation *= Quaternion.Euler(Random.Range(-j, j), Random.Range(-j, j), 0f);
+                    transform.rotation *= Quaternion.Euler(rumbleDir.x * j, rumbleDir.y * j, 0f);
                     rumble = 0f;
                 }
+                EndJitter();
                 if (cam != null) cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov, cam.aspect);
                 lookValid = false;
                 EndFirstPerson();   // the turret view, free look, the Liberator: the hull shows
@@ -204,46 +271,58 @@ namespace GoF2Remake.Flight
                 targetSlide = Vector3.zero;
                 lookShift = new Vector3(3f * dodgeLookScale * model.YawRate * target.metersPerUnit, 0f, 0f);
             }
-            slide = Vector3.Lerp(slide, targetSlide, Ease(posK, dtMs));
+            bool original = GoF2Remake.Data.Settings.OriginalChaseCamera;
+            float posEase = original ? Ease(posK, dtMs) : Follow(posK, dtMs), rotEase = original ? Ease(rotK, dtMs) : Follow(rotK, dtMs);
+            slide = Vector3.Lerp(slide, targetSlide, posEase);
 
             Vector3 desiredPos = ship.TransformPoint(offset + slide);
             Vector3 desiredLook = ship.TransformPoint(lookOffset + lookShift);
-            // A new start (the chase taking over from a fly-in or another camera) or a jump: the look point starts where the
-            // camera looks now, at the ship's distance, and eases onto the ship from there (no turn in one frame).
-            if (!lookValid || (desiredLook - lookPoint).sqrMagnitude > 1000f * 1000f)
-            {
-                lookPoint = transform.position + transform.forward * (desiredLook - transform.position).magnitude;
-                lookValid = true;
-            }
-
-            transform.position = Vector3.Lerp(transform.position, desiredPos, Ease(posK, dtMs));
-            lookPoint = Vector3.Lerp(lookPoint, desiredLook, Ease(rotK, dtMs));
-            // ... and translateNoUpdate(-0.9 x the slide) every frame, the position and the look-at point alike: the camera
-            // takes back most of the sideways move, so the ship slides across the view and the camera turns after it.
+            transform.position = Vector3.Lerp(transform.position, desiredPos, posEase);
+            // ... and translateNoUpdate(-0.9 x the slide) every frame: the camera takes back most of the sideways move, so
+            // the ship slides across the view and the camera turns after it.
             var noUpdate = -dodgeLag * target.ManeuverSlide + target.StrafeSlide;   // handleShip: the strafe too
             transform.position += noUpdate;
-            lookPoint += noUpdate;
-            // MatrixGetLookAt(position, look-at point, the ship's up), from where the camera is.
-            var toLook = lookPoint - transform.position;
-            if (toLook.sqrMagnitude > 1e-6f) transform.rotation = Quaternion.LookRotation(toLook, ship.up);
+            if (original)
+            {
+                // A new start (the chase taking over from a fly-in or another camera, the option switched) or a jump: the look
+                // point starts where the camera looks now, at the ship's distance (no turn in one frame).
+                if (!lookValid || (desiredLook - lookPoint).sqrMagnitude > 1000f * 1000f)
+                    lookPoint = transform.position + transform.forward * (desiredLook - transform.position).magnitude;
+                lookValid = true;
+                lookPoint = Vector3.Lerp(lookPoint, desiredLook, rotEase) + noUpdate;
+                // MatrixGetLookAt(position, look-at point, the ship's up), from where the camera is.
+                var toPoint = lookPoint - transform.position;
+                if (toPoint.sqrMagnitude > 1e-6f) transform.rotation = Quaternion.LookRotation(toPoint, ship.up);
+            }
+            else
+            {
+                lookValid = false;
+                // The rotation eases toward the look-at point as seen from where the camera should be; during a dodge from
+                // where it is (MatrixGetLookAt), so it turns after the sliding ship.
+                var toLook = desiredLook - (target.Maneuver.Active ? transform.position : desiredPos);
+                if (toLook.sqrMagnitude > 1e-6f)
+                    transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(toLook, ship.up), rotEase);
+            }
 
+            BeginJitter();
             if (shakeMs > 0f)
             {
                 shakeMs -= dtMs;
                 float a = shakeUnits * target.metersPerUnit * GoF2Remake.Data.Settings.CameraShake;
-                transform.position += new Vector3(Random.Range(-a, a), Random.Range(-a, a), Random.Range(-a, a));
+                transform.position += shakeDir * a;
+                // The Original follow looks at its point from where the camera is: the shake turns the view a little too.
+                if (original && lookValid && (lookPoint - transform.position).sqrMagnitude > 1e-6f)
+                    transform.rotation = Quaternion.LookRotation(lookPoint - transform.position, ship.up);
             }
             if (boosting)
                 rumble = Mathf.Max(rumble, boostRumble * GoF2Remake.Data.Settings.CameraShake);
             if (rumble > 0f)
             {
                 // 50 units at the look-at point (about 690 units away) = about 4 degrees.
-                var look = lookPoint;
-                float j = rumble * 50f * target.metersPerUnit;
-                look += new Vector3(Random.Range(-j, j), Random.Range(-j, j), Random.Range(-j, j));
-                transform.rotation = Quaternion.LookRotation(look - transform.position, transform.up);
+                TurnBy(lookValid ? lookPoint : ship.TransformPoint(lookOffset), rumbleDir * (rumble * 50f * target.metersPerUnit));
                 rumble = 0f;
             }
+            EndJitter();
 
             if (cam != null)   // a heavy hull's boost pushes the view out less (it gathers speed slowly anyway)
                 cam.fieldOfView = GoF2Remake.Visuals.Aspect.VerticalFov(baseFov + boostFovAdd * model.BoostVisualPercent * Mathf.Lerp(1f, 0.5f, mass), cam.aspect);
@@ -314,7 +393,7 @@ namespace GoF2Remake.Flight
             j += rumble * 1.3f;
             rumble = 0f;
             j *= GoF2Remake.Data.Settings.CameraShake;
-            if (j > 0f) rot *= Quaternion.Euler(Random.Range(-j, j), Random.Range(-j, j), 0f);
+            if (j > 0f) rot *= Quaternion.Euler(rumbleDir.x * j, rumbleDir.y * j, 0f);
             transform.SetPositionAndRotation(ship.TransformPoint(fpSeat), rot);
             slide = Vector3.zero;
             lookValid = false;

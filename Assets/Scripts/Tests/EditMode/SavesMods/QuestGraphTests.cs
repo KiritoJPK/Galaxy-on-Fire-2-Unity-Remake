@@ -48,6 +48,7 @@ namespace GoF2Remake.Tests
                     case "dialog": st["pages"] = new JArray(new JObject { ["speaker"] = "Keith", ["text"] = "Hi" }); break;
                     case "radio": st["speaker"] = "Keith"; st["text"] = "Hi"; break;
                     case "goto": case "waypoint": case "questorbit": case "teleport": st["station"] = 78; break;
+                    case "system": st["system"] = 15; break;
                     case "fight": st["ships"] = new JArray(new JObject { ["ship"] = 2 }); break;
                     case "cargo": st["item"] = 22; break;
                     case "reward": st["credits"] = 100; break;

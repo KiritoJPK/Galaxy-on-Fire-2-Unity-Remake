@@ -73,9 +73,13 @@ namespace GoF2Remake.UI
         /// <summary>The row is shown (OptionDef.visible; always without one).</summary>
         public bool Shown => def.visible == null || def.visible();
 
+        /// <summary>The row takes input (OptionDef.enabled; always without one): greyed out and skipped by the keys while not.</summary>
+        public bool Enabled => def.enabled == null || def.enabled();
+
         public void Refresh()
         {
             if (def.visible != null) Root.style.display = Shown ? DisplayStyle.Flex : DisplayStyle.None;
+            if (def.enabled != null) Field.SetEnabled(Enabled);
             if (slider != null)
             {
                 slider.SetValueWithoutNotify(def.get());
@@ -100,13 +104,16 @@ namespace GoF2Remake.UI
 
         void UpdateDescription()
         {
-            if (description != null) description.text = def.description();
+            if (description == null) return;
+            description.text = def.description();
+            description.style.display = string.IsNullOrEmpty(description.text) ? DisplayStyle.None : DisplayStyle.Flex;
         }
 
         /// <summary>Left / right on the row (keys, D-pad): a slider moves a twentieth of its range, a choice one value,
         /// a toggle flips.</summary>
         public void Step(int dir)
         {
+            if (!Enabled) return;
             if (slider != null)
                 slider.value = Mathf.Clamp(slider.value + dir * (slider.highValue - slider.lowValue) / 20f, slider.lowValue, slider.highValue);
             else if (toggle != null) toggle.value = !toggle.value;
@@ -114,13 +121,14 @@ namespace GoF2Remake.UI
             else choice?.Step(dir);
         }
 
-        /// <summary>Confirm on the row (Enter / A): a toggle flips, a choice takes the next value.</summary>
+        /// <summary>Confirm on the row (Enter / A): a toggle flips, a button presses, a binding captures. A choice keeps its
+        /// value: left / right pick it (a player's report: A cycled on to the next value).</summary>
         public void Activate()
         {
+            if (!Enabled) return;
             if (toggle != null) toggle.value = !toggle.value;
             else if (button != null) { def.action?.Invoke(); Changed?.Invoke(); }
             else if (binding != null) binding.Activate();
-            else choice?.Cycle();
         }
     }
 }

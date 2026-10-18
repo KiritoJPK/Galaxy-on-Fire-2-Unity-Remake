@@ -173,12 +173,13 @@ namespace GoF2Remake.Data
             int Slots(int type) => type switch { 0 => s.primary, 1 => s.secondary, 2 => s.turret, 3 => s.equipment + Session.ModLevel(2) + BaySlot(db, Session.ShipIndex, Session.Equipment), _ => int.MaxValue };
             int TypeOfItem(int item) => db.Item(item)?.TypeId ?? 4;
             var used = new int[5];
-            foreach (var e in Session.Equipment) if (!IsSaleable(e.item)) used[Mathf.Clamp(TypeOfItem(e.item), 0, 4)]++;
+            foreach (var e in Session.Equipment) if (TakesSlot(db, e) && !IsSaleable(e.item)) used[Mathf.Clamp(TypeOfItem(e.item), 0, 4)]++;
             var keep = new List<ItemStack>();
             int moved = 0;
             foreach (var e in Session.Equipment)
             {
                 int type = Mathf.Clamp(TypeOfItem(e.item), 0, 4);
+                if (!TakesSlot(db, e)) { keep.Add(e); continue; }   // built in, or in a built-in one's place: no slot (SyncBuiltIn)
                 if (!IsSaleable(e.item) || used[type] < Slots(type))
                 {
                     if (IsSaleable(e.item)) used[type]++;
@@ -194,8 +195,81 @@ namespace GoF2Remake.Data
         public List<int> MountedOfType(int type)
         {
             var list = new List<int>();
-            for (int i = 0; i < Session.Equipment.Count; i++) if (TypeOf(Session.Equipment[i].item) == type) list.Add(i);
+            for (int i = 0; i < Session.Equipment.Count; i++)
+                if (TakesSlot(db, Session.Equipment[i]) && TypeOf(Session.Equipment[i].item) == type) list.Add(i);
             return list;
+        }
+
+        /// <summary>Indices into Session.Equipment of the flown ship's built-in items and of the fitted items in their places
+        /// (InBuiltInPlace), in the order of the ship's list.</summary>
+        public List<int> BuiltInStacks()
+        {
+            var list = new List<int>();
+            for (int i = 0; i < Session.Equipment.Count; i++)
+                if (Session.Equipment[i].builtIn || InBuiltInPlace(db, Session.Equipment[i])) list.Add(i);
+            return list;
+        }
+
+        /// <summary>Remake mods: a built-in item a fitted one can take over from, like the Specter's cloak (the cloak bay):
+        /// one-per-ship equipment (a shield, armor, booster, scanner, drill, cloak...). Built-in weapons and turrets add to
+        /// the ship's slots instead.</summary>
+        public static bool Replaceable(ItemData it) => it != null && it.TypeId == 3 && !Shop.CanInstallMultiple(it.categoryId);
+
+        /// <summary>'e' is a fitted item in the place of one of the flown ship's built-in items (the same one-per-ship kind):
+        /// it takes no slot, and the built-in one steps aside while it is there (SyncBuiltIn).</summary>
+        public static bool InBuiltInPlace(Database db, ItemStack e)
+        {
+            if (e == null || e.builtIn || db == null) return false;
+            var it = db.Item(e.item);
+            if (!Replaceable(it)) return false;
+            foreach (var b in db.BuiltInItems(Session.ShipIndex)) if (db.Item(b.item)?.categoryId == it.categoryId) return true;
+            return false;
+        }
+
+        /// <summary>Whether a mounted stack takes one of the ship's slots: not a built-in one, nor a fitted one in a built-in
+        /// one's place.</summary>
+        public static bool TakesSlot(Database db, ItemStack e) => e != null && !e.builtIn && !InBuiltInPlace(db, e);
+
+        /// <summary>Remake mods: the flown ship's built-in items (ships.json "integrated": "items", Database.BuiltInItems) as
+        /// built-in stacks first in Session.Equipment, so everything that reads the mounted items (stats, guns, devices) has
+        /// them, while they take no slot (MountedOfType, FitToSlots) and can't be demounted, sold, stored or carried to another
+        /// ship (SwitchTo, EquipmentToStore). A built-in stack of another ship goes, a missing one comes (a secondary with its
+        /// starting ammo; one kept keeps what is left, the shops' missiles of its type join it); so an item used up (an
+        /// emergency system) is back at the next docking. Called where the flown ship can change and as levels start.
+        /// Returns whether anything changed.</summary>
+        public static bool SyncBuiltIn(Database db)
+        {
+            if (db == null || Session.Equipment == null) return false;
+            var want = db.BuiltInItems(Session.ShipIndex);
+            bool changed = false;
+            var matched = new bool[want.Count];
+            // A fitted item of the same one-per-ship kind has taken a built-in one's place: that one steps aside (counted as
+            // matched, so it isn't added; one present goes below).
+            var replaced = new bool[want.Count];
+            for (int j = 0; j < want.Count; j++)
+            {
+                var it = db.Item(want[j].item);
+                replaced[j] = Replaceable(it) && Session.Equipment.Exists(e => !e.builtIn && db.Item(e.item)?.categoryId == it.categoryId);
+            }
+            for (int i = Session.Equipment.Count - 1; i >= 0; i--)
+            {
+                var e = Session.Equipment[i];
+                if (!e.builtIn) continue;
+                int k = -1;
+                for (int j = 0; j < want.Count; j++) if (!matched[j] && want[j].item == e.item) { k = j; break; }
+                if (k >= 0 && !replaced[k]) matched[k] = true;
+                else { Session.Equipment.RemoveAt(i); changed = true; }
+            }
+            int at = 0;
+            while (at < Session.Equipment.Count && Session.Equipment[at].builtIn) at++;
+            for (int j = 0; j < want.Count; j++)
+            {
+                if (matched[j] || replaced[j]) continue;
+                Session.Equipment.Insert(at++, new ItemStack(want[j].item, want[j].amount) { builtIn = true });
+                changed = true;
+            }
+            if (changed) Session.SelectedSecondary = -1;
+            return changed;
         }
 
         // ---- trading -------------------------------------------------------------------------------------------
@@ -285,12 +359,19 @@ namespace GoF2Remake.Data
             if (it == null || CargoOf(item) <= 0) return Result.NothingToSell;
             int type = it.TypeId;
             if (type > 3) return Result.NotMountable;
+            // A one-per-ship item the ship has built in (a shield, a scanner...): it takes the built-in one's place, no slot
+            // (SyncBuiltIn sets the built-in one aside); one fitted there already is swapped as usual.
+            if (InBuiltInPlace(db, new ItemStack(item, 1)))
+            {
+                swapWith = Session.Equipment.FindIndex(e => !e.builtIn && db.Item(e.item)?.categoryId == it.categoryId);
+                return swapWith >= 0 ? Result.Swap : Result.Ok;
+            }
             if (!Shop.CanInstallMultiple(it.categoryId))
             {
                 // Remake: turrets (8) and plasma collectors (35) are one per turret slot, not one per ship, so a ship with
                 // two turret slots (a custom ship) takes a second one; the swap only once every turret slot is taken.
                 bool perSlot = type == 2 && SlotCount(2) > 1 && MountedOfType(2).Count < SlotCount(2);
-                swapWith = perSlot ? -1 : Session.Equipment.FindIndex(e => db.Item(e.item)?.categoryId == it.categoryId);
+                swapWith = perSlot ? -1 : Session.Equipment.FindIndex(e => !e.builtIn && db.Item(e.item)?.categoryId == it.categoryId);
                 if (swapWith >= 0) return Result.Swap;
             }
             if (BayTakes(db, Session.ShipIndex, item, Session.Equipment)) return Result.Ok;   // the cloak bay (remake option)
@@ -307,15 +388,17 @@ namespace GoF2Remake.Data
         {
             if (CanMount(item, out _) != Result.Ok) return false;
             MountFromCargo(item);
+            SyncBuiltIn(db);   // in a built-in one's place: that one steps aside
             return true;
         }
 
         /// <summary>Text 287: demount the mounted one-per-ship item and mount the cargo one.</summary>
         public bool Swap(int equipmentIndex, int item)
         {
-            if (equipmentIndex < 0 || equipmentIndex >= Session.Equipment.Count || CargoOf(item) <= 0) return false;
+            if (equipmentIndex < 0 || equipmentIndex >= Session.Equipment.Count || CargoOf(item) <= 0 || Session.Equipment[equipmentIndex].builtIn) return false;
             Demount(equipmentIndex);
             MountFromCargo(item);
+            SyncBuiltIn(db);
             return true;
         }
 
@@ -334,8 +417,10 @@ namespace GoF2Remake.Data
         {
             if (equipmentIndex < 0 || equipmentIndex >= Session.Equipment.Count) return;
             var e = Session.Equipment[equipmentIndex];
+            if (e.builtIn) return;   // built into the ship (SyncBuiltIn)
             Session.Equipment.RemoveAt(equipmentIndex);
             AddToCargo(e.item, Mathf.Max(1, e.amount));
+            SyncBuiltIn(db);   // a fitted item in a built-in one's place gone: the built-in one is back
         }
 
         /// <summary>autoEquipSecondaryWeapons: bought missiles of a mounted type join the mounted stack. Returns the items moved.</summary>
@@ -360,7 +445,14 @@ namespace GoF2Remake.Data
 
         /// <summary>What a dealer ship costs here (multiplayer: a faction station's VAT markup for non-members); ShipPrice is
         /// its value (a trade-in, the club's storage).</summary>
-        public int BuyShipPrice(int ship) => Storage ? ShipPrice(ship) : (GameHooks.FactionShipBuyPrice != null ? GameHooks.FactionShipBuyPrice(Station, ShipPrice(ship)) : ShipPrice(ship));
+        public int BuyShipPrice(int ship) => CronusGift(ship) ? 0
+            : Storage ? ShipPrice(ship) : (GameHooks.FactionShipBuyPrice != null ? GameHooks.FactionShipBuyPrice(Station, ShipPrice(ship)) : ShipPrice(ship));
+
+        /// <summary>#122: Khador's Cronus at Kothar during step 77, once (Session.KhadorCronusGift; ModStation::OnTouchEnd
+        /// 0xea4ec's makeShip(37, 0)). Its value (ShipPrice, a later trade-in) stays the table's, as the original rebuilds the
+        /// flown ship with makeShip(-1).</summary>
+        bool CronusGift(int ship) => ship == 37 && Station == 100 && !Storage && Session.KhadorCronusGift
+                                     && !Session.FreePlay && Session.CampaignMission == 77;
 
         /// <summary>HangarWindow::selectItem (ship row): 'need' = missing credits after trading in the current ship.</summary>
         public Result CanBuyShip(int ship, out int need)
@@ -383,6 +475,7 @@ namespace GoF2Remake.Data
             int old = Session.ShipIndex;
             var oldMods = new List<int>(Session.ShipMods ?? new List<int>());
             if (!Cheats.FreeShopping) ChangeCredits(ShipPrice(old) - BuyShipPrice(ship));
+            if (CronusGift(ship)) Session.KhadorCronusGift = false;   // the gift is taken: a row of it later is priced
             SwitchTo(ship, Stock.TakeMods(ship), dismount: true);
             int row = Stock.ships.IndexOf(ship);
             if (row >= 0) Stock.ships[row] = old; else Stock.ships.Add(old);
@@ -438,14 +531,14 @@ namespace GoF2Remake.Data
         static List<ItemStack> EquipmentToStore(bool moveToNewShip = false)
         {
             if (moveToNewShip || !Settings.KaamoKeepsEquipment) return null;
-            var kept = Session.Equipment.Where(e => IsSaleable(e.item)).ToList();
-            Session.Equipment = Session.Equipment.Where(e => !IsSaleable(e.item)).ToList();
+            var kept = Session.Equipment.Where(e => !e.builtIn && IsSaleable(e.item)).ToList();   // built-ins stay with the hull's type
+            Session.Equipment = Session.Equipment.Where(e => !e.builtIn && !IsSaleable(e.item)).ToList();
             return kept;
         }
 
         /// <summary>Remake (#83): "Keep" asks whether the equipment moves to the new ship (Yes) or stays on the old hull in
         /// the club (No): only while the option keeps it there and something the player may move is mounted.</summary>
-        public static bool KeepAsksAboutEquipment => Settings.KaamoKeepsEquipment && Session.Equipment.Any(e => IsSaleable(e.item));
+        public static bool KeepAsksAboutEquipment => Settings.KaamoKeepsEquipment && Session.Equipment.Any(e => !e.builtIn && IsSaleable(e.item));
 
         /// <summary>The new hull becomes the flown ship: every mounted item moves to the first free slot of its type (in
         /// slot order, secondaries with their ammo), the rest to the hold; the cargo stays with the player. 'mount' = the
@@ -457,7 +550,7 @@ namespace GoF2Remake.Data
         void SwitchTo(int ship, List<int> mods, List<ItemStack> mount = null, bool dismount = false)
         {
             dismount &= NetSession.Active;
-            var mounted = mount ?? Session.Equipment;
+            var mounted = (mount ?? Session.Equipment).Where(e => !e.builtIn).ToList();   // the old hull's built-ins stay with it
             Session.ShipIndex = ship;
             Session.ShipMods = mods != null ? new List<int>(mods) : new List<int>();
             Session.Equipment = new List<ItemStack>();
@@ -468,6 +561,7 @@ namespace GoF2Remake.Data
                 if ((!dismount || !IsSaleable(e.item)) && (MountedOfType(type).Count < SlotCount(type) || BayTakes(db, ship, e.item, Session.Equipment))) Session.Equipment.Add(e);
                 else AddToCargo(e.item, Mathf.Max(1, e.amount));
             }
+            SyncBuiltIn(db);   // the new hull's own
         }
 
         // ---- remake: a lounge seller's ship (AgentOffer.SellShip) ---------------------------------------------------
@@ -533,6 +627,7 @@ namespace GoF2Remake.Data
             int old = Session.ShipIndex;
             var oldMods = Session.ShipMods;
             if (!Cheats.FreeShopping) ChangeCredits(-BuyShipPrice(ship));
+            if (CronusGift(ship)) Session.KhadorCronusGift = false;
             var kept = EquipmentToStore(moveEquipment);
             SwitchTo(ship, Stock.TakeMods(ship), dismount: !moveEquipment);   // the bought row's mods (OnTouchEnd: getMods of the row, both branches)
             Stock.ships.Remove(ship);   // the bought row is gone

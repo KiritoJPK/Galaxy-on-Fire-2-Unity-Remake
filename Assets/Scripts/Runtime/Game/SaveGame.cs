@@ -28,11 +28,17 @@ namespace GoF2Remake.Data
         public int station, previousStation, ship, credits;
         /// <summary>Remake: the station the player last docked at (Session.LastDockedStation), -1 = unknown (older saves).</summary>
         public int lastDockedStation = -1;
+        /// <summary>#122: Session.KhadorCronusGift, 1 / 0; -1 = a save from before it (then given at step 77 to a player not in
+        /// the Cronus: the row was added before the flag existed).</summary>
+        public int khadorCronusGift = -1;
         public List<ItemStack> equipment, cargo;
         public List<StationStock> recentStations;
         public List<int> seenItems, visitedStations, attackedStations;
         public List<KnownPrice> lowestPrices, highestPrices;
         public bool[] systemVisible;
+        /// <summary>Session.SystemShown: "system|1" shown / "system|0" hidden; a mod's system by its key ("mod_id:id"), so it
+        /// stays the same system wherever its number lands.</summary>
+        public List<string> systemShown;
         public int jumpgatesUsed, kills, pirateKills;
         public int[] standing;
         // version 2: the story
@@ -325,6 +331,7 @@ namespace GoF2Remake.Data
                 station = Session.StationIndex,
                 previousStation = Session.PreviousStationIndex,
                 lastDockedStation = Session.LastDockedStation,
+                khadorCronusGift = Session.KhadorCronusGift ? 1 : 0,
                 ship = Session.ShipIndex,
                 credits = Session.Credits,
                 equipment = Session.Equipment.ConvertAll(e => e.Clone()),
@@ -336,6 +343,8 @@ namespace GoF2Remake.Data
                 lowestPrices = Prices(Session.LowestKnownPrice),
                 highestPrices = Prices(Session.HighestKnownPrice),
                 systemVisible = Session.SystemVisible,
+                systemShown = Session.SystemShown.Select(kv => (Modding.ModWorld.SystemKey(kv.Key) ?? kv.Key.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                                                                + "|" + (kv.Value ? "1" : "0")).ToList(),
                 jumpgatesUsed = Session.JumpgatesUsed,
                 kills = Session.Kills,
                 pirateKills = Session.PirateKills,
@@ -474,6 +483,7 @@ namespace GoF2Remake.Data
         static void Apply(SaveData s)
         {
             Session.CompletedWorld = false;   // a save is its own world (ApplyProfile sets the session's again)
+            Session.KhadorCronusGift = false;   // set below from the save (not for the free play of a version-1 save)
             static Dictionary<int, (int, int)> Prices(List<SaveData.KnownPrice> l)
             {
                 var d = new Dictionary<int, (int, int)>();
@@ -509,6 +519,14 @@ namespace GoF2Remake.Data
             Session.LowestKnownPrice = Prices(s.lowestPrices);
             Session.HighestKnownPrice = Prices(s.highestPrices);
             Session.SystemVisible = s.systemVisible != null && s.systemVisible.Length > 0 ? s.systemVisible : null;
+            Session.SystemShown = new Dictionary<int, bool>();
+            foreach (var e in s.systemShown ?? new List<string>())
+            {
+                int bar = e?.LastIndexOf('|') ?? -1;
+                if (bar <= 0) continue;
+                string key = e.Substring(0, bar);
+                if (Modding.ModWorld.TryResolveSystem(key, out int system)) Session.SystemShown[system] = e.Substring(bar + 1) == "1";
+            }
             // GameRecord::load: Loma (the Valkyrie add-on owned) and Shima always visible after loading.
             if (Session.SystemVisible != null && Session.SystemVisible.Length > GalaxyMap.ShimaSystem)
                 Session.SystemVisible[GalaxyMap.LomaSystem] = Session.SystemVisible[GalaxyMap.ShimaSystem] = true;
@@ -524,6 +542,8 @@ namespace GoF2Remake.Data
                 return;
             }
             Session.FreePlay = s.freePlay;
+            Session.KhadorCronusGift = s.khadorCronusGift >= 0 ? s.khadorCronusGift == 1
+                : !s.freePlay && s.campaignMission == 77 && s.ship != 37;
             Session.ModCampaign = s.modCampaign ?? "";
             Session.ModGameOptions = new HashSet<string>(s.modGameOptions ?? new List<string>());
             Session.ShipBuilds = new Dictionary<string, string>();

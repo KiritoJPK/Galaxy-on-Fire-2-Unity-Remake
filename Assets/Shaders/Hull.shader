@@ -141,6 +141,7 @@ Shader "GoF2/Hull"
             #pragma shader_feature_local_fragment _ENVIRONMENTREFLECTIONS_OFF
             #pragma shader_feature_local_fragment _SCREENSPACEREFLECTIONS_OFF
             #pragma shader_feature_local_fragment _SPECULAR_SETUP
+            #pragma shader_feature_local_fragment _GOF2_PBR   // GoF2: a mod's PBR material, no GoF2 terms (HullForwardPass.hlsl)
 
             // -------------------------------------
             // Universal Pipeline keywords

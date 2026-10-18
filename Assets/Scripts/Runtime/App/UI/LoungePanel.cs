@@ -22,6 +22,7 @@ namespace GoF2Remake.UI
         readonly StationMenu menu;
         readonly StationLevel level;
         readonly VisualElement root, tags, list, chatWindow, portrait, choices;
+        bool chatOnLeft;   // the chat window on the left, the visitor talked to right of it (OpenChat)
         readonly Label chatName, chatSub, chatText;
         readonly TextReveal chatReveal;   // the animated dialogue option
         readonly ScrollView chatScroll;
@@ -168,10 +169,13 @@ namespace GoF2Remake.UI
             if (on != root.ClassListContains("lounge-open")) OnViewChanged();
             if (built && tagItems.Count != level.VisitorAgentCount) Build();   // remake multiplayer: event missions' visitors joined
             if (!on || tags.panel == null) return;
-            // Remake (#82): the camera puts the visitor talked to in the middle of the room left of the chat window.
+            // Remake (#82): the camera puts the visitor talked to in the middle of the room beside the chat window: left of
+            // it, or right of it when the window is on the left (chatOnLeft).
             var wb = chatWindow.worldBound;
             float panelW = root.panel.visualTree.worldBound.width;
-            if (selected >= 0 && wb.width > 0f && panelW > 0f) level.ChatFrameX = Mathf.Clamp(wb.xMin * 0.5f / panelW, 0.15f, 0.5f);
+            if (selected >= 0 && wb.width > 0f && panelW > 0f)
+                level.ChatFrameX = chatOnLeft ? Mathf.Clamp((wb.xMax + panelW) * 0.5f / panelW, 0.5f, 0.85f)
+                                              : Mathf.Clamp(wb.xMin * 0.5f / panelW, 0.15f, 0.5f);
             var cam = level.MainCamera;
             if (cam == null) return;
             for (int i = 0; i < tagItems.Count; i++)
@@ -193,6 +197,15 @@ namespace GoF2Remake.UI
         {
             if (index < 0 || index >= level.VisitorAgentCount) return;
             selected = index;
+            // Remake (the user's request): a visitor standing in the right half of the view keeps to the right, the chat
+            // window on the left; one in the left half the other way round (it was always the window on the right).
+            var cam = level.MainCamera;
+            if (cam != null)
+            {
+                var vp = cam.WorldToViewportPoint(level.VisitorHead(index));
+                chatOnLeft = vp.z > 0f && vp.x > 0.5f;
+            }
+            chatWindow.EnableInClassList("chat-window--left", chatOnLeft);
             level.FocusVisitor(index);   // remake: the camera turns to them and zooms in a little
             var a = level.VisitorAgent(index);
             chat = new LoungeChat(Db, a, Station, smallTalkUsed);

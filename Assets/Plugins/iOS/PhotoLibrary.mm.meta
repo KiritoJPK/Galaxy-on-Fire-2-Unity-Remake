@@ -1,0 +1,29 @@
+fileFormatVersion: 2
+guid: e6f6c5d7541a4a6f9e79587518699539
+PluginImporter:
+  externalObjects: {}
+  serializedVersion: 3
+  iconMap: {}
+  executionOrder: {}
+  defineConstraints: []
+  isPreloaded: 0
+  isOverridable: 0
+  isExplicitlyReferenced: 0
+  validateReferences: 1
+  platformData:
+    Any:
+      enabled: 0
+      settings: {}
+    Editor:
+      enabled: 0
+      settings:
+        DefaultValueInitialized: true
+    iOS:
+      enabled: 1
+      settings:
+        AddToEmbeddedBinaries: false
+        CompileFlags: -fobjc-arc
+        FrameworkDependencies: Photos;
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

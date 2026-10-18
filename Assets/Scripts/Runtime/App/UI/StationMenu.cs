@@ -254,7 +254,7 @@ namespace GoF2Remake.UI
             // the mouse focused its first entry, and that highlight stayed beside the hovered one.
             root.RegisterCallback<PointerOverEvent>(e =>
             {
-                if (e.pointerType != PointerType.mouse || !(e.target is VisualElement t)) return;
+                if (e.pointerType != PointerType.mouse || !InputMode.MouseMovedRecently || !(e.target is VisualElement t)) return;   // not a list scrolling under it
                 var b = t as Button ?? t.GetFirstAncestorOfType<Button>();
                 if (b != null && b.ClassListContains("station-button") && Navigable(b) && b.focusController?.focusedElement != b) b.Focus();
             });
@@ -851,6 +851,10 @@ namespace GoF2Remake.UI
             dialog.RemoveFromClassList("station-dialog-backdrop--shown");
             dialogAction = null;
             dialogNoAction = null;
+            // A controller's A (or Enter) that answered the dialog isn't also the hangar window's Action: the UI takes the
+            // press first, and in the same frame the hangar saw A just pressed and bought the selected ship again (a
+            // player's report). The window waits for it to be released, like after the press that opened it (#104).
+            if (HangarOpen) hangarConfirmHeld = true;
             if (SystemMenuOpen)
             {
                 // Back to the slot just picked (or the first item of the page).
@@ -1936,6 +1940,7 @@ namespace GoF2Remake.UI
             inspectOverlay.Add(inspectTitle);
             var footer = inspectFooter = new VisualElement { pickingMode = PickingMode.Ignore };
             footer.AddToClassList("orbit-view-footer");
+            footer.AddToClassList(SafeArea.EdgeClass);
             inspectBack = OrbitViewUi.Back(EndInspect, () => Play(buttonPush));
             footer.Add(inspectBack);
             inspectMessage = OrbitViewUi.Message();
@@ -1951,6 +1956,7 @@ namespace GoF2Remake.UI
             inspectTools = new PhotoTools(inspectOverlay, push => Play(push ? buttonPush : buttonRelease));
             inspectTools.Changed += () => BuildInspectHints(InputMode.Current);
             inspectTools.Tapped += () => { if (inspectUiHidden) SetInspectUiHidden(false); };
+            SafeArea.KeepClear(inspectOverlay);   // its title, hints, footer, Customize and settings panels clear of cutouts
             root.Add(inspectOverlay);   // the last child: over the blocker that keeps the menu's own input out meanwhile
         }
 
@@ -1959,6 +1965,7 @@ namespace GoF2Remake.UI
             if (level == null || level.View != StationView.Hangar || ArrivalPending || UiBlocked || DialogOpen || SystemMenuOpen
                 || HangarOpen || StarMap.IsOpen || (storyDialogue != null && storyDialogue.IsOpen)) return;
             if (!level.BeginInspect()) return;
+            if (!customizing) level.InspectFrameX = 0.5f;   // re-entered while a Customize screen's turn is blending back
             inspectDragging = false;
             inspectFling = Vector2.zero;
             inspectPinch = -1f;
@@ -2025,7 +2032,7 @@ namespace GoF2Remake.UI
             inspectTitle.text = "";
             inspectHints.style.display = DisplayStyle.None;   // the panel has its own keys
             inspectFooter.style.display = DisplayStyle.None;  // and its own Cancel: the footer's Back lay under its Apply
-            customize.Show(GameNames.Ship(ship), kit, ModShipKits.TypeOf(ship), build);
+            customize.Show(GameNames.Ship(ship), kit, ModShipKits.TypeOf(ship), build, ship);
             level.PreviewEngines(true);   // the exhaust running, so its style and colours can be seen
         }
 
@@ -2064,7 +2071,7 @@ namespace GoF2Remake.UI
             int[] slots = { e.primary >= 0 ? e.primary : c.slots.primary, e.secondary >= 0 ? e.secondary : c.slots.secondary,
                             e.turret >= 0 ? e.turret : c.slots.turret, Mathf.Max(0, c.slots.equipment + e.equipment) + Session.ModLevel(2) };
             var used = new int[4];
-            foreach (var st in Session.Equipment) { int t = level.Db.Item(st.item)?.TypeId ?? 4; if (t >= 0 && t < 4) used[t]++; }
+            foreach (var st in Session.Equipment) { if (!Hangar.TakesSlot(level.Db, st)) continue; int t = level.Db.Item(st.item)?.TypeId ?? 4; if (t >= 0 && t < 4) used[t]++; }
             int over = 0;
             for (int t = 0; t < 4; t++) over += Mathf.Max(0, used[t] - slots[t]);
             string Sign(float v) => v == 0f ? "" : $" ({(v > 0 ? "+" : "")}{v:0}%)";
@@ -2098,7 +2105,7 @@ namespace GoF2Remake.UI
             level.PreviewEngineDrive(1f);
             level.PreviewEngines(false);
             customize.Hide();
-            level.InspectFrameX = 0.5f;
+            // InspectFrameX stays until the orbit has blended back (StationLevel resets it), so the view turns back with it.
             inspectHints.style.display = StyleKeyword.Null;
             inspectFooter.style.display = StyleKeyword.Null;
             EndInspect();
@@ -2262,6 +2269,7 @@ namespace GoF2Remake.UI
                 float steps = Mathf.Clamp(Mouse.current.scroll.ReadValue().y, -1f, 1f);   // a notch reads 1 or 120
                 if (Mathf.Abs(steps) > 0f) insp.Zoom(Mathf.Pow(0.85f, steps));
             }
+            delta = Settings.OrbitTurn(delta);   // #121: the camera views' own inversion
             insp.Turn(delta.x * 0.005f, delta.y * 0.005f);   // PhotoMode's 0.005 rad per pixel
         }
 
@@ -2639,24 +2647,8 @@ namespace GoF2Remake.UI
             ApplySafeArea(w, h, offscreen);
         }
 
-        /// <summary>Device safe-area insets; retries until the panel has a real (non-NaN) size, see FlightHud.</summary>
-        void ApplySafeArea(float w, float h, bool offscreen)
-        {
-            root.schedule.Execute(() =>
-            {
-                if (safeArea == null) return;
-                if (!(root.layout.width > 0f)) { ApplySafeArea(w, h, offscreen); return; }
-                float k = root.layout.width / w;
-                var raw = offscreen ? new Rect(0f, 0f, w, h) : Screen.safeArea;
-                var sa = Rect.MinMaxRect(Mathf.Clamp(raw.xMin, 0f, w), Mathf.Clamp(raw.yMin, 0f, h),
-                                         Mathf.Clamp(raw.xMax, 0f, w), Mathf.Clamp(raw.yMax, 0f, h));
-                if (sa.width < w * 0.5f || sa.height < h * 0.5f) sa = new Rect(0f, 0f, w, h);
-                safeArea.style.left = sa.xMin * k;
-                safeArea.style.right = (w - sa.xMax) * k;
-                safeArea.style.top = (h - sa.yMax) * k;
-                safeArea.style.bottom = sa.yMin * k;
-            }).ExecuteLater(1);
-        }
+        /// <summary>Device safe-area insets (the notch / Dynamic Island, the home indicator, cutouts), see SafeArea.</summary>
+        void ApplySafeArea(float w, float h, bool offscreen) => SafeArea.Apply(root, safeArea, w, h, offscreen, SafeArea.Mode.Position);
 
         /// <summary>Remake: the system's race emblem at the left of the station info box (system, tech level, race): the four
         /// races' large emblems (GoF2Races/<race>_icon), the radar's for the pirates and the Void, none otherwise.</summary>

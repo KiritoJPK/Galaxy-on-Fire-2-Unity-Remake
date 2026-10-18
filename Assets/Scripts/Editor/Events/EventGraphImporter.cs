@@ -39,7 +39,15 @@ namespace GoF2Remake.EditorTools
                 foreach (var p in problems) ctx.LogImportWarning($"{name}: {(p.node != null ? p.node + ": " : "")}{p.message}");
                 string error = EventRunner.Check(script);
                 if (error != null) ctx.LogImportWarning($"{name}: the script doesn't compile: {error}");
-                string editor = EventGraphCompiler.Compile(graph);
+                // The Editor's own reading is only a check: a graph it can't read (an option type Graph Toolkit can't resolve)
+                // still imports, or the built-in events were missing from the game.
+                string editor;
+                try { editor = EventGraphCompiler.Compile(graph); }
+                catch (System.Exception e)
+                {
+                    ctx.LogImportWarning($"{name}: Graph Toolkit can't read this graph ({(e.InnerException ?? e).Message}); the game still can.");
+                    editor = script;
+                }
                 if (editor != script)
                     ctx.LogImportWarning($"{name}: the game reads this graph differently from the Editor (Graph Toolkit's file format changed?): " +
                                          $"update EventGraphFile.\nEditor:\n{editor}\nGame:\n{script}");

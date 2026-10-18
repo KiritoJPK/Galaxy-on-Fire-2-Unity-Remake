@@ -31,6 +31,8 @@ namespace GoF2Remake.World
             string name = index <= 10 ? $"cubemap_skybox_{index:000}" : index <= 14 ? $"v_cubemap_skybox_{index:000}" : $"sn_cubemap_skybox_{index:000}";
             var cube = Resources.Load<Cubemap>("GoF2Reflections/" + name);
             Shader.SetGlobalFloat(ReflectionId, 1f);
+            Shader.SetGlobalFloat(PbrDimId, 0f);   // space, the lounge, a mod's own hangar: the mods' hulls as URP lights them
+            Shader.SetGlobalVector(PbrLightId, Vector4.zero);
             Shader.SetGlobalColor(RimId, RimColor(layout));
             if (cube == null) return;
             // Remake: also as a global of its own, which GoF2/Hull and GoF2/EmissiveCube sample. unity_SpecCube0 (the custom
@@ -47,6 +49,12 @@ namespace GoF2Remake.World
         /// (the rim light stays). Call after SetSystem, which the lounge and space go back to.</summary>
         public static void SetHangar(int hangarIndex)
         {
+            // The mods' PBR hulls (GoF2/Hull with _GOF2_PBR) keep less of the room's indirect light: without an occlusion
+            // map the flat ambient and the bright room cubemap made them flat and hazy (the game's hulls are unchanged).
+            Shader.SetGlobalFloat(PbrDimId, HangarPbrIndirectDim);
+            // ...and are lit from above instead of from the camera's side (their textures have no shading painted in).
+            Shader.SetGlobalVector(PbrLightId, new Vector4(HangarPbrLightToward.x, HangarPbrLightToward.y, HangarPbrLightToward.z, 1f));
+            Shader.SetGlobalColor(PbrLightColorId, new Color(HangarPbrLightStrength, HangarPbrLightStrength, HangarPbrLightStrength, 1f));
             Cubemap cube;
             if (hangarIndex >= 0 && hangarIndex < HangarCubes.Length)
             {
@@ -76,7 +84,17 @@ namespace GoF2Remake.World
         }
 
         static readonly int ReflectionId = Shader.PropertyToID("_GoF2HullReflection"), RimId = Shader.PropertyToID("_GoF2HullRimColor"),
-            CubeId = Shader.PropertyToID("_GoF2ReflectionCube");
+            CubeId = Shader.PropertyToID("_GoF2ReflectionCube"), PbrDimId = Shader.PropertyToID("_GoF2PbrIndirectDim"),
+            PbrLightId = Shader.PropertyToID("_GoF2PbrLight"), PbrLightColorId = Shader.PropertyToID("_GoF2PbrLightColor");
+
+        /// <summary>Where a mod's PBR hull is lit from in a GoF2 hangar (toward the light, Unity world: above, the hangar
+        /// camera's left and toward it, matched by eye to GoF3's own render of the Cronus) and how strongly against the
+        /// hangar's key light (HullForwardPass.hlsl).</summary>
+        public static readonly Vector3 HangarPbrLightToward = new Vector3(0.6f, 0.6f, 0.5f);
+        public const float HangarPbrLightStrength = 1f;
+
+        /// <summary>How much of the indirect light a mod's PBR hull loses in a GoF2 hangar (HullForwardPass.hlsl).</summary>
+        public const float HangarPbrIndirectDim = 0.7f;
 
         /// <summary>StarSystem::initLight: LightSetRimColor(3 x DAT_00258d34[sysTex]): the sun colour table but for systems 11
         /// and 15 (GoF2/Hull's rim light).</summary>

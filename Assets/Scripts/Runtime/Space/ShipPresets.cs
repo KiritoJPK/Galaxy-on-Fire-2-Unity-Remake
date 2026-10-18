@@ -113,7 +113,7 @@ namespace GoF2Remake.Data
                 ship = Session.ShipIndex,
                 saved = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
             };
-            foreach (var e in Session.Equipment) p.equipment.Add(new Stack { item = e.item, amount = e.amount });
+            foreach (var e in Session.Equipment) if (!e.builtIn) p.equipment.Add(new Stack { item = e.item, amount = e.amount });   // built-ins come with the hull
             p.mods.AddRange(Session.ShipMods);
             Data.slots[slot] = p;
             Write();

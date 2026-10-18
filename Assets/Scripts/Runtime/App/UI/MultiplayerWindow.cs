@@ -1302,7 +1302,11 @@ namespace GoF2Remake.UI
             chatField.RegisterCallback<NavigationMoveEvent>(e => { e.StopPropagation(); chatField.focusController?.IgnoreEvent(e); }, TrickleDown.TrickleDown);
             TextFieldKeys.Guard(chatField);   // Esc drops the focus (the next Esc closes the window)
             row.Add(chatField);
-            row.Add(Btn(Localization.Extra("mpChatSend", "Send"), SendChat, "squad-button--accept"));
+            var send = Btn(Localization.Extra("mpChatSend", "Send"), SendChat, "squad-button--accept");
+            row.Add(send);
+            // Phones: the game's own keyboard (Android's key repeat: a held Backspace), Done sends and keeps typing; the
+            // channel and Send buttons keep it up.
+            PhoneKeyboard.Attach(chatField, () => { bool line = !string.IsNullOrWhiteSpace(chatField.value); SendChat(); return line; }, chatChannel, send);
             chatPane.Add(row);
             RefreshChannel();
         }
@@ -1461,6 +1465,7 @@ namespace GoF2Remake.UI
             var f = new TextField { value = value, maxLength = max, keyboardType = keyboard };
             f.textEdition.placeholder = label;
             TextFieldKeys.Guard(f);   // typed keys stay in the field (no menu navigation, no game keys)
+            PhoneKeyboard.Attach(f);  // phones: the game's own keyboard (a held Backspace repeats)
             f.style.width = Mathf.Round(width * scale);
             f.style.marginLeft = 6;
             f.RegisterValueChangedCallback(e => changed(e.newValue));

@@ -16,6 +16,7 @@ Material:
   - _ALPHATEST_ON
   - _DETAIL_SCALED
   - _EMISSION
+  - _GOF2_PBR
   - _METALLICSPECGLOSSMAP
   - _NORMALMAP
   m_InvalidKeywords: []

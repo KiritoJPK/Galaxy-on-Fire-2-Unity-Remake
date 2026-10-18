@@ -126,8 +126,9 @@ namespace GoF2Remake.UI
                 var step = pendingTurn * (1f - Mathf.Exp(-dt / 25f));
                 if (pendingTurn.sqrMagnitude < 0.01f) step = pendingTurn;
                 pendingTurn -= step;
-                yaw += step.x * 0.005f;
-                pitch = Mathf.Clamp(pitch - step.y * 0.005f, -1.45f, 1.45f);
+                var turn = Settings.OrbitTurn(step);   // #121: the camera views' own inversion
+                yaw += turn.x * 0.005f;
+                pitch = Mathf.Clamp(pitch - turn.y * 0.005f, -1.45f, 1.45f);
             }
             var dir = new Vector3(Mathf.Sin(yaw) * Mathf.Cos(pitch), Mathf.Sin(pitch), Mathf.Cos(yaw) * Mathf.Cos(pitch));
             var pos = pivot + dir * distance;

@@ -132,6 +132,12 @@
     display: flex;
 }
 
+/* A visitor in the right half of the view: the window on the left, the visitor framed right of it (LoungePanel.OpenChat). */
+.chat-window--left {
+    right: auto;
+    left: 60px;
+}
+
 .chat-open .station-buttons,
 .missions-open .station-buttons,
 .missions-open .launch-button,
@@ -376,6 +382,11 @@
     width: 900px;
     right: 80px;
     bottom: 140px;
+}
+
+.layout-phone .chat-window--left {
+    right: auto;
+    left: 80px;
 }
 
 /* lounge_ui.md 1.2: the lounge shows only its header and a footer with Back, not the main view's side panel, buttons

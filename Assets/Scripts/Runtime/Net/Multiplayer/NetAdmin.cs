@@ -33,6 +33,9 @@
 //                                           name; docked only the ownable ones), "own" back to the ship flown before
 //   /ammo [players]                         every mounted secondary to 50
 //   /reveal [players], /peace [players]     every system on the map; both standing axes neutral, no station grudges
+//   /system [players] <system> <show | hide | reset>   one system on (or off) their map, over what is revealed and a mod's
+//                                           "available" condition, until reset (GalaxyMap.SetShown, saved); a player in a
+//                                           hidden system is taken out (SpaceLevel)
 //   /cheat [players] <flag> [on | off]      a debug toggle for the session (god, ammo, cooldown, boost, onehit, locks,
 //                                           shopping, jumps; no on / off: toggled), whatever the session allows
 //   /title [players] <text> [| subtitle] [for <seconds>]   a big title on their screens (EventScreen; 4 s by default;
@@ -66,7 +69,7 @@ namespace GoF2Remake.Multiplayer
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class NetAdmin
     {
-        public enum Order : byte { Kill = 1, Heal = 2, Give = 3, Credits = 4, Spawn = 5, Ship = 6, Ammo = 7, Reveal = 8, Peace = 9, Cheat = 10, Object = 11, Title = 12, Timer = 13, Dialog = 14, Reward = 15, Scoreboard = 16, Sound = 17, Music = 18, Respawn = 19, Rules = 20, Ask = 21, Provoke = 22, Radio = 23, Waypoint = 24, Cutscene = 25, Camera = 26, Fade = 27, Letterbox = 28, Npc = 29, Flight = 30, Wreck = 31 }
+        public enum Order : byte { Kill = 1, Heal = 2, Give = 3, Credits = 4, Spawn = 5, Ship = 6, Ammo = 7, Reveal = 8, Peace = 9, Cheat = 10, Object = 11, Title = 12, Timer = 13, Dialog = 14, Reward = 15, Scoreboard = 16, Sound = 17, Music = 18, Respawn = 19, Rules = 20, Ask = 21, Provoke = 22, Radio = 23, Waypoint = 24, Cutscene = 25, Camera = 26, Fade = 27, Letterbox = 28, Npc = 29, Flight = 30, Wreck = 31, System = 32 }
 
         const int MaxGive = 1000, MaxSpawn = 10, MaxCredits = 999999999;
         /// <summary>A /spawn name's length, and its separator in the order's text (taken out of names).</summary>
@@ -168,6 +171,40 @@ namespace GoF2Remake.Multiplayer
                 default: return string.Format(X("mpAdmPeace", "{0} is at peace with every race."), t.DisplayName);
             }
         });
+
+        /// <summary>/system [players] &lt;system&gt; &lt;show | hide | reset&gt;: the system on or off their star map (its routes and
+        /// jumps with it) until reset.</summary>
+        public static string SystemShow(string args, IPilot by) => ForTargets(args, by, true, (t, rest) =>
+        {
+            rest = rest.Trim();
+            int space = rest.LastIndexOf(' ');
+            if (space <= 0) return Usage("system");
+            string word = rest.Substring(space + 1).ToLowerInvariant();
+            int action = word == "show" ? 1 : word == "hide" ? 0 : word == "reset" ? 2 : -1;
+            if (action < 0 || !ParseSystem(rest.Substring(0, space).Trim(), out int system)) return Usage("system");
+            Send(t, Order.System, system, action, 0, by, $"system {system} {word}");
+            return "";
+        });
+
+        /// <summary>A system by its number, a mod's key ("mod_id:id") or its name (any case, the whole name).</summary>
+        public static bool ParseSystem(string text, out int system)
+        {
+            system = -1;
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            text = text.Trim();
+            var db = NetGame.Db;
+            if (text.IndexOf(':') > 0 && Modding.ModWorld.TryResolveSystem(text, out int mod) && db.Systems.Exists(s => s.index == mod)) { system = mod; return true; }
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n))
+            {
+                if (!db.Systems.Exists(s => s.index == n)) return false;
+                system = n;
+                return true;
+            }
+            var found = db.Systems.Find(s => !string.IsNullOrEmpty(s.name) && string.Equals(s.name.Trim(), text, StringComparison.OrdinalIgnoreCase));
+            if (found == null) return false;
+            system = found.index;
+            return true;
+        }
 
         public static string Give(string args, IPilot by) => ForTargets(args, by, true, (t, rest) =>
         {
@@ -1034,6 +1071,10 @@ namespace GoF2Remake.Multiplayer
                 case Order.Reveal:
                     Cheats.RevealAllSystems();
                     NetChat.Notice(string.Format(X("mpAdmRevealYou", "{0} revealed every system on your map."), by));
+                    break;
+                case Order.System:
+                    // b: 1 show, 0 hide, 2 reset (the map's own state again); silent, the event / quest says why.
+                    GalaxyMap.SetShown(a, b == 2 ? (bool?)null : b == 1);
                     break;
                 case Order.Peace:
                     Cheats.MakePeace();

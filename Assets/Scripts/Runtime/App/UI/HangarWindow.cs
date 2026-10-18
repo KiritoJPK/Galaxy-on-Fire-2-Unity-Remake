@@ -133,6 +133,12 @@ namespace GoF2Remake.UI
             tradePrice = root.Q<Label>("tradePrice");
             cargoLabel = root.Q<Label>("cargoLabel");
             creditsLabel = root.Q<Label>("creditsLabel");
+            // Remake: a multiplayer session's shared stock counts down to its next restock, between the hold and the credits.
+            restockLabel = new Label { pickingMode = PickingMode.Ignore };
+            restockLabel.AddToClassList("footer-restock");
+            restockLabel.AddToClassList("gof-semibold");
+            restockLabel.style.display = DisplayStyle.None;
+            creditsLabel.parent.Insert(creditsLabel.parent.IndexOf(creditsLabel), restockLabel);
             tabShip = root.Q<Button>("tabShip");
             tabShop = root.Q<Button>("tabShop");
             tabBlueprints = root.Q<Button>("tabBlueprints");
@@ -190,14 +196,6 @@ namespace GoF2Remake.UI
             actionArea = new VisualElement();
             actionArea.AddToClassList("detail-action-area");
             previewSide.Add(actionArea);
-            // Remake: for a ship the head shows the item window's hint (643) instead of its name and race, drawn like the
-            // description's title bar.
-            detailHelp = new Label { pickingMode = PickingMode.Ignore };
-            detailHelp.AddToClassList("info-desc-title");
-            detailHelp.AddToClassList("gof-semibold");
-            detailHelp.AddToClassList("detail-help");
-            detailHelp.style.display = DisplayStyle.None;
-            detailName.parent?.Add(detailHelp);
             previewSide.RegisterCallback<GeometryChangedEvent>(_ => FitActions());
             previewRow.Add(previewSide);
             previewRow.style.display = DisplayStyle.None;
@@ -230,7 +228,6 @@ namespace GoF2Remake.UI
         readonly ShipPreview shipPreview = new ShipPreview(new Vector3(0f, -24000f, 0f), 1268, 636, 0.9f);   // Remake: the item window's view (was 1400 x 460, 0.6)
         /// <summary>Remake: the ship's stats (left) beside its view (right).</summary>
         readonly VisualElement previewRow, previewStats, previewSide, actionArea;
-        readonly Label detailHelp;
         readonly Label detailDescTitle;
         /// <summary>Remake: the details panel; any other item's row of stats (left) and description (right).</summary>
         readonly VisualElement detailsPanel, itemRow;
@@ -266,9 +263,7 @@ namespace GoF2Remake.UI
             previewRow.style.display = ship3d ? DisplayStyle.Flex : DisplayStyle.None;
             detailDescTitle.text = Localization.Get(280).ToUpperInvariant();
             detailDescTitle.style.display = DisplayStyle.Flex;
-            detailHelp.text = Localization.Get(643).ToUpperInvariant();
-            if (detailHelp.parent != null) detailHelp.parent.style.marginLeft = ship3d ? new StyleLength(0f) : new StyleLength(StyleKeyword.Null);   // flush with the title below
-            detailHelp.style.display = ship3d ? DisplayStyle.Flex : DisplayStyle.None;
+            // A ship's head is empty: its view and stats say it (the item window's hint 643 stood there until 2026-10-18).
             detailName.style.display = ship3d ? DisplayStyle.None : DisplayStyle.Flex;
             detailSub.style.display = ship3d ? DisplayStyle.None : DisplayStyle.Flex;
             // Remake: the stats beside the ship's view, or beside any other item's description (left of it).
@@ -543,6 +538,13 @@ namespace GoF2Remake.UI
             {
                 AddHeader(T(183));
                 AddRow(new Row { kind = RowKind.OwnShip, ship = Session.ShipIndex });
+                // Remake mods: the ship's built-in items (ships.json "integrated": "items"), in no slot.
+                var builtIn = hangar.BuiltInStacks();
+                if (builtIn.Count > 0)
+                {
+                    AddHeader(Localization.Extra("shopBuiltInHeader", "Built into the ship"), true);
+                    foreach (int e in builtIn) AddRow(new Row { kind = RowKind.Slot, equipment = e, item = Session.Equipment[e].item, type = hangar.TypeOf(Session.Equipment[e].item) });
+                }
                 for (int type = 0; type <= 3; type++)
                 {
                     int slots = hangar.SlotCount(type);
@@ -693,7 +695,12 @@ namespace GoF2Remake.UI
                     tex = ItemInfo.ItemIcon(stack.item);
                     name.text = ItemInfo.ItemName(stack.item) + (stack.amount > 1 ? $" ({stack.amount})" : "");
                     subText.text = ItemInfo.Category(db.Item(stack.item));
-                    sub.Insert(0, Badge(Localization.Extra("shopMounted", "MOUNTED"), "row-badge--mounted"));
+                    sub.Insert(0, stack.builtIn ? Badge(Localization.Extra("shopBuiltIn", "BUILT IN"), "row-badge--mounted")
+                                                : Badge(Localization.Extra("shopMounted", "MOUNTED"), "row-badge--mounted"));
+                    // A fitted item in a built-in one's place: which one it stands in for (it is back when this is demounted).
+                    if (!stack.builtIn && Hangar.InBuiltInPlace(db, stack)
+                        && db.BuiltInItems(Session.ShipIndex).Find(b => db.Item(b.item)?.categoryId == db.Item(stack.item)?.categoryId) is ItemStack replaced)
+                        subText.text = string.Format(Localization.Extra("shopReplacesBuiltIn", "Replaces the built-in {0}"), ItemInfo.ItemName(replaced.item));
                     break;
                 }
                 case RowKind.Slot:
@@ -1012,7 +1019,7 @@ namespace GoF2Remake.UI
                     }
                 }
                 else if (selected.kind == RowKind.Slot)
-                    ShowAction(T(282).ToUpperInvariant(), true);
+                    ShowAction(T(282).ToUpperInvariant(), !(selected.equipment >= 0 && Session.Equipment[selected.equipment].builtIn));
                 else if (selected.kind == RowKind.CargoItem)
                 {
                     var r = hangar.CanMount(item, out _);
@@ -1357,8 +1364,40 @@ namespace GoF2Remake.UI
             detailStats.Add(row);
         }
 
+        readonly Label restockLabel;
+        bool restockVisible;
+
+        /// <summary>The Shop tab in a session: when the next shipment is expected (the shared stock's re-roll) and, while one
+        /// of them is short, the rare goods' next one (NetStock.RestockLeft). An estimate, like a delivery's: the shipments
+        /// really come a little early or late (NetStock.Shipment), so it shows "~N min", "soon" in the last 90 s and "any
+        /// moment" once the scheduled time has passed; written only when the text changes.</summary>
+        void UpdateRestock()
+        {
+            float reset = -1f, rare = -1f;
+            bool show = IsOpen && tab == Tab.Shop && !hangar.Storage
+                        && GoF2Remake.Multiplayer.NetStock.RestockLeft(hangar.Station, out reset, out rare);
+            if (show != restockVisible)
+            {
+                restockVisible = show;
+                restockLabel.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            if (!show) return;
+            string text = $"{Localization.Extra("hangarShipment", "Next shipment").ToUpperInvariant()}  {Eta(reset)}";
+            if (rare >= 0f) text += $"   {Localization.Extra("hangarRareRestock", "Rare goods").ToUpperInvariant()}  {Eta(rare)}";
+            if (restockLabel.text != text) restockLabel.text = text;
+        }
+
+        /// <summary>A shipment's estimate from its scheduled seconds.</summary>
+        static string Eta(float seconds)
+        {
+            if (seconds <= 0f) return Localization.Extra("hangarEtaDue", "any moment").ToUpperInvariant();
+            if (seconds <= 90f) return Localization.Extra("hangarEtaSoon", "soon").ToUpperInvariant();
+            return string.Format(Localization.Extra("hangarEtaMinutes", "~{0} min"), Mathf.CeilToInt(seconds / 60f)).ToUpperInvariant();
+        }
+
         void UpdateFooter()
         {
+            UpdateRestock();
             cargoLabel.text = $"{Localization.Get(184).ToUpperInvariant()}  {hangar.Load} / {hangar.MaxLoad} t";
             cargoLabel.EnableInClassList("footer-cargo--over", hangar.Overloaded);
             creditsLabel.text = ItemInfo.Credits(Session.Credits);
@@ -1555,6 +1594,11 @@ namespace GoF2Remake.UI
                 case RowKind.Slot when selected.equipment >= 0:
                 {
                     int item = Session.Equipment[selected.equipment].item;
+                    if (Session.Equipment[selected.equipment].builtIn)
+                    {
+                        menu.ShowToast(string.Format(Localization.Extra("shopBuiltInStays", "Built into the {0}: it stays with the ship."), ItemInfo.ShipName(Session.ShipIndex)));
+                        break;
+                    }
                     if (!Hangar.IsSaleable(item)) { menu.ShowToast(Localization.Get(323)); break; }
                     // HangarWindow::selectItem 0x178e20: a passenger cabin stays while the others couldn't seat the passengers aboard.
                     var cabin = level.Database.Item(item);
@@ -1741,6 +1785,7 @@ namespace GoF2Remake.UI
         public void Update(float dtMs)
         {
             if (IsOpen) PollTradeAllHold(dtMs);
+            UpdateRestock();
             if (!IsOpen || heldDirection == 0) return;
             heldMs += dtMs;
             repeatMs += dtMs;

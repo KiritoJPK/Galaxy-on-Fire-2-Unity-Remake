@@ -1006,6 +1006,11 @@ namespace GoF2Remake.World
                     if (stepMs >= 5000f)
                     {
                         SetPlayerVisible(true);
+                        // The original never turns the ship (state 0xc only hands it back): it still faces game +Z, set in the
+                        // constructor, where the 20 pirates come from. The remake's stop above turned it to the station behind
+                        // it, so control came back with its back to them (a player's report): the original's heading again,
+                        // before the chase camera snaps behind it.
+                        Player.rotation = Quaternion.LookRotation(Dir(new Vector3(0, 0, 1)), Vector3.up);
                         Ship.inputLocked = false;   // Modified: the controls back (locked in Build78)
                         LeaveCutscene();
                         Step = 13;

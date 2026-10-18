@@ -351,8 +351,9 @@ namespace GoF2Remake.Modding
                         : ShowingPreview ? PreviewLoadout ?? DefaultLoadout(db, Session.ShipIndex)
                         : Ship != null ? Project.Loadout(Ship) : null;
             if (loadout == null && Ship != null) { loadout = DefaultLoadout(db, Session.ShipIndex); Project.SetLoadout(Ship, loadout); }
-            Session.Equipment = (loadout ?? new List<ItemStack>()).Where(i => db.Item(i.item) != null).Select(i => i.Clone()).ToList();
+            Session.Equipment = (loadout ?? new List<ItemStack>()).Where(i => db.Item(i.item) != null && !i.builtIn).Select(i => i.Clone()).ToList();
             Session.Cargo = new List<ItemStack>();
+            Hangar.SyncBuiltIn(db);
             Hangar.FitToSlots(db);
             Session.Cargo.Clear();   // what didn't fit isn't wanted in the hold
             Session.SelectedSecondary = -1;

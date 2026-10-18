@@ -12,11 +12,13 @@ namespace GoF2Remake.UI
 {
     public static class TextFieldKeys
     {
-        /// <summary>'target' is a TextField or inside one.</summary>
+        /// <summary>'target' is a text input field (a TextField, or a number field: IntegerField, FloatField...) or inside one.
+        /// The number fields aren't TextFields: the menus' touch handling took their focus away, so on a phone the Mod
+        /// Builder's number boxes couldn't be typed into.</summary>
         public static bool InTextField(IEventHandler target)
         {
             for (var v = target as VisualElement; v != null; v = v.parent)
-                if (v is TextField) return true;
+                if (v is TextField || v.ClassListContains(TextField.ussClassName) || v.ClassListContains("unity-base-text-field")) return true;
             return false;
         }
 

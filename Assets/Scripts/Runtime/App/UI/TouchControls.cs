@@ -718,7 +718,12 @@ namespace GoF2Remake.UI
                 pausePos = new Vector2(lb.x - hb.x + w - 121f, lb.y - hb.y + 24f);
                 pausePlaced = true;
             }
-            else if (!pausePlaced && Laid(hb)) pausePos = new Vector2(pauseHost.contentRect.width - 121f, 24f);
+            else if (!pausePlaced && Laid(hb))
+            {
+                // The HUD root spans the whole screen: keep the device's cutouts out (the Dynamic Island / notch side).
+                var inset = SafeArea.Panel(pauseHost, Screen.width, Screen.height, Vr.VrMode.Enabled);
+                pausePos = new Vector2(pauseHost.contentRect.width - inset.y - 121f, inset.z + 24f);
+            }
             else if (!pausePlaced) return;
             Place(pause, pausePos);
         }

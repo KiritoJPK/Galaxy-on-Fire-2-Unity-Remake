@@ -84,11 +84,28 @@ namespace GoF2Remake.Tests
             Assert.IsTrue(Settings.KaamoKeepsEquipment, "on by default");
             Assert.IsTrue(Settings.CloakBay, "on by default");
             Assert.IsTrue(Settings.EmpBreaksCloak, "on by default");
-            Assert.IsTrue(Settings.SmarterNpcTargeting, "on by default");
+            Assert.IsFalse(Settings.SmarterNpcTargeting, "the original's targeting by default (#121)");
             Assert.AreEqual(SessionRules.CollisionMixed, Settings.ShipCollision, "Mixed by default");
             int expected = SessionRules.PirateEvents | SessionRules.KaamoStacking | SessionRules.KaamoKeepsEquipment
-                         | SessionRules.CloakBay | SessionRules.EmpBreaksCloak | SessionRules.SmarterNpcTargeting;
+                         | SessionRules.CloakBay | SessionRules.EmpBreaksCloak;
             Assert.AreEqual(expected, Settings.LocalRules());
+        }
+
+        [Test]
+        public void TheCameraViewsInvertOnTheirOwn()
+        {
+            // #121: free look, Action Freeze, Inspect ship and the Mod Builder's views have their own inversion, apart from
+            // the flight's steering.
+            AllDefaults();
+            var d = new Vector2(3f, -2f);
+            Assert.AreEqual(d, Settings.OrbitTurn(d), "not inverted by default");
+            Settings.InvertPitch = true;
+            Settings.InvertYaw = true;
+            Assert.AreEqual(d, Settings.OrbitTurn(d), "the flight's inversion doesn't turn the camera views");
+            Settings.InvertOrbitY = true;
+            Assert.AreEqual(new Vector2(3f, 2f), Settings.OrbitTurn(d));
+            Settings.InvertOrbitX = true;
+            Assert.AreEqual(new Vector2(-3f, 2f), Settings.OrbitTurn(d));
         }
 
         [Test]

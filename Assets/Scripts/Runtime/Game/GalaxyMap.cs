@@ -59,7 +59,75 @@ namespace GoF2Remake.Data
             if (Modding.ModCampaigns.ModGalaxy)
                 foreach (var s in db.Systems)
                     if (s.index < Session.SystemVisible.Length && !Modding.ModCampaigns.SystemAllowed(s.index)) Session.SystemVisible[s.index] = false;
-            return Session.SystemVisible;
+            return Effective(Session.SystemVisible);
+        }
+
+        static bool[] effective;
+
+        /// <summary>Remake mods: the map as shown now: the revealed systems (Session.SystemVisible, what is saved), each system an
+        /// event / quest showed or hid (Session.SystemShown) and each with a mod's "available" condition (ModUnlocks) as they
+        /// say. A copy, so hiding a system for a while doesn't forget that it was revealed; Session.SystemVisible itself when
+        /// nothing overrides it.</summary>
+        static bool[] Effective(bool[] revealed)
+        {
+            if (Session.SystemShown.Count == 0 && !Modding.ModUnlocks.AnySystemConditions) return revealed;
+            if (effective == null || effective.Length != revealed.Length) effective = new bool[revealed.Length];
+            System.Array.Copy(revealed, effective, revealed.Length);
+            for (int i = 0; i < effective.Length; i++)
+                if (Forced(i) is bool shown) effective[i] = shown;
+            return effective;
+        }
+
+        /// <summary>A system shown (true) or hidden (false) whatever was revealed: an event's / quest's "system" command first,
+        /// then a mod's "available" condition; null = the map's own state.</summary>
+        public static bool? Forced(int system) =>
+            Session.SystemShown.TryGetValue(system, out bool shown) ? shown : Modding.ModUnlocks.SystemAvailable(system);
+
+        /// <summary>The system is hidden on purpose now (a "system ... hide" or an "available" condition that doesn't hold): a
+        /// player in it is taken out (SpaceLevel).</summary>
+        public static bool ForcedHidden(int system) => Forced(system) == false;
+
+        /// <summary>Where a player goes when the system they are in disappears: the nearest system on the map along the
+        /// jumpgate routes (its gate station, else its first station), else the station last docked at when its system is on
+        /// the map, else the first visible system's, else Var Hastra.</summary>
+        public static int FallbackStation(Database db, int system)
+        {
+            var visible = Visibility(db);
+            bool Shown(int s) => s >= 0 && s < visible.Length && visible[s];
+            int StationIn(int s)
+            {
+                var sys = db.Systems.Find(x => x.index == s);
+                if (sys?.stations == null || sys.stations.Count == 0) return -1;
+                return sys.stations.Contains(sys.jumpgateStation) ? sys.jumpgateStation : sys.stations[0];
+            }
+            var seen = new HashSet<int> { system };
+            var queue = new Queue<int>();
+            queue.Enqueue(system);
+            while (queue.Count > 0)
+            {
+                int at = queue.Dequeue();
+                var sys = db.Systems.Find(x => x.index == at);
+                if (sys?.jumpRoutesTo == null) continue;
+                foreach (int n in sys.jumpRoutesTo)
+                {
+                    if (!seen.Add(n)) continue;
+                    if (Shown(n) && StationIn(n) is int st && st >= 0) return st;
+                    queue.Enqueue(n);
+                }
+            }
+            int last = Session.LastDockedStation;
+            if (last >= 0 && db.Stations.Find(x => x.index == last) is StationData ls && ls.system != system && Shown(ls.system)) return last;
+            foreach (var s in db.Systems)
+                if (s.index != system && Shown(s.index) && StationIn(s.index) is int st && st >= 0) return st;
+            return 78;
+        }
+
+        /// <summary>An event's / quest's "system &lt;system&gt; show | hide | reset" (NetAdmin Order.System): 'shown' true / false
+        /// over the map until reset (null).</summary>
+        public static void SetShown(int system, bool? shown)
+        {
+            if (shown is bool s) Session.SystemShown[system] = s;
+            else Session.SystemShown.Remove(system);
         }
 
         public const int LomaSystem = 25, ShimaSystem = 26;

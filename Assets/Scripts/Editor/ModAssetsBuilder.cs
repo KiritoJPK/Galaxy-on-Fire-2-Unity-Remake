@@ -181,8 +181,9 @@ namespace GoF2Remake.EditorTools
         static Material Lit(string name, bool cutout, bool transparent, bool detail)
         {
             string path = $"{Dir}/{name}.mat";
-            // GoF2/Hull: URP Lit + the original's hull reflection and rim (mod ships and stations shine like the game's;
-            // ModMaterials.PlainLit puts a mod's hangar or bar back on URP Lit).
+            // GoF2/Hull with _GOF2_PBR: URP Lit as it is for a mod's PBR maps (the hull's fog and the shared shader; the
+            // original's reflection and rim are for its own specular masks); ModMaterials.PlainLit puts a mod's hangar or
+            // bar on URP Lit itself.
             var shader = Shader.Find("GoF2/Hull") ?? Shader.Find("Universal Render Pipeline/Lit");
             var m = AssetDatabase.LoadAssetAtPath<Material>(path);
             bool create = m == null;
@@ -196,6 +197,10 @@ namespace GoF2Remake.EditorTools
             m.EnableKeyword("_NORMALMAP");
             m.EnableKeyword("_METALLICSPECGLOSSMAP");
             m.EnableKeyword("_EMISSION");
+            // A mod's metallic / smoothness is PBR (alpha = smoothness over the whole hull), not the original's specular
+            // mask: GoF2/Hull leaves its GoF2 reflection and rim out for it (HullForwardPass.hlsl), URP's own reflection
+            // stays. With them the mod ships were milky white in the hangars.
+            m.EnableKeyword("_GOF2_PBR");
             m.SetColor("_EmissionColor", new Color(1f / 255f, 1f / 255f, 1f / 255f, 1f));
             m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
             m.SetFloat("_SmoothnessTextureChannel", 0f);

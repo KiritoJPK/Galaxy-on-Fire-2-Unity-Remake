@@ -495,6 +495,24 @@ namespace GoF2Remake.EditorTools
     }
 
     [Serializable]
+    [Node("Event", null, "Show / Hide System")]
+    public class EventSystemNode : EventCommandNode
+    {
+        public const string SystemIn = "System", Action = "Action";
+
+        protected override void OnDefineOptions(IOptionDefinitionContext context) =>
+            context.AddOption<EventSystemAction>(Action).WithTooltip("Show: on the star map, its routes and jumps too, whatever " +
+                "was revealed. Hide: off it; a player in it is taken out to the nearest system on the map. Reset: as the map " +
+                "has it again. Kept (and saved) until changed.").Build();
+
+        protected override void DefineInputs(IPortDefinitionContext context)
+        {
+            PlayersIn(context);
+            TextIn(context, SystemIn, "", "The system: its number, its name or a mod's key \"mod_id:id\".");
+        }
+    }
+
+    [Serializable]
     [Node("Event", null, "Clear Waypoint")]
     public class EventClearWaypointNode : EventCommandNode
     {

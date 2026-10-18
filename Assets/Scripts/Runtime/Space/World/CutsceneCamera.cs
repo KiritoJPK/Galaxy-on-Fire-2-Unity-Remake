@@ -20,6 +20,8 @@ namespace GoF2Remake.World
         readonly ChaseCamera chase;
         Transform target;
         Vector3 lookPoint, dolly;
+        Vector3 rumbleDir;                       // held for the original's frame (ChaseCamera.HeldJitter)
+        float rumbleAgeMs = ChaseCamera.JitterMs;
 
         public bool Active { get; private set; }
         /// <summary>setRumblePercentage(p, A): the look point jitters by p * (rnd(2A) - A) units per axis
@@ -82,7 +84,8 @@ namespace GoF2Remake.World
             {
                 int a = Mathf.Max(1, RumbleAmplitude);
                 Haptics.Rumble(Rumble * a / 50f);   // remake: on the controller / phone too (1 = the default amplitude's full rumble)
-                look += new Vector3(Random.Range(0, 2 * a) - a, Random.Range(0, 2 * a) - a, Random.Range(0, 2 * a) - a) * (Rumble * M * Settings.CameraShake);
+                // A new offset per original frame (30 fps), not per rendered frame (players' reports: at 144 fps it shook wildly).
+                look += ChaseCamera.HeldJitter(ref rumbleDir, ref rumbleAgeMs, dtMs) * (a * Rumble * M * Settings.CameraShake);
             }
             var d = look - cam.transform.position;
             if (d.sqrMagnitude > 1e-6f) cam.transform.rotation = Quaternion.LookRotation(d, Vector3.up);

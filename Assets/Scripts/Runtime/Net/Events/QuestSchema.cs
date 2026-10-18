@@ -56,7 +56,7 @@ namespace GoF2Remake.Events
                 case QuestFieldKind.Int:
                 case QuestFieldKind.Float:
                     s = Desc(new JObject { ["type"] = new JArray("number", "string") }, d + "; a number, or an expression as a string"); break;
-                case QuestFieldKind.Station: case QuestFieldKind.Ship: case QuestFieldKind.Item:
+                case QuestFieldKind.Station: case QuestFieldKind.Ship: case QuestFieldKind.Item: case QuestFieldKind.System:
                     s = Ref(d + "; the game's number, its name, or a key \"mod_id:id\""); break;
                 case QuestFieldKind.Choice: case QuestFieldKind.Race:
                     s = Desc(new JObject { ["type"] = "string", ["enum"] = new JArray(f.values) }, d + ": " + string.Join(", ", f.values.Select((v, i) => (v.Length == 0 ? "\"\"" : v) + " = " + f.labels[i]))); break;

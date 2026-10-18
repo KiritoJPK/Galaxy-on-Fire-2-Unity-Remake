@@ -230,6 +230,9 @@ namespace GoF2Remake.UI
                 Segments(systemPage, T("mbSecurity", "Security"), SecurityNames.Select(n => T("mbSec" + n, n)).ToArray(), s.Security, n => { s.Security = n; SystemEdited(); });
             var vrow = Row(systemPage);
             FlagButton(vrow, T("mbVisible", "On the map from the start"), s.Visible, v => s.Visible = v, () => SystemEdited());
+            // systems.json "available" (ModUnlocks): on the map only while it holds, e.g. quest(name) == 1 while a quest runs.
+            ConditionField(systemPage, T("mbSystemAvailable", "On the map only when"), (string)s.Get("available"), v => { s.Set("available", v); SystemEdited(); });
+            Note(systemPage, T("mbSystemAvailableNote", "Empty: always as revealed. With a condition the system is shown while it holds and hidden while it doesn't (a player in it is taken out), e.g. quest(smuggler_run) == 1 while that quest or mission runs. Events and quests can also show or hide it with the \"Show / hide a system\" step."));
 
             if (isNew)
             {

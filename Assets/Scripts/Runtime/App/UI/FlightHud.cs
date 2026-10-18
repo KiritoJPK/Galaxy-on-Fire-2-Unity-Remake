@@ -153,7 +153,7 @@ namespace GoF2Remake.UI
             builderSpace = null;
             pauseMenu?.Close();   // the scene is going: sounds and time back to normal
             UnityEngine.Cursor.lockState = CursorLockMode.None;   // the captured mouse (mouse steering) is released
-            UnityEngine.Cursor.visible = true;
+            UnityEngine.Cursor.visible = InputMode.CursorShown;
             if (mining != null) mining.Message -= OnKindMessage;
             if (docking != null) docking.Message -= OnMiningMessage;
             if (nav != null) nav.Message -= OnKindMessage;
@@ -707,7 +707,8 @@ namespace GoF2Remake.UI
             if (mining != null) mining.mouseDrill = cursor && mining.State == Mining.Phase.Mining;
             var wantLock = cursor ? CursorLockMode.Locked : CursorLockMode.None;
             if (UnityEngine.Cursor.lockState != wantLock) UnityEngine.Cursor.lockState = wantLock;
-            if (UnityEngine.Cursor.visible == cursor) UnityEngine.Cursor.visible = !cursor;
+            bool cursorShown = !cursor && InputMode.CursorShown;   // a controller in use hides it too
+            if (UnityEngine.Cursor.visible != cursorShown) UnityEngine.Cursor.visible = cursorShown;
             if (mouseReticle != null && mouseReticle.parent == null) mouseReticle = null;   // a UI reload rebuilt the tree
             if (mouseReticle == null && safeArea != null)
             {
@@ -1608,30 +1609,10 @@ namespace GoF2Remake.UI
             ApplySafeArea(w, h, offscreen);
         }
 
-        /// <summary>
-        /// Device safe-area insets (pixels -> panel units). Needs the panel's laid-out size, which is NaN on the first
-        /// frame: until then it retries every frame (a NaN inset collapses the HUD into the top-left corner).
-        /// </summary>
-        void ApplySafeArea(float w, float h, bool offscreen)
-        {
-            root.schedule.Execute(() =>
-            {
-                if (safeArea == null) return;
-                if (!(root.layout.width > 0f)) { ApplySafeArea(w, h, offscreen); return; }   // also catches NaN
-                float k = root.layout.width / w;
-                // Screen.safeArea can reach past Screen.width/height on some phones (display cutouts / insets):
-                // clamp it to the screen, or negative insets push right- and bottom-anchored controls off-screen.
-                var raw = offscreen ? new Rect(0f, 0f, w, h) : Screen.safeArea;
-                var sa = Rect.MinMaxRect(Mathf.Clamp(raw.xMin, 0f, w), Mathf.Clamp(raw.yMin, 0f, h),
-                                         Mathf.Clamp(raw.xMax, 0f, w), Mathf.Clamp(raw.yMax, 0f, h));
-                if (sa.width < w * 0.5f || sa.height < h * 0.5f) sa = new Rect(0f, 0f, w, h);   // nonsense: ignore
-                safeArea.style.left = sa.xMin * k;
-                safeArea.style.right = (w - sa.xMax) * k;
-                safeArea.style.top = (h - sa.yMax) * k;
-                safeArea.style.bottom = sa.yMin * k;
-                Debug.Log($"FlightHud: screen {w}x{h}, safe area {raw} -> {sa}, panel {root.layout.size}, input {InputMode.Current}");
-            }).ExecuteLater(1);
-        }
+        /// <summary>Device safe-area insets (the notch / Dynamic Island, the home indicator, cutouts), see SafeArea.</summary>
+        void ApplySafeArea(float w, float h, bool offscreen) =>
+            SafeArea.Apply(root, safeArea, w, h, offscreen, SafeArea.Mode.Position, px =>
+                Debug.Log($"FlightHud: screen {w}x{h}, safe area {Screen.safeArea} -> insets {px} (l r t b), panel {root.layout.size}, input {InputMode.Current}"));
 
         void Dock()
         {

@@ -239,7 +239,7 @@ namespace GoF2Remake.UI
         {
             var list = new List<VisualElement>();
             if (ActiveTab != null) list.Add(ActiveTab);
-            if (tabs.Count > 0) foreach (var c in tabs[TabIndex].rows) if (c.Shown) list.Add(c.Field);
+            if (tabs.Count > 0) foreach (var c in tabs[TabIndex].rows) if (c.Shown && c.Enabled) list.Add(c.Field);
             list.AddRange(FooterButtons);
             return list;
         }

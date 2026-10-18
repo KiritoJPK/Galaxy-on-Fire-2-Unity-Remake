@@ -510,6 +510,7 @@ namespace GoF2Remake.Multiplayer
             if (manager != null && !manager.IsServer && manager.IsConnectedClient && !closing) NetProfileClient.Upload();
             // A persistent hosted world: the host's own game straight into its profile (no network in between).
             if (manager != null && manager.IsHost && PersistentHost && worldEntered && !closing) NetProfileClient.SaveHostNow();
+            NetAudit.Tick(true);   // the server's shop runs still open, into the log
             NetChat.Clear();
             NetSquad.Clear();
             NetTradeClient.Clear();
@@ -689,6 +690,19 @@ namespace GoF2Remake.Multiplayer
                 if (n.StartsWith("rndis") || n.StartsWith("usb") || n.StartsWith("ncm")) return "USB";
                 if (n.StartsWith("tun") || n.StartsWith("ppp") || n.StartsWith("ipsec")) return "VPN";
                 if (n.StartsWith("eth") || n.StartsWith("en")) return "Ethernet";
+            }
+            if (platform == RuntimePlatform.IPhonePlayer)
+            {
+                // iOS / iPadOS names: en0 Wi-Fi, bridge100 the Personal Hotspot, en1+ an Ethernet / USB adapter (iPad);
+                // mobile data (pdp_ip), AirDrop's and the low-latency WLAN's (awdl, llw), the system's tunnels nobody can
+                // join on.
+                if (n.StartsWith("lo")) return null;
+                foreach (var skip in new[] { "pdp_ip", "awdl", "llw", "anpi", "ipsec", "gif", "stf", "xhc", "ap" })
+                    if (n.StartsWith(skip)) return null;
+                if (n == "en0") return "Wi-Fi";
+                if (n.StartsWith("bridge")) return "Hotspot";
+                if (n.StartsWith("utun")) return "VPN";
+                if (n.StartsWith("en")) return "Ethernet";
             }
             // Windows / macOS.
             if (d.IndexOf("Wi-Fi Direct", StringComparison.OrdinalIgnoreCase) >= 0) return "Hotspot";

@@ -10,12 +10,24 @@
 // original's textureCube (the GPU's mip choice). Only materials with a specular map (_METALLICSPECGLOSSMAP) get the terms, scaled down by the
 // material's metallic (a mod's metal parts already reflect through URP). Globals (SRP batcher safe): _GoF2HullReflection
 // (strength, 0 = URP Lit as it is), _GoF2HullRimColor (3 x the system's rim table, StarSystem::initLight).
+// _GOF2_PBR (the mods' material templates, ModAssetsBuilder): no GoF2 terms. A mod material's _MetallicGlossMap alpha is
+// PBR smoothness, high over the whole hull, not the original's sparse specular mask, so the terms laid the cubemap over
+// every panel (spec^2 everywhere, up to 2 spec at grazing angles) on top of URP's own environment reflection: mod ships
+// came out milky white in the hangars, whose cubemaps are bright rooms. URP's Fresnel reflection alone lights them, and
+// in a GoF2 hangar their indirect light is dimmed by _GoF2PbrIndirectDim (SkyReflection.SetHangar).
 
 #ifndef GOF2_HULL_FORWARD_PASS_INCLUDED
 #define GOF2_HULL_FORWARD_PASS_INCLUDED
 
 half _GoF2HullReflection;
 half3 _GoF2HullRimColor;
+// _GOF2_PBR: how much of the indirect light (ambient and environment reflection) a mod material loses, through URP's
+// occlusion (0 = all of it kept; SkyReflection: 0 in space and the lounge, more in a GoF2 hangar).
+half _GoF2PbrIndirectDim;
+// _GOF2_PBR: in a GoF2 hangar the main light swapped for one from above (xyz toward it, world; w = how much of the swap,
+// 0 = off), its colour a factor on the main light's (SkyReflection.SetHangar).
+float4 _GoF2PbrLight;
+half3 _GoF2PbrLightColor;
 // Remake: the system's reflection cubemap as a global of its own (SkyReflection.SetSystem): unity_SpecCube0 stayed empty in
 // the Android build (Forward on the Mobile renderer).
 TEXTURECUBE(_GoF2ReflectionCube);
@@ -73,11 +85,18 @@ void HullPassFragment(
 
     InitializeBakedGIData(input, inputData);
 
+#if defined(_GOF2_PBR)
+    // A mod's PBR hull has no occlusion map (the GoF3 and ES2 hulls), and in a hangar the flat room ambient and the
+    // bright room cubemap lit every panel alike: flat and hazy next to GoF3's own render. The original's own textures
+    // carry their shading painted in, so the game's hulls keep all of it.
+    surfaceData.occlusion *= 1.0h - _GoF2PbrIndirectDim;
+#endif
+
     URP_LIGHT_ACCUM4 color = UniversalFragmentPBR(inputData, surfaceData,
         IsSpecularSetup(), UseSpecularHighlights(), UseAlphaPremultiply(),
         UseClearCoat() || UseClearCoatMap(), ReceiveShadows(), IsSurfaceTypeTransparent(), UseEnvironmentReflections(), input.normalWS.xyz);
 
-#if defined(_METALLICSPECGLOSSMAP)
+#if defined(_METALLICSPECGLOSSMAP) && !defined(_GOF2_PBR)
     {
         half spec = SAMPLE_TEXTURE2D(_MetallicGlossMap, sampler_MetallicGlossMap, input.uv).a;
         half reflectTex = spec * spec;
@@ -91,6 +110,24 @@ void HullPassFragment(
         half3 env = SAMPLE_TEXTURECUBE(_GoF2ReflectionCube, sampler_GoF2ReflectionCube, r).rgb;   // an LDR cubemap: nothing to decode
         half k = _GoF2HullReflection * (1.0h - surfaceData.metallic);
         color.rgb += (env * reflectivity + rim * reflectTex * _GoF2HullRimColor) * k * surfaceData.occlusion;
+    }
+#endif
+
+#if defined(_GOF2_PBR)
+    if (_GoF2PbrLight.w > 0.0)
+    {
+        // The hangar's key light comes from the camera's side (ModStation::resetLight), which suits the original's hulls:
+        // their textures carry their shading painted in. A mod's PBR hull lit from the front is evenly lit all over, flat
+        // next to GoF3's own render; lit from above it has lit tops and dark undersides. The main light's term is taken
+        // out and the one from above put in (the room and the game's ships keep the main light).
+        BRDFData brdf = InitializeBRDFData(surfaceData, IsSpecularSetup(), UseAlphaPremultiply());
+        Light key = GetMainLight();
+        Light top = key;
+        top.direction = half3(normalize(_GoF2PbrLight.xyz));
+        top.color = key.color * _GoF2PbrLightColor;
+        bool highlights = UseSpecularHighlights();
+        color.rgb += (LightingPhysicallyBased(brdf, top, inputData.normalWS, inputData.viewDirectionWS, highlights, false)
+                    - LightingPhysicallyBased(brdf, key, inputData.normalWS, inputData.viewDirectionWS, highlights, false)) * (half)_GoF2PbrLight.w;
     }
 #endif
 

@@ -76,6 +76,7 @@ namespace GoF2Remake.UI
             overlay.Add(hints);   // top right
             var footer = new VisualElement { pickingMode = PickingMode.Ignore };
             footer.AddToClassList("orbit-view-footer");
+            footer.AddToClassList(SafeArea.EdgeClass);
             back = OrbitViewUi.Back(() => { ButtonSound?.Invoke(false); Exit(); }, () => ButtonSound?.Invoke(true));
             footer.Add(back);
             var logo = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -83,6 +84,7 @@ namespace GoF2Remake.UI
             footer.Add(logo);
             overlay.Add(footer);
             root.Add(overlay);
+            SafeArea.KeepClear(overlay);   // the title, hints, footer and settings panel clear of the notch / Dynamic Island
             tools = new PhotoTools(overlay, s => ButtonSound?.Invoke(s));
             tools.Changed += BuildHints;
             tools.Tapped += () => { if (uiHidden) SetUiHidden(false); };
@@ -249,6 +251,7 @@ namespace GoF2Remake.UI
                 if (Mathf.Abs(steps) > 0f) wheel += steps;
             }
             if (Mathf.Abs(wheel) > 0.01f) { distance += wheel * -50f * frames; wheel *= Mathf.Pow(0.9f, frames); } else wheel = 0f;
+            delta = Settings.OrbitTurn(delta);   // #121: the camera views' own inversion
             px += delta.x;
             py += delta.y;
             if (flingClamps) py = Mathf.Clamp(py, -200f, 200f);
@@ -345,8 +348,12 @@ namespace GoF2Remake.UI
             if (!string.IsNullOrEmpty(dir)) Application.OpenURL("file:///" + dir.Replace('\\', '/'));
         }
 
+#if UNITY_IOS && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void GoF2Photos_Save(string path);
+#endif
+
         /// <summary>Saves a PNG to the pictures library; returns where (the file's full path; on Android the library's
-        /// "Pictures/Galaxy on Fire 2/name"), null when it couldn't.</summary>
+        /// "Pictures/Galaxy on Fire 2/name", on iOS "Photos · Screenshots/name"), null when it couldn't.</summary>
         public static string StoreAt(byte[] png, string name)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
@@ -369,6 +376,18 @@ namespace GoF2Remake.UI
                 return "Pictures/Galaxy on Fire 2/" + name;
             }
             catch (Exception e) { Debug.LogWarning("PhotoMode: MediaStore " + e.Message); }
+#elif UNITY_IOS && !UNITY_EDITOR
+            // iOS: Documents/Screenshots (the Files app shows it) and the photo library (PhotoLibrary.mm, add-only access).
+            try
+            {
+                string shots = Path.Combine(GoF2Remake.GamePaths.Data, "Screenshots");
+                Directory.CreateDirectory(shots);
+                string file = Path.Combine(shots, name);
+                File.WriteAllBytes(file, png);
+                GoF2Photos_Save(file);
+                return "Photos · Screenshots/" + name;
+            }
+            catch (Exception e) { Debug.LogWarning("PhotoMode: Photos " + e.Message); }
 #elif !UNITY_WSA || UNITY_EDITOR
             // UWP / Xbox (UNITY_WSA) has no writable Pictures folder without the Pictures library capability: straight to the
             // app's own folder below.

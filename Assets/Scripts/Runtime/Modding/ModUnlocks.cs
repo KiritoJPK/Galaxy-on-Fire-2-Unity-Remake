@@ -5,6 +5,8 @@
 // that must hold before the item is stocked by shops or found in loot, or the ship is sold by dealers and lounge sellers.
 // ships.json "dealer" { "chance", "systemRace", "minTechLevel" } puts a mod ship in the ordinary dealers' lists
 // (AddDealerShips, from Shop.GenerateShips); a minTechLevel above 10 means the top tech level (10) stations, as for items. A condition that can't be read counts as false and warns once on its mod.
+// systems.json "available" (new systems and overrides): the system is on the star map while it holds and hidden while it
+// doesn't, whatever was revealed (SystemAvailable, read by GalaxyMap.Visibility; once a frame, it is asked often).
 
 using System;
 using System.Collections.Generic;
@@ -23,11 +25,13 @@ namespace GoF2Remake.Modding
             public Cond(ModInfo mod, string text, string where) { this.mod = mod; this.text = text; this.where = where; }
         }
 
-        static readonly Dictionary<int, Cond> items = new Dictionary<int, Cond>(), ships = new Dictionary<int, Cond>();
-        static int builtRevision = -1;
+        static readonly Dictionary<int, Cond> items = new Dictionary<int, Cond>(), ships = new Dictionary<int, Cond>(),
+                                               systems = new Dictionary<int, Cond>();
+        static readonly Dictionary<int, bool> systemsNow = new Dictionary<int, bool>();
+        static int builtRevision = -1, systemsFrame = -1;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetStatics() { items.Clear(); ships.Clear(); builtRevision = -1; }
+        static void ResetStatics() { items.Clear(); ships.Clear(); systems.Clear(); systemsNow.Clear(); builtRevision = systemsFrame = -1; }
 
         static void Build()
         {
@@ -35,6 +39,8 @@ namespace GoF2Remake.Modding
             builtRevision = ModManager.Revision;
             items.Clear();
             ships.Clear();
+            systems.Clear();
+            systemsFrame = -1;
             foreach (var mod in ModManager.Active)
             {
                 var p = ModContent.Parse(mod);
@@ -52,7 +58,29 @@ namespace GoF2Remake.Modding
                     int i = d.key != null ? ModContent.ShipIndexOf(d.key) : ModContent.TryResolveShip(d.overrideRef, out int t) ? t : -1;
                     if (i >= 0) ships[i] = new Cond(mod, c, d.where);
                 }
+                foreach (var d in p.systems)
+                {
+                    string c = ModJson.Str(d.json, "available");
+                    if (string.IsNullOrWhiteSpace(c)) continue;
+                    int i = d.key != null ? ModWorld.SystemIndexOf(d.key) : ModWorld.TryResolveSystem(d.overrideRef, out int t) ? t : -1;
+                    if (i >= 0) systems[i] = new Cond(mod, c, d.where);
+                }
             }
+        }
+
+        /// <summary>Whether any active mod gives a system an "available" condition.</summary>
+        public static bool AnySystemConditions { get { Build(); return systems.Count > 0; } }
+
+        /// <summary>A system's "available" condition now: null without one, else whether it holds (each condition read once a
+        /// frame: the map, the routes and the shops ask often).</summary>
+        public static bool? SystemAvailable(int system)
+        {
+            Build();
+            if (!systems.TryGetValue(system, out var c)) return null;
+            // Kept for the frame while playing (in the Editor's edit mode the frame never advances: read every time).
+            if (!Application.isPlaying || systemsFrame != Time.frameCount) { systemsFrame = Time.frameCount; systemsNow.Clear(); }
+            if (!systemsNow.TryGetValue(system, out bool now)) systemsNow[system] = now = Holds(c.mod, c.text, c.where);
+            return now;
         }
 
         /// <summary>A mod's condition for this game; empty = true. A broken one is false and warns once on its mod.</summary>

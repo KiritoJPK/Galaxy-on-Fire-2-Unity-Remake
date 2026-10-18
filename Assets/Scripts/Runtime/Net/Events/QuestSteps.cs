@@ -30,6 +30,8 @@ namespace GoF2Remake.Events
         Variable,
         /// <summary>An event graph's or quest's name (Start event).</summary>
         Event,
+        /// <summary>A star system: its number, its name or a mod's key "mod_id:id".</summary>
+        System,
     }
 
     public sealed class QuestField
@@ -328,6 +330,14 @@ namespace GoF2Remake.Events
 
             // ---- places ----
             Custom("goto", "places", "Go to a station", "Waits until the player docks there (or reaches its orbit)"),
+            Plain("system", "places", "Show / hide a system", "A system on or off the star map (its routes and jumps too), until reset", r =>
+            {
+                string system = r.Ref("system");
+                if (system.Length == 0) { r.Problem("pick the system."); return null; }
+                return QuestReader.Join("system", r.Who, system, r.S("action"));
+            }, Who(), F("system", QuestFieldKind.System, "System"),
+               new QuestField { key = "action", kind = QuestFieldKind.Choice, english = "", values = new[] { "show", "hide", "reset" },
+                                labels = new[] { "Show it", "Hide it (a player in it is taken out)", "As the map has it again" }, def = "show" }),
             Plain("waypoint", "places", "Waypoint", "A point in an orbit the autopilot flies to", r =>
             {
                 string st = r.Ref("station"), at = r.Xyz("at");

@@ -112,6 +112,7 @@ namespace GoF2Remake.UI
 
             panel = new VisualElement();
             panel.AddToClassList("photo-panel");
+            panel.AddToClassList(SafeArea.EdgeClass);
             var title = new Label(T("photoSettings", "CAMERA SETTINGS")) { pickingMode = PickingMode.Ignore };
             title.AddToClassList("photo-panel-title");
             title.AddToClassList("gof-semibold");
@@ -133,6 +134,7 @@ namespace GoF2Remake.UI
             // After a screenshot: where it went, and (desktop) a button / O to show it in the file browser.
             notice = new VisualElement { pickingMode = PickingMode.Ignore };
             notice.AddToClassList("photo-saved");
+            notice.AddToClassList(SafeArea.EdgeClass);
             noticePath = new Label { pickingMode = PickingMode.Ignore };
             noticePath.AddToClassList("photo-saved-path");
             notice.Add(noticePath);
@@ -405,7 +407,9 @@ namespace GoF2Remake.UI
                 var mid = (a + b) * 0.5f * scale;
                 if (pinchSpan >= 0f)
                 {
-                    free.Move(new Vector3(0f, 0f, 1f), (span - pinchSpan) * 0.15f * PhotoSettings.Speed);
+                    // Spread: forward; pinched: back (FreeCamera.Move takes a direction and a positive distance).
+                    float spread = span - pinchSpan;
+                    free.Move(new Vector3(0f, 0f, Mathf.Sign(spread)), Mathf.Abs(spread) * 0.15f * PhotoSettings.Speed);
                     var d = mid - pinchMid;
                     free.Move(new Vector3(-d.x, -d.y, 0f).normalized, d.magnitude * 0.12f * PhotoSettings.Speed);
                 }
@@ -444,6 +448,7 @@ namespace GoF2Remake.UI
             }
             // The look is slower through a long lens, so a zoomed-in view can still be aimed.
             float lens = Mathf.Clamp(PhotoSettings.Fov / 60f, 0.2f, 1.5f);
+            look = Settings.OrbitTurn(look);   // #121: the camera views' own inversion
             free.Look(look.x * lens, look.y * lens);
             free.Move(move, speed * dt);
             if (zoom != 0f) { PhotoSettings.Fov = Mathf.Clamp(PhotoSettings.Fov * Mathf.Exp(zoom), PhotoSettings.MinFov, PhotoSettings.MaxFov); Refresh(); }
@@ -630,6 +635,9 @@ namespace GoF2Remake.UI
         public IEnumerator Capture(VisualElement overlay, Action<bool> done)
         {
             overlay.style.visibility = Visibility.Hidden;
+            // The open settings panel sets its own 'visibility: visible' (.photo-panel--open, for its fade), which beats the
+            // overlay's inherited hidden: hide it inline too, or it lands in the picture.
+            panel.style.visibility = Visibility.Hidden;
             bool fps = FpsCounter.Suppressed;
             FpsCounter.Suppressed = true;
             yield return null;   // a frame drawn without the overlay
@@ -657,6 +665,7 @@ namespace GoF2Remake.UI
             catch (Exception e) { Debug.LogWarning("Photo mode screenshot: " + e.Message); }
             if (shot != null) UnityEngine.Object.Destroy(shot);
             overlay.style.visibility = StyleKeyword.Null;
+            panel.style.visibility = StyleKeyword.Null;
             FpsCounter.Suppressed = fps;
             done?.Invoke(ok);
         }

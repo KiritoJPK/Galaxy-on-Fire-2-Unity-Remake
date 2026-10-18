@@ -8,6 +8,8 @@
 //   the route back), "gateStation" (the station orbit with the jumpgate; default its first station) } or
 //   { "override": n | "mod:id", name, security, visible, gates (added) }; both may name "spaceMusic" / "stationMusic" (a
 //   mod's track, ModMusic: the calm space music in the system's orbits, the music docked at its stations).
+//   Both may name "available": a condition (ModUnlocks, the event graphs' expressions): while it holds the system is on
+//   the map, while it doesn't it is hidden, revealed or not (GalaxyMap.Visibility); a player in it is taken out.
 // stations.json may name "music" too (that station's docked music).
 // Looks (new or override): a station's own 3D model ("model": a glTF / GLB, "modelSize" its largest extent in game units
 // (default 40000 = 2 km; the originals are 1-5 km), "modelYaw" degrees, "modelCentre" (default true: the bounds' centre at
@@ -65,7 +67,7 @@ namespace GoF2Remake.Modding
 
         static readonly HashSet<string> SystemFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "id", "override", "name", "race", "security", "visible", "position", "sky", "gates", "gateStation", "spaceMusic", "stationMusic",
-              "sunTexture", "sunColor", "skybox" };
+              "sunTexture", "sunColor", "skybox", "available" };
         static readonly HashSet<string> StationFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             { "id", "override", "name", "system", "techLevel", "planet", "looksLike", "music", "model", "modelSize", "modelYaw", "modelCentre",
               "materials", "collision", "volumes", "interior", "planetTexture", "hangar", "bar" };
@@ -193,6 +195,8 @@ namespace GoF2Remake.Modding
         public static bool IsMissingSystem(int i) { EnsureMapping(); return missingSystems.ContainsKey(i); }
         public static bool IsMissingStation(int i) { EnsureMapping(); return missingStations.ContainsKey(i); }
         public static int SystemIndexOf(string key) { EnsureMapping(); return systemIndex.TryGetValue(key, out int i) ? i : -1; }
+        /// <summary>A mod's system's key ("mod_id:id"), null for an original one.</summary>
+        public static string SystemKey(int i) { EnsureMapping(); return systemAt.TryGetValue(i, out var d) ? d.key : null; }
         public static int StationIndexOf(string key) { EnsureMapping(); return stationIndex.TryGetValue(key, out int i) ? i : -1; }
         public static IEnumerable<KeyValuePair<int, string>> ActiveSystemKeys() { EnsureMapping(); return systemAt.Select(kv => new KeyValuePair<int, string>(kv.Key, kv.Value.key)).ToList(); }
         public static IEnumerable<KeyValuePair<int, string>> ActiveStationKeys() { EnsureMapping(); return stationAt.Select(kv => new KeyValuePair<int, string>(kv.Key, kv.Value.key)).ToList(); }

@@ -16,6 +16,7 @@ namespace GoF2Remake.UI
         {
             var l = new Label { pickingMode = PickingMode.Ignore };
             l.AddToClassList("orbit-view-title");
+            l.AddToClassList(SafeArea.EdgeClass);
             l.AddToClassList("gof-semibold");
             return l;
         }
@@ -42,6 +43,7 @@ namespace GoF2Remake.UI
         {
             var h = new VisualElement { pickingMode = PickingMode.Ignore };
             h.AddToClassList("orbit-view-hints");
+            h.AddToClassList(SafeArea.EdgeClass);
             return h;
         }
 

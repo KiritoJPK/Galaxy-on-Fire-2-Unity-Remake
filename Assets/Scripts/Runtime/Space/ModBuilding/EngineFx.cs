@@ -8,7 +8,8 @@
 //     middle stretched sideways), its AngleBlend dimming it seen from the front;
 //   - the cone ("cone"): four crossed cards along the exhaust (GoF3's exhaust mesh: radius 1.62, rings at 0 / 1.73 / 6.91 /
 //     12.09 units with vertex colours 0 / 0.77 / 0.2 / 0, u 0.39 -> 0.69 along, v 0 -> 1 across), here as long as the
-//     throttle;
+//     throttle; an engine's own rings by "coneProfile" (the Terran / Vossk exhaust meshes), and "coneFade" its material's
+//     AngleBlend: each card fades as it turns edge-on to the camera (FadeCards), so from straight behind only the flares show;
 //   - the stream ("trail"): GoF3's Fork particle trail of stretched streaks (beam_001.bmp) that wander off sideways, so
 //     each stream wavers like lightning and bends when the ship turns: here 'trailCount' camera-facing ribbons per exhaust,
 //     points emitted at the nozzle that keep the ship's velocity (the stream stays with the ship) plus their own speed
@@ -51,10 +52,12 @@ namespace GoF2Remake.Modding
 
         static readonly int ColorId = Shader.PropertyToID("_Color");
 
-        // GoF3's exhaust cards (vfx_engine_nivelian_000_exhaust): rings along the length (share of it), their brightness and u.
+        // GoF3's exhaust cards (vfx_engine_nivelian_000_exhaust): rings along the length (share of it), their brightness and u;
+        // the default when the engine gives no "coneProfile" of its own.
         static readonly float[] ConeRings = { 0f, 1.73f / 12.09f, 6.91f / 12.09f, 1f };
         static readonly float[] ConeBright = { 0f, 0.77f, 0.2f, 0f };
         static readonly float[] ConeU = { 0.39f, 0.44f, 0.56f, 0.69f };
+        const int ConeCards = 4;
 
         [SerializeField] GameObject engineGlow;
         [SerializeField] List<Vector3> nozzles = new List<Vector3>();   // root space
@@ -69,6 +72,8 @@ namespace GoF2Remake.Modding
         [SerializeField] Material glowMaterial, coneMaterial, trailMaterial, spiralMaterial;
         [SerializeField] Vector3 glowHalf;   // the square's half size, the streak's half width and half height
         [SerializeField] float glowIntensity, coneLength, coneHalfWidth, coneIntensity;
+        [SerializeField] float[] coneRings, coneBright, coneU;   // the engine's own cone rings ("coneProfile"; null: the default)
+        [SerializeField] Vector2 coneFade;                        // "coneFade" |N.V| from .. to (to <= 0: none)
         [SerializeField] int trailCount;
         [SerializeField] float trailLength, trailHalfWidth, trailWander, trailTime, trailIntensity;
         [SerializeField] int spiralCount;
@@ -87,7 +92,9 @@ namespace GoF2Remake.Modding
         }
 
         readonly List<(Transform t, MeshRenderer r, int engine)> flares = new List<(Transform, MeshRenderer, int)>();
-        readonly List<(Transform t, MeshRenderer r, int engine)> cones = new List<(Transform, MeshRenderer, int)>();
+        readonly List<(Transform t, MeshRenderer r, int engine, Mesh mesh)> cones = new List<(Transform, MeshRenderer, int, Mesh)>();
+        Color[] coneBase;                      // the cone mesh's own vertex colours (the edge-on fade scales each card's)
+        readonly List<Color> coneColours = new List<Color>();
         readonly List<Trail> trails = new List<Trail>();
         readonly List<(Mesh mesh, MeshRenderer r, int engine, int strand)> strands = new List<(Mesh, MeshRenderer, int, int)>();
         readonly List<Vector3> rpos = new List<Vector3>();
@@ -175,6 +182,15 @@ namespace GoF2Remake.Modding
             e.coneLength = fx.coneLength * M;
             e.coneHalfWidth = fx.coneWidth * M;
             e.coneIntensity = fx.coneIntensity;
+            var cp = fx.coneProfile;
+            if (cp != null && cp.Length >= 6 && cp.Length % 3 == 0)
+            {
+                int n = cp.Length / 3;
+                e.coneRings = new float[n]; e.coneBright = new float[n]; e.coneU = new float[n];
+                for (int k = 0; k < n; k++) { e.coneRings[k] = cp[3 * k]; e.coneBright[k] = cp[3 * k + 1]; e.coneU[k] = cp[3 * k + 2]; }
+            }
+            if (fx.coneFade != null && fx.coneFade.Length >= 2 && fx.coneFade[1] > fx.coneFade[0])
+                e.coneFade = new Vector2(Mathf.Max(0f, fx.coneFade[0]), fx.coneFade[1]);
             e.trailCount = Mathf.Clamp(fx.trailCount, 0, 4);
             e.trailLength = fx.trailLength * M;
             e.trailHalfWidth = fx.trailWidth * M;
@@ -220,8 +236,9 @@ namespace GoF2Remake.Modding
             var parent = engineGlow.transform;
             Mesh quad = glowMaterial != null ? Flare() : null;
             if (quad != null) owned.Add(quad);
+            bool fading = coneFade.y > 0f;
             Mesh cone = coneMaterial != null ? Cone() : null;
-            if (cone != null) owned.Add(cone);
+            if (cone != null) { owned.Add(cone); coneBase = cone.colors; }
             for (int i = 0; i < nozzles.Count; i++)
             {
                 var at = transform.TransformPoint(nozzles[i]);
@@ -234,10 +251,11 @@ namespace GoF2Remake.Modding
                 if (coneMaterial != null)
                 {
                     var mesh = cone;
-                    if (Shaped(i)) { mesh = Cone(i); owned.Add(mesh); }   // its cards reach the nozzle's outline
+                    // its cards reach the nozzle's outline; each fading cone its own mesh (the cards' colours per view)
+                    if (Shaped(i) || fading) { mesh = Cone(Shaped(i) ? i : -1); owned.Add(mesh); if (fading) mesh.MarkDynamic(); }
                     var t = Child(parent, $"engine_fx_cone_{i}", mesh, coneMaterial, at, out var r);
                     t.rotation = transform.rotation * turns[i] * Quaternion.LookRotation(Vector3.back, Vector3.up);   // +z of the cone = backward
-                    cones.Add((t, r, i));
+                    cones.Add((t, r, i, mesh));
                 }
                 if (spiralMaterial != null)
                     for (int k = 0; k < spiralCount; k++)
@@ -304,22 +322,27 @@ namespace GoF2Remake.Modding
         {
             var m = new Mesh { name = "engine_fx_cone" };
             var v = new List<Vector3>(); var uv = new List<Vector2>(); var col = new List<Color>(); var tr = new List<int>();
-            for (int card = 0; card < 4; card++)
+            // The engine's own rings only when they were given: Instantiate copies a null serialized array as an empty one,
+            // so every ship (a copy of its template) without a "coneProfile" had no rings and no cone.
+            bool own = coneRings != null && coneRings.Length >= 2 && coneBright != null && coneBright.Length == coneRings.Length
+                       && coneU != null && coneU.Length == coneRings.Length;
+            float[] rings = own ? coneRings : ConeRings, bright = own ? coneBright : ConeBright, us = own ? coneU : ConeU;
+            for (int card = 0; card < ConeCards; card++)
             {
                 float a = card * Mathf.PI / 4f;
                 var side = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0f);
                 int start = v.Count;
-                for (int ring = 0; ring < ConeRings.Length; ring++)
+                for (int ring = 0; ring < rings.Length; ring++)
                     for (int s = 0; s < 2; s++)
                     {
                         // (the cone's x is the mount's -x: LookRotation backward)
                         var d = side * (s == 0 ? -1f : 1f);
                         float f = nozzle >= 0 ? Factor(nozzle, Mathf.Atan2(d.y, -d.x)) : 1f;
-                        v.Add(d * f + Vector3.forward * ConeRings[ring]);
-                        uv.Add(new Vector2(ConeU[ring], s));
-                        col.Add(new Color(ConeBright[ring], ConeBright[ring], ConeBright[ring], 1f));
+                        v.Add(d * f + Vector3.forward * rings[ring]);
+                        uv.Add(new Vector2(us[ring], s));
+                        col.Add(new Color(bright[ring], bright[ring], bright[ring], 1f));
                     }
-                for (int ring = 0; ring < ConeRings.Length - 1; ring++)
+                for (int ring = 0; ring < rings.Length - 1; ring++)
                 {
                     int a0 = start + ring * 2, b0 = a0 + 2;
                     tr.AddRange(new[] { a0, b0, a0 + 1, a0 + 1, b0, b0 + 1, a0, a0 + 1, b0, a0 + 1, b0 + 1, b0 });   // both faces
@@ -371,15 +394,39 @@ namespace GoF2Remake.Modding
                 SetColour(r, Tinted(flareTint, i) * (glowIntensity * power * face));
             }
             float coneScale = Mathf.Lerp(0.3f, 1f, thrust) * (1f + 0.3f * boost);
-            foreach (var (ct, r, i) in cones)
+            foreach (var (ct, r, i, mesh) in cones)
             {
                 if (ct == null) continue;
                 float lossy = Mathf.Max(1e-4f, ct.parent.lossyScale.x);
                 ct.localScale = new Vector3(coneHalfWidth, coneHalfWidth, coneLength * coneScale) * (scales[i] / lossy);
                 SetColour(r, Tinted(coneTint, i) * (coneIntensity * level * (0.5f + 0.5f * thrust)));
+                if (coneFade.y > 0f && cam != null) FadeCards(ct, mesh, cam.transform.position);
             }
             if (trails.Count > 0) UpdateTrails(dt, cam, power);
             if (strands.Count > 0) UpdateStrands(dt, cam, power, coneScale);
+        }
+
+        /// <summary>GoF3's AngleBlend on the exhaust cards: each card's vertex colours x smoothstep(from, to, |N.V|), so a card
+        /// seen edge-on (from straight behind: every card contains the axis) vanishes and the flare alone shows.</summary>
+        void FadeCards(Transform cone, Mesh mesh, Vector3 eye)
+        {
+            if (mesh == null || coneBase == null) return;
+            var view = (eye - cone.position).normalized;
+            int perCard = coneBase.Length / ConeCards;
+            coneColours.Clear();
+            for (int card = 0; card < ConeCards; card++)
+            {
+                float a = card * Mathf.PI / ConeCards;
+                // the card spans (cos a, sin a, 0) and +z: its normal; the cone's x and y are scaled alike, so it holds
+                var n = cone.rotation * new Vector3(-Mathf.Sin(a), Mathf.Cos(a), 0f);
+                float f = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(coneFade.x, coneFade.y, Mathf.Abs(Vector3.Dot(n, view))));
+                for (int k = 0; k < perCard; k++)
+                {
+                    var c = coneBase[card * perCard + k];
+                    coneColours.Add(new Color(c.r * f, c.g * f, c.b * f, 1f));
+                }
+            }
+            mesh.SetColors(coneColours);
         }
 
         /// <summary>The helix: each strand's points along the exhaust (its own frame: +z backward, the mount's turn), spun about

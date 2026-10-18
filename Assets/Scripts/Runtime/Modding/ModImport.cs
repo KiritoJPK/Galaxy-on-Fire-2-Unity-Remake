@@ -6,8 +6,9 @@
 //   Linux     zenity, else kdialog (a worker thread runs it; neither installed: an error naming the Mods folder)
 //   macOS     osascript's "choose file" (a worker thread)
 //   UWP       Windows.Storage.Pickers.FileOpenPicker on the UI thread
-//   Editor    EditorUtility's open panel
-// (none on iOS: Available false). The file is checked as a mod archive (a .zip with a readable mod.json, ModSource's
+//   iOS       the document picker (Plugins/iOS/FileImportPicker.mm), which copies the file itself; the Files app also
+//             shows the game's Documents folder (Mods inside it, IosPlayerSetup's UIFileSharingEnabled)
+//   Editor    EditorUtility's open panel The file is checked as a mod archive (a .zip with a readable mod.json, ModSource's
 // layout), then moved into ModManager.MainFolder (a phone's user folder) as "<id>.zip"; an
 // installed mod with the same id is replaced in its own folder and keeps its on / off and load order (the browser asks
 // first). New mods start off, like one copied in by hand. Delete: the mod turned off (and the mods that need it), its
@@ -21,12 +22,12 @@ namespace GoF2Remake.Modding
 {
     public static class ModImport
     {
-        /// <summary>A file picker exists here (not on iOS or the other platforms without one).</summary>
+        /// <summary>A file picker exists here (not on the platforms without one).</summary>
         public static bool Available
         {
             get
             {
-#if UNITY_EDITOR || UNITY_ANDROID || UNITY_STANDALONE || (UNITY_WSA && ENABLE_WINMD_SUPPORT)
+#if UNITY_EDITOR || UNITY_ANDROID || UNITY_IOS || UNITY_STANDALONE || (UNITY_WSA && ENABLE_WINMD_SUPPORT)
                 return true;
 #else
                 return false;
@@ -88,6 +89,14 @@ namespace GoF2Remake.Modding
             thread.Start();
             return () => System.Threading.Volatile.Read(ref result);
         }
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern void GoF2FilePick_Start(string folder, string extensions);
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern int GoF2FilePick_State();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern string GoF2FilePick_Result();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern string GoF2FilePick_Name();
+        [System.Runtime.InteropServices.DllImport("__Internal")] static extern string GoF2FilePick_Error();
 #endif
 
         static string ImportFolder => Path.Combine(Application.temporaryCachePath, "ModImport");
@@ -182,6 +191,20 @@ namespace GoF2Remake.Modding
                           : new Picked { error = picker.GetStatic<string>("error") };
                     picker.Dispose();
                     return r;
+                };
+            }
+            catch (Exception e) { return () => new Picked { error = e.Message }; }
+#elif UNITY_IOS
+            try
+            {
+                GoF2FilePick_Start(folder, string.Join(",", extensions));
+                return () =>
+                {
+                    int state = GoF2FilePick_State();
+                    if (state == 0) return null;
+                    return state == 1 ? new Picked { path = GoF2FilePick_Result(), name = GoF2FilePick_Name() }
+                         : state == 2 ? new Picked { cancelled = true }
+                         : new Picked { error = GoF2FilePick_Error() };
                 };
             }
             catch (Exception e) { return () => new Picked { error = e.Message }; }
