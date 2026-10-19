@@ -64,6 +64,14 @@ namespace GoF2Remake.World
         static int VoidCells(bool intoVoid) => (Session.IsExtreme ? 2 : 1) * (intoVoid ? 2 : 1);
         static int VoidCellsTaken => Session.IsExtreme ? 2 : 1;
         GameObject fx;
+        /// <summary>Remake: the Khador scene's frame, the ship's own rotation when the jump starts (its roll and pitch too): the
+        /// fx's turn and the camera's place. The camera's drift and up follow the ship as it is turned (as the original's
+        /// ship-space drift). The camera used the ship's frame for its place but the world's up to look, so a ship flying
+        /// inverted (or rolled) was filmed from the wrong side.</summary>
+        Quaternion sceneFrame = Quaternion.identity;
+        /// <summary>Remake: the Khador scene's path (the ship's heading when it starts): the ship moves along it while the player
+        /// turns it (ShipController.turnOnly).</summary>
+        Vector3 sceneDir = Vector3.forward;
 
         /// <summary>The HUD is hidden: docked to the gate or a jump scene running.</summary>
         public bool Cinematic => state == State.AtGate || state == State.GateScene || state == State.KhadorScene;
@@ -149,7 +157,9 @@ namespace GoF2Remake.World
         {
             if (state != State.GateScene && state != State.KhadorScene) return;
             var cam = Camera.main;
-            if (cam != null) cam.transform.rotation = Quaternion.LookRotation(ship.transform.position - cam.transform.position, Vector3.up);
+            // Remake: the Khador scene's camera keeps the ship's up, so it rolls with the ship (turned by the player too).
+            var up = state == State.KhadorScene ? ship.transform.up : Vector3.up;
+            if (cam != null) cam.transform.rotation = Quaternion.LookRotation(ship.transform.position - cam.transform.position, up);
         }
 
         // ---- the jumpgate ----------------------------------------------------------------------------------
@@ -360,15 +370,19 @@ namespace GoF2Remake.World
             state = State.KhadorScene;
             if (advanceOnJump) { advanceOnJump = false; if (Story.Index == 78) Story.Advance(db); }
             var fxPos = ship.transform.position + ship.transform.forward * 3000f * M;
-            // MGame::startJumpScene: the fx's setDirection(ship direction, (0, 1, 0)): upright in the world whatever the ship's
-            // roll (the ship's own rotation played it upside down from a ship flying inverted).
-            var fxRot = Quaternion.LookRotation(ship.transform.forward, Vector3.up);
+            // MGame::startJumpScene: the fx's setDirection(ship direction, (0, 1, 0)), upright in the world. Remake: in the
+            // ship's own frame (sceneFrame), as the camera, so the scene is the same from a ship flying inverted or rolled.
+            sceneFrame = ship.transform.rotation;
+            sceneDir = ship.transform.forward;
+            ship.turnOnly = true;   // remake: the player turns the ship (and the camera's drift with it), not its path
+            var fxRot = sceneFrame;
             fx = SpawnKhadorFx(assets, fxPos, fxRot, out animLength);
             JumpFxStarted?.Invoke(false, fxPos, fxRot);
             activated = true;
             animMs = 0f;
             var cam = Camera.main;
-            if (cam != null) cam.transform.position = fxPos + ship.transform.rotation * (new Vector3(2000f, 300f, -2000f) * M);   // game (-2000, 300, -2000)
+            // game (-2000, 300, -2000), in the ship's frame
+            if (cam != null) cam.transform.position = fxPos + sceneFrame * (new Vector3(2000f, 300f, -2000f) * M);
             Play(assets != null ? assets.khadorDrive : null);
             Haptics.Play(Haptics.Jump);   // remake
         }
@@ -395,7 +409,8 @@ namespace GoF2Remake.World
             if (!hidden && cam != null)   // ship-space game (5, 2, -3 / -5) u/ms -> Unity local (-5, 2, -3 / -5)
                 cam.transform.position += ship.transform.rotation * (new Vector3(-5f, 2f, gateScene ? -3f : -5f) * dtMs * M);
             float step = speed * dtMs * M;
-            ship.transform.position += ship.transform.forward * step;
+            // Remake: the Khador scene keeps its path while the player turns the ship (turnOnly).
+            ship.transform.position += (gateScene ? ship.transform.forward : sceneDir) * step;
             ship.ExternalSpeedMetersPerSecond = speed * M * 1000f;
 
             if (gateScene && !activated && gate != null && cam != null
@@ -407,6 +422,7 @@ namespace GoF2Remake.World
             {
                 hidden = true;
                 speed = HiddenSpeed;
+                ship.turnOnly = false;   // remake: the roll stops with the ship gone
                 if (ship.visualModel != null) ship.visualModel.gameObject.SetActive(false);
             }
             if (animMs >= animLength) Arrive(gateScene);
@@ -427,6 +443,7 @@ namespace GoF2Remake.World
             hopping = false;
             Session.InstantJump = false;
             state = State.None;
+            ship.turnOnly = false;
             enabled = false;
             if (Application.CanStreamedLevelBeLoaded(spaceScene)) SceneManager.LoadScene(spaceScene);
         }

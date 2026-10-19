@@ -59,6 +59,9 @@ namespace GoF2Remake.Flight
         /// <summary>Item 48 (Hammerhead): the shots alternate between x +80 and -80.</summary>
         public bool alternateSides;
         bool alternate;
+        // Remake: the muzzles shots leave from in turn (SetShotMuzzles), and the next one's index.
+        Transform[] shotMuzzles;
+        int nextShotMuzzle;
         /// <summary>Since the last shot that left the gun (ms); the owner adds the time (its own order).</summary>
         public float SinceShotMs = 1e9f;
         PartAnimation[] anims = new PartAnimation[0];
@@ -180,6 +183,15 @@ namespace GoF2Remake.Flight
             Rig = rig;
         }
 
+        /// <summary>Remake: shots leave from these points in turn (ShotFrom.Muzzle): a twin-barrelled turret object fires from
+        /// each barrel's tip (the Valkyrie battlestation's turrets, whose shots started inside the turret).</summary>
+        public void SetShotMuzzles(params Transform[] muzzles)
+        {
+            shotMuzzles = muzzles != null && muzzles.Length > 0 ? muzzles : null;
+            nextShotMuzzle = 0;
+            if (shotMuzzles != null) shotFrom = ShotFrom.Muzzle;
+        }
+
         /// <summary>Its muzzle (a sentry's: placed by the owner).</summary>
         public void SetMuzzle(Transform muzzle) => Muzzle = muzzle;
 
@@ -243,7 +255,9 @@ namespace GoF2Remake.Flight
             switch (shotFrom)
             {
                 case ShotFrom.AheadOfBarrel: return GunNode.position + GunNode.forward * StaticShotAheadUnits * M;
-                case ShotFrom.Muzzle: return Muzzle != null ? Muzzle.position : GunNode.position;
+                case ShotFrom.Muzzle:
+                    if (shotMuzzles != null && shotMuzzles[nextShotMuzzle] != null) return shotMuzzles[nextShotMuzzle].position;
+                    return Muzzle != null ? Muzzle.position : GunNode.position;
                 // The gun frame carries the turret's scale (a turret item as a capital turret object at x6): so does the offset.
                 default: return GunNode.TransformPoint(new Vector3(-off.x, off.y, off.z) * M);
             }
@@ -259,8 +273,9 @@ namespace GoF2Remake.Flight
             int b = Gun.TryFire(ShotOrigin(off), Quaternion.LookRotation(BarrelForward, BarrelUp), false);
             if (b >= 0)
             {
-                Rig?.OnShot();
+                Rig?.OnShot(shotMuzzles != null ? nextShotMuzzle : -1);   // remake: the flash at the barrel that fired
                 SinceShotMs = 0f;
+                if (shotMuzzles != null) nextShotMuzzle = (nextShotMuzzle + 1) % shotMuzzles.Length;   // the other barrel next
             }
             return b;
         }

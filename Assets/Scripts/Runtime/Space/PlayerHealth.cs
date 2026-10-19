@@ -316,6 +316,10 @@ namespace GoF2Remake.Flight
         {
             if (blaze == null) return;
             if (Dead || (blazeLevel != null && blazeLevel.Navigation != null && blazeLevel.Navigation.Jumping)) { Destroy(blaze); blaze = null; return; }
+            // Remake: hidden with the ship (the jump scenes hide its model: the Khador Drive's fx, the gate).
+            bool shown = ship.visualModel == null || ship.visualModel.gameObject.activeInHierarchy;
+            if (blaze.activeSelf != shown) blaze.SetActive(shown);
+            if (!shown) return;
             var model = ship.visualModel != null ? ship.visualModel : transform;
             var pos = model.position;
             if (Session.ShipIndex == 8) pos += model.forward * (300f * M);

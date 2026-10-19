@@ -324,7 +324,10 @@ namespace GoF2Remake.World
             Traffic.Setup(db, Layout, Health.Target, Station, ownPassive || (GoF2Remake.Data.NetSession.Active && !NetAuthority), Wormhole);
             Traffic.LaunchCameraRunning = () => !LaunchCameraOver;
             Traffic.RadarHidden = () => Cutscene;
-            Navigation.RadarHidden = () => Cutscene || !LaunchCameraOver;   // no locks or lock sounds
+            // No locks or lock sounds (the scanner off). Remake: also in the planet jump, the jumpgate / Khador Drive scenes and
+            // while a level script holds the controls (its cutscene camera moves before or after Cutscene says so).
+            Navigation.RadarHidden = () => Cutscene || !LaunchCameraOver || Navigation.Jumping
+                || (SystemJump != null && SystemJump.Cinematic) || (Player != null && Player.inputLocked);
             PlayerHull.AttachTurrets(this);   // remake debug: a capital ship's turrets on the player's hull (PlayerHull)
             // Docking at the story's objects (PlayerEgo::dockToDockingPoint): locked through Navigation.
             Docking = Player.gameObject.AddComponent<ObjectDocking>();

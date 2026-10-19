@@ -32,6 +32,9 @@ namespace GoF2Remake.Flight
         readonly GameObject muzzle;
         readonly float muzzleLength;
         float muzzleMs;
+        // Remake: more flashes of the same muzzle (SetMuzzles: a twin-barrelled gun flashes at each barrel), with their parts.
+        readonly List<(GameObject go, (PartAnimation[] anims, Modding.ModFxPart[] mods) parts)> extraMuzzles =
+            new List<(GameObject, (PartAnimation[], Modding.ModFxPart[]))>();
         readonly GameObject[] impacts;
         readonly float[] impactMs;
         readonly float impactLength;
@@ -145,6 +148,7 @@ namespace GoF2Remake.Flight
             }
             foreach (var p in projectiles) if (p != null) On(p.gameObject);
             On(muzzle);
+            foreach (var e in extraMuzzles) On(e.go);
             if (impacts != null) foreach (var i in impacts) On(i);
         }
 
@@ -178,8 +182,32 @@ namespace GoF2Remake.Flight
             foreach (var lg in go.GetComponentsInChildren<LODGroup>(true)) lg.enabled = false;
         }
 
+        /// <summary>Remake: the muzzle flash at each of 'localPositions' on 'parent' (a twin-barrelled gun: one per barrel's
+        /// tip; the Valkyrie battlestation's turrets in 80, whose single flash sat inside the turret). The rig's own flash
+        /// moves to the first point, copies of it to the others; OnShot() flashes them all, OnShot(i) the one that fired.</summary>
+        public void SetMuzzles(Transform parent, params Vector3[] localPositions)
+        {
+            if (muzzle == null || parent == null || localPositions == null || localPositions.Length == 0) return;
+            foreach (var e in extraMuzzles) if (e.go != null) Object.Destroy(e.go);
+            extraMuzzles.Clear();
+            muzzle.transform.SetParent(parent, false);
+            muzzle.transform.SetLocalPositionAndRotation(localPositions[0], Quaternion.identity);
+            for (int i = 1; i < localPositions.Length; i++)
+            {
+                var go = Object.Instantiate(muzzle, parent, false);
+                go.name = $"{muzzle.name} {i}";
+                go.transform.SetLocalPositionAndRotation(localPositions[i], Quaternion.identity);
+                go.SetActive(muzzle.activeSelf);
+                extraMuzzles.Add((go, Parts(go)));
+            }
+        }
+
         /// <summary>A shot left the gun: the muzzle flash.</summary>
-        public void OnShot()
+        public void OnShot() => OnShot(-1);
+
+        /// <summary>A shot left the gun: the muzzle flash at muzzle 'muzzleIndex' only (SetMuzzles' order: a twin-barrelled
+        /// gun flashes at the barrel that fired), -1 = at every muzzle.</summary>
+        public void OnShot(int muzzleIndex)
         {
             if (gun.isBeam && projectiles.Length > 0 && projectiles[0] != null)
             {
@@ -188,8 +216,17 @@ namespace GoF2Remake.Flight
                 beamMs = beamLength;
             }
             if (muzzle == null) return;
-            muzzle.SetActive(true);
-            PartAnimation.PlayOnce(muzzleParts.anims, muzzleParts.mods);
+            int count = 1 + extraMuzzles.Count;
+            bool one = muzzleIndex >= 0 && count > 1;
+            for (int i = 0; i < count; i++)
+            {
+                var go = i == 0 ? muzzle : extraMuzzles[i - 1].go;
+                if (go == null) continue;
+                if (one && i != muzzleIndex % count) { go.SetActive(false); continue; }   // the other barrel's goes out
+                go.SetActive(true);
+                var parts = i == 0 ? muzzleParts : extraMuzzles[i - 1].parts;
+                PartAnimation.PlayOnce(parts.anims, parts.mods);
+            }
             muzzleMs = muzzleLength;
         }
 
@@ -294,10 +331,17 @@ namespace GoF2Remake.Flight
             if (muzzle != null && muzzleMs > 0f)
             {
                 muzzleMs -= dtMs;
-                if (muzzleMs <= 0f) muzzle.SetActive(false);
+                if (muzzleMs <= 0f)
+                {
+                    muzzle.SetActive(false);
+                    foreach (var e in extraMuzzles) if (e.go != null) e.go.SetActive(false);
+                }
                 // ObjectGun::update 0x18c2ec: along the ship's nose with the camera's up (turrets: the turret's matrix).
                 else if (gun.kind != Gun.Kind.Turret && ship != null && cam != null)
+                {
                     muzzle.transform.rotation = Quaternion.LookRotation(ship.forward, cam.transform.up);
+                    foreach (var e in extraMuzzles) if (e.go != null) e.go.transform.rotation = muzzle.transform.rotation;
+                }
             }
             if (impacts != null)
                 for (int i = 0; i < impacts.Length; i++)

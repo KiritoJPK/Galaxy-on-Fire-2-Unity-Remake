@@ -7,6 +7,8 @@
 // so their emissive layers stay as they are; so do layers whose atlas no hull of the object uses.
 // Remake: GoF2/AlphaTest layers too (sn_station_*_wrecked_alpha_emissive: a wrecked station's torn panels had no
 // reflection): the copy clips like them (_ALPHATEST_ON) and draws both faces, in their render queue.
+// Remake: and the *_alpha layers on GoF2/AlphaTest (sn_plasma_gun_valkyrie_alpha: the Valkyrie's plasma gun's cut-out
+// plates had no reflection of the space cubemap next to the shining hull).
 
 using System.Collections.Generic;
 using UnityEngine;
@@ -36,7 +38,9 @@ namespace GoF2Remake.Visuals
             Dictionary<Texture, Material> hulls = null;
             foreach (var r in renderers)
             {
-                if (r is ParticleSystemRenderer || !r.gameObject.name.Contains("_emissive")) continue;
+                if (r is ParticleSystemRenderer) continue;
+                bool emissiveLayer = r.gameObject.name.Contains("_emissive");
+                if (!emissiveLayer && !r.gameObject.name.Contains("_alpha")) continue;
                 var mats = r.sharedMaterials;
                 bool changed = false;
                 for (int i = 0; i < mats.Length; i++)
@@ -44,7 +48,7 @@ namespace GoF2Remake.Visuals
                     var m = mats[i];
                     if (m == null || m.shader == null || !m.HasProperty(MainTexId)) continue;
                     bool alphaTest = m.shader.name == "GoF2/AlphaTest";
-                    if (!alphaTest && m.shader.name != "GoF2/Unlit") continue;
+                    if (!alphaTest && (m.shader.name != "GoF2/Unlit" || !emissiveLayer)) continue;   // an _alpha layer: AlphaTest only
                     var atlas = m.GetTexture(MainTexId);
                     if (atlas == null) continue;
                     hulls ??= Hulls(renderers);

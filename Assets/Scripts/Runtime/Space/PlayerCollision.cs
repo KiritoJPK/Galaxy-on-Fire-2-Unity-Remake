@@ -69,6 +69,8 @@ namespace GoF2Remake.Flight
         {
             TouchingStation = false;
             scraping = false;
+            // Remake: the enemies' shots hit the collision probe too, not only the hull (Target.hitSphereRadius).
+            if (health != null && health.Target != null) health.Target.hitSphereRadius = ProbeRadius();
             if (off || health == null || health.Dead) { wormhole?.SetSound(false); scrapedLastFrame = false; hasLastPosition = false; return; }
             if (mining != null && mining.State != Mining.Phase.Idle) { scrapedLastFrame = false; hasLastPosition = false; return; }
             if (docking != null && docking.Busy && docking.State != ObjectDocking.Phase.Approach) { scrapedLastFrame = false; hasLastPosition = false; return; }   // easing onto a docking point

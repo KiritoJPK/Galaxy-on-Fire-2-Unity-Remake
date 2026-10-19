@@ -251,6 +251,10 @@ namespace GoF2Remake.World
         Route route;
         Gun gun;
         GunRig rig;
+        /// <summary>Remake: this ship's (or turret's) gun visuals (ValkyrieLevels: the battlestation turrets' twin muzzles).</summary>
+        public GunRig Rig => rig;
+        /// <summary>Remake: a turret object's moving parts and aim (null for a ship).</summary>
+        public TurretCore Turret => turretCore;
         AudioSource engine, sfx;
         List<ItemStack> loot = new List<ItemStack>();
         int damageByPlayer;

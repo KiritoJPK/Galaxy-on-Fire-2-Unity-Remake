@@ -91,6 +91,10 @@ namespace GoF2Remake.Flight
         /// <summary>An autopilot moves the ship (asteroid docking, PlayerEgo+0x145): no input, no flight model step and
         /// no cosmetic banking; it reports its speed through ExternalSpeedMetersPerSecond.</summary>
         [System.NonSerialized] public bool externalControl;
+        /// <summary>Remake: under externalControl the stick's left / right (and the roll keys) still roll the ship about its
+        /// nose, nothing else: the Khador Drive's jump scene (SystemJump), where the original let the player bank the ship, and
+        /// the camera with it, while the scene moves it along its path, facing the jump.</summary>
+        [System.NonSerialized] public bool turnOnly;
         /// <summary>The death tumble owns the model's rotation (PlayerHealth): no levelling of the bank meanwhile.</summary>
         [System.NonSerialized] public bool modelTumbling;
         /// <summary>The turret view / the Liberator: the ship flies straight on its throttle (no steering, auto-level on);
@@ -262,6 +266,21 @@ namespace GoF2Remake.Flight
                 SpeedMetersPerSecond = ExternalSpeedMetersPerSecond;
                 Model.SyncFree(transform.forward, ExternalSpeedMetersPerSecond / 1000f / metersPerUnit);
                 Maneuver.Cancel();
+                if (turnOnly && useBuiltInInput && !inputLocked && !Navigation.InputHalted)
+                {
+                    // Remake (turnOnly): the ship only rolls about its nose, which stays on the scene's path: the stick's
+                    // left / right and the roll keys (the scene moves the ship; the camera's drift follows the roll).
+                    var s = ReadInput();
+                    if (externalSteer.sqrMagnitude > s.sqrMagnitude) s = externalSteer;
+                    var ms = ReadMouseSteer();
+                    if (ms.sqrMagnitude > s.sqrMagnitude) s = ms;
+                    SteerInput = s;
+                    float roll = Mathf.Clamp((invertYaw ? -s.x : s.x) + GameControls.Roll.ReadValue<float>() + touchRoll, -1f, 1f);
+                    if (Mathf.Abs(roll) > 0.01f)
+                        transform.Rotate(0f, 0f, -roll * rollDegreesPerSecond * Model.RollScale * dtMs / 1000f, Space.Self);
+                    if (!modelTumbling && !modelHeld) UpdateVisualBank(0f, 0f);
+                    return;
+                }
                 if (!modelTumbling && !modelHeld) UpdateVisualBank(0f, 0f);   // computer controlled: no stick, the model's bank and tilt level out
                 return;
             }

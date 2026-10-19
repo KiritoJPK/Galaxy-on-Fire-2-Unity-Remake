@@ -176,7 +176,8 @@ namespace GoF2Remake.Flight
             switch (State)
             {
                 case Phase.Idle:
-                    if (navigation != null && navigation.BlocksAsteroidLock) { Candidate = Locked = refusedNoDrill = null; LockFrame = -1; lockTimer = 0f; wasLocked = false; }
+                    // Remake: nor while the radar is off (cutscenes, the fly-in, the jump scenes: no Radar::draw).
+                    if (navigation != null && (navigation.BlocksAsteroidLock || navigation.RadarOff)) { Candidate = Locked = refusedNoDrill = null; LockFrame = -1; lockTimer = 0f; wasLocked = false; }
                     else UpdateLock(dtMs);
                     if (BeamMode) UpdateBeam(dtMs);
                     break;

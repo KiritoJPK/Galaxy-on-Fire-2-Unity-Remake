@@ -438,11 +438,17 @@ namespace GoF2Remake.Flight
                     float s = toGoal.sqrMagnitude < (speed * TerminalHomingMs) * (speed * TerminalHomingMs) ? 1f : steer;
                     b.velocity = Vector3.Normalize(cur + (desired - cur) * s) * speed;
                 }
+                bool fresh = b.age <= 0f;   // its first pass since it was fired
                 b.timer -= dtMs;
                 b.age += dtMs;
                 if (Coasts && b.timer <= limit) { Expired?.Invoke(i); continue; }   // Gun::update: a rocket ran out
                 if (kind == Kind.ShockBlast) { Ignite(targets); continue; }   // one instant blast at the ship
                 var from = b.position;   // the hull test sweeps this frame's path
+                // Remake: a beam's bullet is parked at its target's centre (or 30 000 ahead) and barely moves, so the hull
+                // test swept a few centimetres inside the hull and never met it (a sphere cast misses what it starts in):
+                // beams couldn't hurt anything with a hull (the battlestation's turrets, capital ships, freighters). Its
+                // first pass sweeps the whole beam, from where it was fired.
+                if (isBeam && fresh) from = b.position - BeamDir * BeamLengthUnits * MetersPerUnit;
                 if (kind == Kind.Mine) b.position += b.velocity * dtMs * Mathf.Max(1f - b.age / MineStopMs, 0f);
                 else b.position += b.velocity * dtMs;
                 if (kind == Kind.ClusterMissile) Corkscrew(i, ref b, dtMs);
@@ -498,6 +504,23 @@ namespace GoF2Remake.Flight
                 if (scatter) { AreaDamage(hullPoint, targets, false); Ignited?.Invoke(hullPoint); }   // + the burst around
                 return;
             }
+            // Remake: a hull target with a hit sphere (Target.hitSphereRadius: the player's collision probe) is hit within it too.
+            if (hulls)
+                for (int t = 0; t < targets.Count; t++)
+                {
+                    var s = targets[t];
+                    if ((object)s == null || s.hitSphereRadius <= 0f || s == null || !s.HasHull || !MayHit(s, targets)) continue;
+                    var c = s.transform.position;
+                    if (DistanceToSegment(c, from, b.position) > s.hitSphereRadius) continue;
+                    if (IsBomb) { Ignite(targets); return; }   // contact: area damage, no direct hit
+                    var seg = b.position - from;
+                    float k = seg.sqrMagnitude > 1e-12f ? Mathf.Clamp01(Vector3.Dot(c - from, seg) / seg.sqrMagnitude) : 1f;
+                    var at = from + seg * k;
+                    b.timer = -1e9f;   // gone
+                    Hit?.Invoke(i, s, at);
+                    if (scatter) { AreaDamage(at, targets, false); Ignited?.Invoke(at); }
+                    return;
+                }
             for (int t = 0; t < targets.Count; t++)
             {
                 var target = targets[t];

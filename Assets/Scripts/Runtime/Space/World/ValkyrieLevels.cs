@@ -369,6 +369,8 @@ namespace GoF2Remake.World
             // spawn's: 87 -> +, 273 (= -87) -> -).
             if (tr0 != null) { rollSign0_78 = tr0.transform.eulerAngles.z > 180f ? -1f : 1f; tr0.transform.rotation = Quaternion.Euler(TurretStartRotX78, 0f, rollSign0_78 * TurretStartRollDeg78); }
             if (tr1 != null) { rollSign1_78 = tr1.transform.eulerAngles.z > 180f ? -1f : 1f; tr1.transform.rotation = Quaternion.Euler(TurretStartRotX78, 0f, rollSign1_78 * TurretStartRollDeg78); }
+            SetTurretGun(tr0, TurretGunIn78);   // Modified: the guns drawn in until the slide is half way (SlideTurret)
+            SetTurretGun(tr1, TurretGunIn78);
             for (int i = 2; i < 22; i++)
             {
                 var at = new Vector3(-17000 + 2000 * (i - 2) + R(2000), R(10000) - 5000, 155000 + R(10000));
@@ -403,6 +405,64 @@ namespace GoF2Remake.World
         const float TurretRollDeg78 = 87f;         // |Z rotation| at the end of the slide (degrees; the table has 90)
         const float TurretRotZ78 = 1f;             // the turrets' z rotation sign (-1 = flipped)
         const float TurretMirrorZ78 = 1f;          // front / back (-1 = mirrored)
+        // Modified: the turret's gun (v_station_battlestation_turret_gun_part0, local to its gun node, measured in the
+        // Inspector): drawn in at the start of 78's slide, out from half way (rotation X 90) to the end, and out in 80.
+        static readonly Vector3 TurretGunIn78 = new Vector3(0f, 0f, -20f);
+        static readonly Vector3 TurretGunOut = new Vector3(0f, 6f, 54f);
+        const string TurretGunPart = "v_station_battlestation_turret_gun_part0";
+
+        // Modified: the tips of the gun's two barrels (local to TurretGunPart, from the model: z = the barrels' end).
+        static readonly Vector3 TurretMuzzleA = new Vector3(5.7f, 2.25f, 99.8f);
+        static readonly Vector3 TurretMuzzleB = new Vector3(-6.3f, 2.25f, 99.8f);
+        // Modified: the gun drawn back into its base as the turret raises it: TurretGunOut level, TurretGunRaised at the
+        // highest pitch (52.7 deg), in between by the pitch (measured in the Inspector).
+        static readonly Vector3 TurretGunRaised = new Vector3(0f, -30f, 40f);
+
+        /// <summary>Modified: a battlestation turret's muzzle flash and shots at the tip of each barrel (both started inside
+        /// the turret): a flash at each tip with every shot, the shots from one barrel and the other in turn.</summary>
+        static void SetTurretMuzzles(NpcShip turret)
+        {
+            if (turret == null) return;
+            var part = TurretGun(turret);
+            if (part == null) return;
+            turret.Rig?.SetMuzzles(part, TurretMuzzleA, TurretMuzzleB);
+            var a = new GameObject("muzzle A").transform;
+            var b = new GameObject("muzzle B").transform;
+            a.SetParent(part, false); a.localPosition = TurretMuzzleA;
+            b.SetParent(part, false); b.localPosition = TurretMuzzleB;
+            turret.Turret?.SetShotMuzzles(a, b);
+        }
+
+        static Transform TurretGun(NpcShip turret)
+        {
+            if (turret == null) return null;
+            foreach (var t in turret.GetComponentsInChildren<Transform>(true))
+                if (t.name == TurretGunPart) return t;
+            return null;
+        }
+
+        // 80's turrets and their gun parts (TurretGunsByPitch every frame).
+        readonly List<(NpcShip ship, Transform gun)> guns80 = new List<(NpcShip, Transform)>();
+
+        /// <summary>Modified: the guns of 80 by their turrets' pitch: out when level, drawn back into the base as they rise.</summary>
+        void TurretGunsByPitch()
+        {
+            foreach (var (ship, gun) in guns80)
+            {
+                if (ship == null || gun == null || ship.Turret == null || ship.Turret.Aim == null) continue;
+                var aim = ship.Turret.Aim;
+                float up = float.IsNaN(aim.pitchMax) || aim.pitchMax <= 0f ? 0f : Mathf.Clamp01(aim.Pitch / aim.pitchMax);
+                gun.localPosition = Vector3.Lerp(TurretGunOut, TurretGunRaised, up);
+            }
+        }
+
+        /// <summary>Modified: places a battlestation turret's gun part (local position).</summary>
+        static void SetTurretGun(NpcShip turret, Vector3 localPosition)
+        {
+            if (turret == null) return;
+            foreach (var t in turret.GetComponentsInChildren<Transform>(true))
+                if (t.name == TurretGunPart) { t.localPosition = localPosition; return; }
+        }
 
         void Build79()
         {
@@ -413,6 +473,7 @@ namespace GoF2Remake.World
 
         void Build80()
         {
+            guns80.Clear();
             var p = new Vector3(-70000, 0, -30000);
             level.MovePlayer(ToUnity(p), Quaternion.LookRotation(Dir(new Vector3(1, 0, 1).normalized), Vector3.up));
             var host = new Vector3(0, 0, 160000);
@@ -439,6 +500,14 @@ namespace GoF2Remake.World
                 {
                     var pose = StationTurretPose(i);
                     s.transform.SetPositionAndRotation(battlestation.transform.position + pose.offset, pose.rotation);
+                }
+                if (!t.shield)
+                {
+                    // Modified: the gun out, as at the end of 78's slide; a flash and the shots at each barrel's tip.
+                    SetTurretGun(s, TurretGunOut);
+                    SetTurretMuzzles(s);
+                    var gunPart = TurretGun(s);
+                    if (s != null && gunPart != null) guns80.Add((s, gunPart));
                 }
                 // Level::assignGuns, mission 0x50: turrets x1.7 (NpcTables.GunDamage).
                 if (t.shield) s.shootingEnabled = false;
@@ -1072,6 +1141,8 @@ namespace GoF2Remake.World
             var p = turret.transform.position;
             turret.transform.position = new Vector3(hostX + side * Mathf.Lerp(startX, endX, k), p.y, p.z);
             turret.transform.rotation = Quaternion.Euler(Mathf.Lerp(TurretStartRotX78, 0f, k), 0f, rollSign * Mathf.Lerp(TurretStartRollDeg78, TurretRollDeg78, k));
+            // Modified: the gun stays drawn in for the first half of the turn (180 -> 90 deg) and slides out in the second.
+            SetTurretGun(turret, Vector3.Lerp(TurretGunIn78, TurretGunOut, Mathf.InverseLerp(0.5f, 1f, k)));
             return turretMoved >= 1100f;
         }
 
@@ -1080,6 +1151,7 @@ namespace GoF2Remake.World
 
         void Tick80(float dtMs)
         {
+            TurretGunsByPitch();   // Modified
             var host = battlestation != null ? battlestation.transform.position : ToUnity(new Vector3(0, 0, 160000));
             switch (Step)
             {

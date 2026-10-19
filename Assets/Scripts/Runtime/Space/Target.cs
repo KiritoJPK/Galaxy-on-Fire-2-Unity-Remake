@@ -104,6 +104,9 @@ namespace GoF2Remake.Flight
         [NonSerialized] public HullBody hull;
         /// <summary>Shots test the hull (HullCollision.Cast), not the cube / boxes.</summary>
         public bool HasHull => hull != null && hull.Collides;   // not taken by the ship collision mode (Mixed: a flyable ship's; Original: any): the cube / boxes
+        /// <summary>Remake: a target with a hull is also hit by a shot passing within this many metres of its centre (0 = only
+        /// the hull): the player's ship, its collision probe (PlayerCollision), as its real shape alone was too thin a target.</summary>
+        [NonSerialized] public float hitSphereRadius;
 
         /// <summary>Shield / armor / hull pools; null = plain 'hp' (asteroids).</summary>
         [NonSerialized] public Hitpoints hitpoints;

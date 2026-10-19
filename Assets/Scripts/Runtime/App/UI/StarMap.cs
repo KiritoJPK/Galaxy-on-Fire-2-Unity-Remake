@@ -149,6 +149,27 @@ namespace GoF2Remake.UI
         // 3D
         GameObject world;
         Camera cam;
+        // Remake: the supernova system's sun on the map once the supernova is contained (step 158 done): sn_sun_011, the
+        // flight sun the orbit shows from then on (OrbitLayout), in place of the supernova glow.
+        const int SupernovaSystem = 27, SupernovaContainedStep = 158;
+        static bool SupernovaContained => Session.WorldIndex > SupernovaContainedStep;   // as OrbitLayout's sun, on the world's index
+        Material containedSun;
+
+        /// <summary>A copy of the map sun material 'from' showing sn_sun_011 whole (the supernova material shows a corner of the
+        /// map atlas); null without the texture.</summary>
+        Material ContainedSunMaterial(Material from)
+        {
+            if (containedSun != null) return containedSun;
+            if (from == null) return null;
+            var tex = Resources.Load<Material>("GoF2Backdrop/sn_sun_011")?.mainTexture;
+            if (tex == null) return null;
+            containedSun = new Material(from) { name = "sn_sun_011 (map)" };
+            containedSun.SetTexture("_MainTex", tex);
+            containedSun.SetTextureScale("_MainTex", Vector2.one);
+            containedSun.SetTextureOffset("_MainTex", Vector2.zero);
+            return containedSun;
+        }
+
         Transform[] suns = new Transform[64];   // by system number (more with mods' systems: BuildGalaxy grows it)
         float sunScale = 0.012f;
         /// <summary>StarMap::StarMap: the early-warning wormhole at the system the Void attack (index > 0x1f).</summary>
@@ -518,6 +539,7 @@ namespace GoF2Remake.UI
                 sun.transform.localPosition = U(GalaxyMap.SunPosition(s));
                 sunScale = sun.transform.localScale.x;
                 var mat = s.textureIndex >= 0 && s.textureIndex < assets.sunMaterials.Length ? assets.sunMaterials[s.textureIndex] : null;
+                if (s.index == SupernovaSystem && SupernovaContained) mat = ContainedSunMaterial(mat) ?? mat;   // remake
                 if (mat != null) foreach (var r in sun.GetComponentsInChildren<Renderer>()) r.sharedMaterial = mat;
                 suns[s.index] = sun.transform;
             }

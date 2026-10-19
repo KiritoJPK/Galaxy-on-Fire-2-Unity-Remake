@@ -531,6 +531,9 @@ namespace GoF2Remake.Flight
                     t.hidden = !planets;
                     if (t.hidden && (Locked == t || Candidate == t)) { Locked = Candidate = null; LockTimer = 0f; }
                 }
+            // Remake: no lock at all while the radar is off (a cutscene, the fly-in, the jump scenes: MGame::OnRender2D skips
+            // Radar::draw); it only kept the lock sound quiet, so the scanner locked stations and planets behind the scenes.
+            if (RadarOff) { Candidate = Locked = null; LockTimer = 0f; wasLocked = false; return; }
             var cam = Camera.main;
             Target best = null;
             bool miningBusy = mining != null && (mining.State != Mining.Phase.Idle || mining.Locked != null);
