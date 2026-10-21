@@ -56,14 +56,6 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 526664e5d4f5919428f74e8d65518445, type: 2}
-    - target: {fileID: -851257421351915947, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: -851257421351915947, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -0.4
-      objectReference: {fileID: 0}
     - target: {fileID: 126191788315983560, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -72,26 +64,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: bar_vossk_anim_add
       objectReference: {fileID: 0}
-    - target: {fileID: 1419960774127709571, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 1419960774127709571, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 1451502566472617353, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 526664e5d4f5919428f74e8d65518445, type: 2}
-    - target: {fileID: 1555870284672796098, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 1555870284672796098, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 2371306927688355148, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -104,14 +80,6 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 526664e5d4f5919428f74e8d65518445, type: 2}
-    - target: {fileID: 8297453170877594187, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 8297453170877594187, guid: 9e606c24dcd4e9040a50c4fc5628547b, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: -0.4
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -139,7 +107,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2a9c2b1e3800d6f4a86af2a9fe6560b0, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2PartAnimation
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.PartAnimation
   meta: {fileID: 4900000, guid: 90759ad1549877344bbc1b60554ba633, type: 3}
   play: 1
   loop: 1
@@ -156,11 +124,11 @@ MonoBehaviour:
     sign: 1
   rotationMap:
   - source: 0
-    sign: -1
+    sign: 1
   - source: 2
     sign: -1
   - source: 1
-    sign: -1
+    sign: 1
   rotationInRadians: 1
   applyMaterialChannels: 0
 --- !u!114 &620468106305333267
@@ -174,7 +142,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4feb1e89791b49549afbeacbd3881fd7, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2ResourceInfo
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.ResourceInfo
   meshId: 14029
   materialId: 20060
   originalPath: data/assets/main/3d/meshes/bars/bar_vossk_anim_add.aem

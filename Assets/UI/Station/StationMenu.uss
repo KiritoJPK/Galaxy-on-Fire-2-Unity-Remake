@@ -294,6 +294,12 @@
     margin-left: 8px;
 }
 
+/* Modified: a hint's keys in a row of their own (StationMenu.Hint); the hangar window puts the label under them. */
+.hint-keys {
+    flex-direction: row;
+    align-items: center;
+}
+
 /* ---- confirmation dialog (ChoiceWindow) ---------------------------------------------- */
 
 .station-dialog-backdrop {

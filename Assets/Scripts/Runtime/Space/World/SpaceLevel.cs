@@ -495,6 +495,11 @@ namespace GoF2Remake.World
         bool ExtenderBlocked => launchCameraMs > 0f || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Cutscene
                                 || Health == null || Health.Dead;
 
+        /// <summary>Modified: what ends a running time extender: a cinematic, the launch camera or the player's death. Not the
+        /// jumps any more (the jumpgate / Khador drive scenes, the planet jump): a running slow-down carries on through them
+        /// (it can't be started there, ExtenderBlocked) until the next place loads, which ends it (TimeExtender.OnDestroy).</summary>
+        bool ExtenderCancelled => launchCameraMs > 0f || Cutscene || Health == null || Health.Dead;
+
         void Update()
         {
             // MGame::OnUpdate: the wingmen's contract runs down while flying (fast-forward included, not while paused).
@@ -508,7 +513,7 @@ namespace GoF2Remake.World
             Collision.ignoreGate = Navigation.GoingToGate;
             // Hostiles, or a radio line on screen, block fast-forward (MGame::OnUpdate).
             Navigation.HostilesPresent = (Traffic != null && (Traffic.HostileCount > 0 || Traffic.ChatterVisible != null)) || (Campaign != null && Campaign.Radio != null && Campaign.Radio.Busy);
-            if (Extender != null && ExtenderBlocked) Extender.Cancel();
+            if (Extender != null && ExtenderCancelled) Extender.Cancel();
             UpdateWormholeRide();
             UpdateHiddenSystem();
         }

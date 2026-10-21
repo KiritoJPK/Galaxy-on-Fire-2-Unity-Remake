@@ -72,7 +72,11 @@ namespace GoF2Remake.Flight
 
         void OnDestroy()
         {
-            if (Active) Stop(false);
+            if (!Active) return;
+            Stop(false);
+            // Modified: a place loading while it runs (it now carries on through the jumps): the next scene starts at full
+            // speed (a station scene doesn't set Time.timeScale itself; a level that does sets it again).
+            if (Mathf.Approximately(Time.timeScale, WorldScale)) Time.timeScale = 1f;
         }
 
         /// <summary>The button: start when ready, end early when running.</summary>

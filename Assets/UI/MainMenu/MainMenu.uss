@@ -140,6 +140,24 @@
     background-color: var(--gof-amber-soft);
 }
 
+/* Modified: the Load list's saves animate like the menu buttons above (GoF2Common .menu-button): the label slides in on
+   hover / focus, the row turns amber while pressed, and a save chosen to load keeps that amber for a moment
+   (slot-row--chosen, MainMenu.BuildSlots) before the game loads. */
+.slot-list .slot-row {
+    transition-duration: 0.18s;
+    transition-timing-function: ease-out-cubic;
+}
+
+.can-hover .slot-list .slot-row:hover,
+.slot-list .slot-row:focus {
+    padding-left: 28px;
+}
+
+.menu-root .slot-list .slot-row:active,
+.menu-root .slot-list .slot-row.slot-row--chosen {
+    background-color: var(--gof-amber-soft);
+}
+
 .menu-button--hidden {
     opacity: 0;
     translate: -40px 0;

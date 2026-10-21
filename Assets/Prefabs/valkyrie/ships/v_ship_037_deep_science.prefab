@@ -91,7 +91,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2a9c2b1e3800d6f4a86af2a9fe6560b0, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2PartAnimation
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.PartAnimation
   meta: {fileID: 4900000, guid: 04b9e76bb541ff849874a1850630c68b, type: 3}
   play: 1
   loop: 1
@@ -108,11 +108,11 @@ MonoBehaviour:
     sign: 1
   rotationMap:
   - source: 0
-    sign: -1
+    sign: 1
   - source: 2
     sign: -1
   - source: 1
-    sign: -1
+    sign: 1
   rotationInRadians: 1
   applyMaterialChannels: 0
 --- !u!114 &8145741653956249349
@@ -126,7 +126,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4feb1e89791b49549afbeacbd3881fd7, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2ResourceInfo
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.ResourceInfo
   meshId: 17211
   materialId: 34237
   originalPath: data/assets/valkyrie/3d/meshes/ships/v_ship_037_deep_science.aem

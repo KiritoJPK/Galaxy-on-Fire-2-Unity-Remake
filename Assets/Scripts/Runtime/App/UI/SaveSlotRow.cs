@@ -17,6 +17,9 @@ namespace GoF2Remake.UI
     public static class SaveSlotRow
     {
         public const float HoldSeconds = 3f;
+        /// <summary>Modified: the hold shows (the red fill, "Hold to delete...") only after this long held: a plain click / tap to
+        /// load or save flashed it for a moment. The fill then runs from empty to full over the rest of HoldSeconds.</summary>
+        public const float ShowAfterSeconds = 0.35f;
 
         /// <summary>'onDelete': a used slot can be held to delete it; called with the slot once the hold completes (the caller
         /// deletes it and rebuilds the list).</summary>
@@ -150,7 +153,9 @@ namespace GoF2Remake.UI
                 if (source == Source.Key && (!key || !focused)) Cancel();
                 if (source == Source.None) return;
 
-                float t = (Time.realtimeSinceStartup - startTime) / HoldSeconds;
+                float held = Time.realtimeSinceStartup - startTime;
+                if (held < ShowAfterSeconds) return;   // Modified: a click, so far (ShowAfterSeconds)
+                float t = (held - ShowAfterSeconds) / (HoldSeconds - ShowAfterSeconds);
                 fill.style.width = Length.Percent(Mathf.Clamp01(t) * 100f);
                 row.AddToClassList("slot-row--deleting");
                 state.text = Localization.Extra("slotHoldDelete", "Hold to delete...");

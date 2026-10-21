@@ -2100,6 +2100,11 @@ namespace GoF2Remake.UI
 
         // ---- save slots (RecordHandler: 12 slots, slot 0 = Auto-save; SaveGame) ------------
 
+        /// <summary>Modified: a save clicked to load flashes for this long, then fades back while the load waits as long again;
+        /// clicks meanwhile are ignored (slotChosen).</summary>
+        const long SlotFlashMs = 180;
+        bool slotChosen;
+
         void BuildSlots()
         {
             var list = root.Q<ScrollView>("slotList");
@@ -2110,7 +2115,19 @@ namespace GoF2Remake.UI
                 int slot = i;
                 var save = SaveGame.Preview(i);
                 var row = SaveSlotRow.Build(db, i, save, Localization.Extra("autosaveHint", "Saved automatically when you dock"), DeleteSlot);
-                row.clicked += () => { if (SaveSlotRow.HoldUsed(row)) return; Play(buttonPush); if (save != null) LoadSlot(slot); };
+                row.clicked += () =>
+                {
+                    if (SaveSlotRow.HoldUsed(row)) return;
+                    if (save == null) { Play(buttonPush); return; }
+                    if (slotChosen) return;
+                    // Modified: a save chosen to load sounds and flashes like the menu buttons (their click sound; the pressed
+                    // amber kept a moment: slot-row--chosen, MainMenu.uss) before the game loads.
+                    Play(buttonRelease);
+                    slotChosen = true;
+                    row.AddToClassList("slot-row--chosen");
+                    row.schedule.Execute(() => row.RemoveFromClassList("slot-row--chosen")).ExecuteLater(SlotFlashMs);
+                    row.schedule.Execute(() => { slotChosen = false; LoadSlot(slot); }).ExecuteLater(SlotFlashMs * 2);
+                };
                 HookFocusSound(row);
                 list.Add(row);
             }
@@ -2756,7 +2773,12 @@ namespace GoF2Remake.UI
 
         static void SetFocusable(VisualElement scope, bool on)
         {
-            foreach (var b in scope.Query<Button>().ToList()) b.focusable = on;
+            // Modified: and clickable: the dimmed main buttons behind an open panel still took clicks and taps.
+            foreach (var b in scope.Query<Button>().ToList())
+            {
+                b.focusable = on;
+                b.pickingMode = on ? PickingMode.Position : PickingMode.Ignore;
+            }
         }
 
         static void EnsureVisible(VisualElement v)

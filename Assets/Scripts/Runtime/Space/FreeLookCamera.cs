@@ -253,6 +253,9 @@ namespace GoF2Remake.Flight
             // A notch reads 1 (the Input System's uniform scroll) or 120 (raw): one step either way.
             if (mouse != null) wheel += Mathf.Clamp(mouse.scroll.ReadValue().y, -1f, 1f);
             if (Mathf.Abs(wheel) > 0.01f) { distance += wheel * -50f * frames; wheel *= Mathf.Pow(0.9f, frames); } else wheel = 0f;
+            // Modified: up and down turned the other way round in free look, for the mouse, a finger and the right stick alike
+            // (the Invert orbit Y option still flips it back).
+            delta.y = -delta.y;
             delta = GoF2Remake.Data.Settings.OrbitTurn(delta);   // #121: the camera views' own inversion
             px += delta.x;
             py = Mathf.Clamp(py + delta.y, -200f, 200f);

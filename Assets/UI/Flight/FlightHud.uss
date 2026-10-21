@@ -391,6 +391,20 @@
     display: flex;
 }
 
+/* Modified: the actions menu (E, FlightHud.OpenAutopilotMenu(true)) on the right, mirrored; the autopilot's (Q) stays left. */
+.autopilot-menu--actions {
+    left: auto;
+    right: 176px;
+    border-left-width: 1px;
+    border-left-color: var(--gof-line);
+    border-right-width: 3px;
+    border-right-color: var(--gof-amber);
+}
+
+.hud-vr .autopilot-menu--actions {
+    right: auto;
+}
+
 .autopilot-menu-head {
     flex-direction: row;
     align-items: center;

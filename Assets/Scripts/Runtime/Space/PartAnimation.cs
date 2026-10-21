@@ -61,6 +61,10 @@ namespace GoF2Remake.Visuals
         /// hangar's ring lights sweep ~57 deg per 2.5 s loop, clear of the portal: looped as keyed they jumped back;
         /// carried on they swept through the portal).</summary>
         public bool pingPongRotation;
+        /// <summary>Modified: the rotation keys turn heading first (Rz * Ry * Rx: the file's Z outermost, X about the part's
+        /// own axis) instead of the release files' Rx * Ry * Rz. The Terran hangar's beta bots (hangar_terran_bot_*) are keyed
+        /// that way: bot_c's arms and body pitch down (-101 / -36 deg) as it flies off, where Rx outermost rolled them over.</summary>
+        public bool headingFirst;
         public float speed = 1f;
         [Tooltip("Must match the model import scale (ImportSettings.ModelScale).")]
         public float metersPerUnit = 0.05f;
@@ -342,6 +346,8 @@ namespace GoF2Remake.Visuals
         {
             var r = new Vector3(Eval(tk.rot[0], t, 0), Eval(tk.rot[1], t, 0), Eval(tk.rot[2], t, 0));
             var v = Map(r, rotationMap) * (rotationInRadians ? Mathf.Rad2Deg : 1f);
+            if (headingFirst)   // Modified: Rz * Ry * Rx (see headingFirst)
+                return Quaternion.AngleAxis(v.y, Vector3.up) * Quaternion.AngleAxis(v.z, Vector3.forward) * Quaternion.AngleAxis(v.x, Vector3.right);
             // The file's order Rx * Ry * Rz, its axes X, Y, Z being Unity x, z, y (Quaternion.Euler would apply z, x, y).
             return Quaternion.AngleAxis(v.x, Vector3.right) * Quaternion.AngleAxis(v.z, Vector3.forward) * Quaternion.AngleAxis(v.y, Vector3.up);
         }

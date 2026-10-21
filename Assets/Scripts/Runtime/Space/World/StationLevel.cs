@@ -346,9 +346,15 @@ namespace GoF2Remake.World
                 foreach (var a in roomGo.GetComponentsInChildren<PartAnimation>(true))
                 {
                     a.play = true;
-                    a.pingPongRotation = true;
+                    // Modified: not the Terran hangar's bots (hangar_terran_bot_*): they drive a keyed loop, a heading swung
+                    // back on every other loop turned them against their path.
+                    a.pingPongRotation = !a.gameObject.name.Contains("_bot_");
                     // Remake: and the Nivelian hangar's flashing light (hangar_nivelian_add, PartAnimation.HasSignedExtra).
-                    if (a.gameObject.name.Contains("_anim") || a.HasSignedExtra) a.applyMaterialChannels = true;
+                    // Modified: and the Terran hangar's blinking light (hangar_terran_add_part0, its `extra` 0..100).
+                    if (a.gameObject.name.Contains("_anim") || a.HasSignedExtra || a.gameObject.name.StartsWith("hangar_terran_add"))
+                        a.applyMaterialChannels = true;
+                    // Modified: the Terran hangar's beta bots are keyed heading first (PartAnimation.headingFirst).
+                    if (a.gameObject.name.StartsWith("hangar_terran_bot_")) a.headingFirst = true;
                 }
             if (customHangar == null) PlaceValkyrieHangarParts(roomGo);
             CollectRoomHighlights(roomGo);
@@ -357,6 +363,7 @@ namespace GoF2Remake.World
             var ship = SpawnShip(shipIndex, shipPivot, Quaternion.identity, hangarRoot, "Player ship");
             playerShip = ship != null ? ship.transform : null;
             if (playerShip != null) PlayerHull.FitHangar(playerShip);   // remake debug: a freighter / capital ship shrunk
+            CentreOnPad();
             RefreshTurret(true);
             shipYaw = StationTables.StartYaw(HangarIndex);
             if (customHangar != null)
@@ -407,6 +414,7 @@ namespace GoF2Remake.World
             var ship = SpawnShip(index, PadPosition(index), Quaternion.identity, hangarRoot, "Player ship");
             playerShip = ship != null ? ship.transform : null;
             if (playerShip != null) PlayerHull.FitHangar(playerShip);   // remake debug: a freighter / capital ship shrunk
+            CentreOnPad();
             RefreshTurret(true);
             ApplyShipYaw();
             ApplyEnginePreview();
@@ -1061,7 +1069,29 @@ namespace GoF2Remake.World
 
         void ApplyShipYaw()
         {
-            if (playerShip != null && !PlayerFlying) playerShip.rotation = OrbitLayout.RotationToUnity(new Vector3(0f, shipYaw, 0f));
+            if (playerShip == null || PlayerFlying) return;
+            playerShip.rotation = OrbitLayout.RotationToUnity(new Vector3(0f, shipYaw, 0f));
+            // Modified: a hull off its pivot stands centred on the pad and turns about its own middle (CentreOnPad).
+            if (padCentre != Vector3.zero) playerShip.position = padPivot - playerShip.TransformVector(padCentre);
+        }
+
+        /// <summary>Modified: the VoidX (ship 8): its hull's middle sits ~18 m off its pivot along its length (the model's centre
+        /// at -355 units, the other hulls' within ~85), so on the pad it stood off the turntable and swung around it.</summary>
+        public const int OffCentreShip = 8;
+        /// <summary>The pad pivot the player's ship was spawned at, and its hull's middle in its own frame (horizontal; zero for
+        /// the hulls that stand on their pivot).</summary>
+        Vector3 padPivot, padCentre;
+
+        /// <summary>Modified: the player's ship centred on its pad (ApplyShipYaw keeps it so as it turns). The arrival flight
+        /// lands on the centred spot (it flies to where the ship stands).</summary>
+        void CentreOnPad()
+        {
+            padCentre = Vector3.zero;
+            if (playerShip == null) return;
+            padPivot = playerShip.position;
+            if (shipIndex != OffCentreShip) return;
+            var local = ShipLocalBounds(playerShip, false);
+            if (local.size != Vector3.zero) padCentre = new Vector3(local.center.x, 0f, local.center.z);
         }
 
         // ---- remake: Inspect ship (HangarInspect; UI.StationMenu reads the input) ----------------------------
@@ -1220,9 +1250,12 @@ namespace GoF2Remake.World
             if (View == StationView.Hangar && flingVelocity != 0f)
             {
                 shipYaw += flingVelocity * Time.deltaTime;
-                flingVelocity *= Mathf.Pow(0.9f, dtMs / 20f);
-                // Stops below 1 px per frame (1/120 rad per 20 ms).
-                if (Mathf.Abs(flingVelocity) < 1f / StationTables.TurntablePixelsPerRadian / 0.02f) flingVelocity = 0f;
+                // Modified: a fast flick keeps the ship turning and slows it gently (to 35 % a second; the original's x0.9 per
+                // 20 ms frame stopped it within half a second), down to a crawl before it stops (it snapped still at 1 px a
+                // frame, ~24 deg/s). How much of the speed is left after a second, and the speed it stops at (rad/s):
+                const float FlingKeptPerSecond = 0.35f, FlingStopSpeed = 0.03f;
+                flingVelocity *= Mathf.Pow(FlingKeptPerSecond, dtMs / 1000f);
+                if (Mathf.Abs(flingVelocity) < FlingStopSpeed) flingVelocity = 0f;
                 ApplyShipYaw();
             }
 

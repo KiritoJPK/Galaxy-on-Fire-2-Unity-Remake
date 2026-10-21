@@ -1217,6 +1217,7 @@ namespace GoF2Remake.UI
             menuIndex = 0;
             lastMenuMove = 0;
             menuOpenedFrame = Time.frameCount;
+            autopilotMenu.EnableInClassList("autopilot-menu--actions", actions);   // Modified: the actions menu (E) on the right
             autopilotMenu.AddToClassList("autopilot-menu--shown");
             HighlightMenu();
             BuildHints(InputMode.Current);

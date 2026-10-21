@@ -18,13 +18,18 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
                 <ui:Label name="energyLine" class="energy-line gof-semibold" picking-mode="Ignore" />
-                <ui:VisualElement name="keyBox" class="key-box" picking-mode="Ignore" />
                 <ui:VisualElement class="map-footer" picking-mode="Ignore">
                     <ui:Button name="backButton" class="map-button gof-semibold" />
-                    <ui:Button name="voidButton" class="map-button gof-semibold" />
                     <ui:VisualElement name="hints" class="map-hints" picking-mode="Ignore" />
-                    <ui:Button name="zoomButton" class="map-button gof-semibold" />
-                    <ui:Button name="keyButton" class="map-button gof-semibold" />
+                    <!-- Modified: the right-hand buttons stacked (Jump to the Void, Full map, Key from the top), the key legend above them. -->
+                    <ui:VisualElement class="map-side" picking-mode="Ignore">
+                        <ui:VisualElement name="keyBox" class="key-box" picking-mode="Ignore" />
+                        <ui:VisualElement name="mapSideButtons" class="map-side-buttons" picking-mode="Ignore">
+                            <ui:Button name="voidButton" class="map-button gof-semibold" />
+                            <ui:Button name="zoomButton" class="map-button gof-semibold" />
+                            <ui:Button name="keyButton" class="map-button gof-semibold" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

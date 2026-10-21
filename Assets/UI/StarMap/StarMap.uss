@@ -181,9 +181,8 @@
 
 .key-box {
     display: none;
-    position: absolute;
-    right: 40px;
-    bottom: 134px;
+    /* Modified: in the footer's right-hand column (.map-side), above its buttons. */
+    margin-bottom: 12px;
     padding: 6px 14px;
     background-color: var(--gof-panel);
     border-width: 1px;
@@ -257,19 +256,37 @@
     border-radius: 4px;
 }
 
-#zoomButton {
-    margin-left: auto;
-    margin-right: 16px;
+/* Modified: the right-hand column's buttons smaller (their two-word labels broke over two lines); Back keeps its size. */
+.map-side-buttons .map-button {
+    min-width: 160px;
+    padding: 13px 23px;
+    font-size: 20px;
+    letter-spacing: 4px;
+    white-space: nowrap;   /* each label on one line: the column takes the widest */
 }
 
+/* Modified: the right-hand buttons in a column, Jump to the Void over Full map over Key, the legend above. */
+.map-side {
+    margin-left: auto;
+    flex-direction: column;
+    align-items: flex-end;
+}
+
+.map-side-buttons {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+#zoomButton,
 #keyButton {
-    margin-left: auto;
+    margin-left: 0;
+    margin-top: 10px;
 }
 
-/* The Khador map's Jump to the Void button (StarMap.AskVoid): beside Back, in the Void's violet. */
+/* The Khador map's Jump to the Void button (StarMap.AskVoid), in the Void's violet; Modified: on top of the column, as wide
+   as the two below. */
 #voidButton {
     display: none;
-    margin-left: 16px;
     border-color: rgba(155, 77, 255, 0.85);
 }
 

@@ -1,4 +1,3 @@
-%UNITY 7.0
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &-7400745474258502000
@@ -35,8 +34,7 @@ Material:
   m_CustomRenderQueue: -1
   stringTagMap:
     RenderType: Opaque
-  disabledShaderPasses:
-  - MOTIONVECTORS
+  disabledShaderPasses: []
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3

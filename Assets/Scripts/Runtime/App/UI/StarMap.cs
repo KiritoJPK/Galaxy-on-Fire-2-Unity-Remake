@@ -215,7 +215,7 @@ namespace GoF2Remake.UI
         // UI
         PanelRenderer panelRenderer;
         PanelSettings runtimePanel;
-        VisualElement root, touch, labels, systemHeader, keyBox, hints, dialog, mapSafe;
+        VisualElement root, touch, labels, systemHeader, keyBox, hints, dialog, mapSafe, sideButtons;
         /// <summary>The screen size and safe area the map's corners were last kept clear for (SafeArea).</summary>
         Rect lastSafeArea;
         Vector2Int lastSafeScreen;
@@ -340,6 +340,7 @@ namespace GoF2Remake.UI
             keyButton = root.Q<Button>("keyButton");
             zoomButton = root.Q<Button>("zoomButton");
             voidButton = root.Q<Button>("voidButton");
+            sideButtons = root.Q("mapSideButtons");
             dialogYes = root.Q<Button>("dialogYes");
             dialogNo = root.Q<Button>("dialogNo");
             root.Q<Label>("mapTitle").text = T(177).ToUpperInvariant();
@@ -355,6 +356,7 @@ namespace GoF2Remake.UI
             backButton.clicked += () => { Play(assets.buttonRelease); Back(); };
             keyButton.clicked += () => { Play(assets.buttonRelease); ToggleKey(); };
             zoomButton.clicked += () => { Play(assets.buttonRelease); SetOverview(!overview); };
+            keyButton.RegisterCallback<GeometryChangedEvent>(_ => FitSideButtons());
             voidButton.clicked += () => { Play(assets.buttonRelease); AskVoid(); };
             touch.RegisterCallback<WheelEvent>(e => { if (e.delta.y > 0.01f) SetOverview(true); else if (e.delta.y < -0.01f) SetOverview(false); e.StopPropagation(); });
             touch.RegisterCallback<PointerDownEvent>(e => PinchTrack(e.pointerId, e.localPosition, true), TrickleDown.TrickleDown);
@@ -418,6 +420,24 @@ namespace GoF2Remake.UI
         }
 
         static string VoidButtonText => Localization.Extra("mapVoidJump", "Jump to the Void").ToUpperInvariant();
+
+        /// <summary>Modified: the footer's right-hand column (Jump to the Void, Full map / Close up, Key) as wide as the widest
+        /// label any of them can show, so the buttons keep their size when the Full map one turns into Close up or one of
+        /// them hides.</summary>
+        void FitSideButtons()
+        {
+            if (sideButtons == null || keyButton == null) return;
+            float w = 0f;
+            foreach (var text in new[] { VoidButtonText, Localization.Extra("mapFullMap", "FULL MAP"), Localization.Extra("mapCloseUp", "CLOSE UP"), T(400).ToUpperInvariant() })
+                w = Mathf.Max(w, keyButton.MeasureTextSize(text, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined).x);
+            if (!(w > 0f)) return;
+            var s = keyButton.resolvedStyle;
+            w += s.paddingLeft + s.paddingRight + s.borderLeftWidth + s.borderRightWidth + 4f;
+            if (Mathf.Abs(sideButtons.resolvedStyle.width - w) > 0.5f) sideButtons.style.width = w;
+        }
+
+        /// <summary>Modified: the camera is still on its way in or out of the full-map overview (Full map / Close up wait).</summary>
+        bool OverviewMoving => overviewT > 0f && overviewT < 1f;
 
         void RevealMap()
         {
@@ -651,7 +671,7 @@ namespace GoF2Remake.UI
         /// <summary>Remake: in or out of the full-map overview (only in the galaxy view).</summary>
         void SetOverview(bool on)
         {
-            if (on == overview || systemView || zoomDir != 0 || revealing || DialogOpen || cam == null) return;
+            if (on == overview || systemView || zoomDir != 0 || revealing || DialogOpen || cam == null || OverviewMoving) return;
             overview = on;
             vel = Vector2.zero;
             if (on) { autoCentre = false; Play(assets.zoomOut); }
@@ -1553,6 +1573,8 @@ namespace GoF2Remake.UI
             if (world == null || this == null) return;
             UpdateReveal(dtMs);
             overviewT = Mathf.MoveTowards(overviewT, overview ? 1f : 0f, dtMs / OverviewMs);
+            // Modified: Full map / Close up clickable again once the camera is there.
+            if (zoomButton != null && zoomButton.enabledSelf == OverviewMoving) zoomButton.SetEnabled(!OverviewMoving);
 
             if (zoomDir != 0)
             {

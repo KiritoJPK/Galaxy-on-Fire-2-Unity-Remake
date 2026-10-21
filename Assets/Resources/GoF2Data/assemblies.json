@@ -16694,7 +16694,7 @@
    "pack": "main",
    "category": "hangars",
    "origin": "Level::createScene @0xc2910, mode 0x17, UNK_00253e48[0] (4 slots, -1 = none); children DAT_00251fd0[0] + 0..UNK_00251fc0[0]-1",
-   "notes": "Hangar = Level(mode 0x17), CutScene(0x17). Every static is PlayerStatic(-1, AEGeometry(id), (0,0,0)) with AEGeometry::setRotation(0, pi, 0) (0x40490fdb). Statics live in the enemies list, so their keyframe animation (*_anim_add) is advanced every frame by CutScene::process (Transform::Update(dt)); no explicit animation state. The x1..xN props (+shadow_alpha) get no transform of their own (placement is baked in the mesh). The loop adds a fresh copy under each static (so the original renders them up to 3x). hangar_terran_bot_*_anim(+_add) meshes have resource ids but NO code creates them (CutScene+0x38 bot array is never filled).",
+   "notes": "Hangar = Level(mode 0x17), CutScene(0x17). Every static is PlayerStatic(-1, AEGeometry(id), (0,0,0)) with AEGeometry::setRotation(0, pi, 0) (0x40490fdb). Statics live in the enemies list, so their keyframe animation (*_anim_add) is advanced every frame by CutScene::process (Transform::Update(dt)); no explicit animation state. The x1..xN props (+shadow_alpha) get no transform of their own (placement is baked in the mesh). The loop adds a fresh copy under each static (so the original renders them up to 3x). hangar_terran_bot_*_anim(+_add) meshes have resource ids but NO code creates them (CutScene+0x38 bot array is never filled). Remake: the four bots (hangar_terran_bot_a..d_anim + _add, the beta's) are placed like the room's other layers and drive their keyed loop (StationLevel.BuildHangar).",
    "root": 14376,
    "parts": [
     {
@@ -16897,6 +16897,150 @@
      "variant": "",
      "condition": "",
      "position": [],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_a",
+     "parent": "",
+     "mesh": 14265,
+     "model": "Models/main/hangars/hangar_terran_bot_a_anim.fbx",
+     "material": 0,
+     "role": "bot_a",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_a_add",
+     "parent": "",
+     "mesh": 14269,
+     "model": "Models/main/hangars/hangar_terran_bot_a_anim_add.fbx",
+     "material": 0,
+     "role": "bot_a_add",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_b",
+     "parent": "",
+     "mesh": 14266,
+     "model": "Models/main/hangars/hangar_terran_bot_b_anim.fbx",
+     "material": 0,
+     "role": "bot_b",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_b_add",
+     "parent": "",
+     "mesh": 14270,
+     "model": "Models/main/hangars/hangar_terran_bot_b_anim_add.fbx",
+     "material": 0,
+     "role": "bot_b_add",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_c",
+     "parent": "",
+     "mesh": 14267,
+     "model": "Models/main/hangars/hangar_terran_bot_c_anim.fbx",
+     "material": 0,
+     "role": "bot_c",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_c_add",
+     "parent": "",
+     "mesh": 14271,
+     "model": "Models/main/hangars/hangar_terran_bot_c_anim_add.fbx",
+     "material": 0,
+     "role": "bot_c_add",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_d",
+     "parent": "",
+     "mesh": 14268,
+     "model": "Models/main/hangars/hangar_terran_bot_d_anim.fbx",
+     "material": 0,
+     "role": "bot_d",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "rotation": [],
+     "scale": [],
+     "lods": []
+    },
+    {
+     "key": "bot_d_add",
+     "parent": "",
+     "mesh": 14272,
+     "model": "Models/main/hangars/hangar_terran_bot_d_anim_add.fbx",
+     "material": 0,
+     "role": "bot_d_add",
+     "variant": "",
+     "condition": "",
+     "position": [
+      0.0,
+      0.0,
+      0.0
+     ],
      "rotation": [],
      "scale": [],
      "lods": []

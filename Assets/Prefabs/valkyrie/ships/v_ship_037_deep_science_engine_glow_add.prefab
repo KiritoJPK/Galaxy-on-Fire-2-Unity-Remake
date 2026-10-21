@@ -80,7 +80,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4feb1e89791b49549afbeacbd3881fd7, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2ResourceInfo
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.ResourceInfo
   meshId: 17937
   materialId: 34815
   originalPath: data/assets/valkyrie/3d/meshes/ships/v_ship_037_deep_science_engine_glow_add.aem

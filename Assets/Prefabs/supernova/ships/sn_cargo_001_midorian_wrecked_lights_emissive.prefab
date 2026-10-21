@@ -80,7 +80,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4feb1e89791b49549afbeacbd3881fd7, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GoF2Remake.Visuals.GoF2ResourceInfo
+  m_EditorClassIdentifier: GoF2.Space::GoF2Remake.Visuals.ResourceInfo
   meshId: 19076
   materialId: 29092
   originalPath: data/assets/supernova/3d/meshes/ships/sn_cargo_001_midorian_wrecked_lights_emissive.aem

@@ -29,10 +29,34 @@
 .hangar-open .station-hints {
     left: 48px;
     right: 40px;
-    bottom: 34px;
+    /* Modified: the strip under the window (its bottom: 96 px), the hints centred in it both ways (they sat right-aligned,
+       34 px up). */
+    bottom: 0;
+    height: 96px;
+    justify-content: center;
+    align-items: center;
     width: auto;   /* the main view's set 1000 px would squeeze the hints between left and right */
     max-width: none;
     flex-wrap: nowrap;
+}
+
+/* Modified: in the hangar window each hint's label under its keys (StationMenu.Hint's hint-keys), on one line: side by
+   side the eight hints left their labels a word wide, broken over two or three lines. Keys and label centred both ways;
+   the label's own line spacing (capitals, nothing below the line) left more room under it than above the keys, so the
+   box's bottom padding is that much smaller. */
+.hangar-open .station-hints .hint {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 12px 3px 12px;
+    margin: 0 4px;   /* no top margin (GoF2InputGlyphs' 6 px): the row centres on the boxes themselves */
+}
+
+.hangar-open .station-hints .hint-label {
+    margin: 3px 0 0 0;
+    padding: 0;
+    white-space: nowrap;
+    -unity-text-align: middle-center;
 }
 
 /* ---- tabs ---------------------------------------------------------------------------- */

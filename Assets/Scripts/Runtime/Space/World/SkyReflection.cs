@@ -27,9 +27,7 @@ namespace GoF2Remake.World
         public static void SetSystem(OrbitLayout layout)
         {
             if (layout == null) return;
-            int index = layout.alienOrbit ? 10 : layout.systemTexture;
-            string name = index <= 10 ? $"cubemap_skybox_{index:000}" : index <= 14 ? $"v_cubemap_skybox_{index:000}" : $"sn_cubemap_skybox_{index:000}";
-            var cube = Resources.Load<Cubemap>("GoF2Reflections/" + name);
+            var cube = Resources.Load<Cubemap>("GoF2Reflections/" + SystemCubeName(layout));
             Shader.SetGlobalFloat(ReflectionId, 1f);
             Shader.SetGlobalFloat(PbrDimId, 0f);   // space, the lounge, a mod's own hangar: the mods' hulls as URP lights them
             Shader.SetGlobalVector(PbrLightId, Vector4.zero);
@@ -41,6 +39,14 @@ namespace GoF2Remake.World
             Shader.SetGlobalTexture(CubeId, cube);
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
             RenderSettings.customReflectionTexture = cube;
+        }
+
+        /// <summary>The system's reflection cubemap in Resources/GoF2Reflections: 0x2efe + the system's texture index, the
+        /// alien orbit 0x2f08 (index 10). Modified: public for HangarCubemapCapture.</summary>
+        public static string SystemCubeName(OrbitLayout layout)
+        {
+            int index = layout.alienOrbit ? 10 : layout.systemTexture;
+            return index <= 10 ? $"cubemap_skybox_{index:000}" : index <= 14 ? $"v_cubemap_skybox_{index:000}" : $"sn_cubemap_skybox_{index:000}";
         }
 
         /// <summary>Remake: in a hangar its own race's cubemap (Resources/GoF2Reflections/cubemap_hangar_*, the original's
@@ -61,7 +67,9 @@ namespace GoF2Remake.World
                 cube = Resources.Load<Cubemap>("GoF2Reflections/" + HangarCubes[hangarIndex]);
                 if (cube == null) return;   // not found: the system's stays
             }
-            else if (hangarIndex == 7 || hangarIndex == 8) cube = Black;
+            else if (hangarIndex == 7 || hangarIndex == 8)
+                // Modified: the Valkyrie hangars' own, once captured (HangarCubemapCapture), else none.
+                cube = Resources.Load<Cubemap>("GoF2Reflections/" + HangarCubeName(hangarIndex)) ?? Black;
             else return;
             Shader.SetGlobalTexture(CubeId, cube);
             RenderSettings.defaultReflectionMode = DefaultReflectionMode.Custom;
@@ -69,6 +77,12 @@ namespace GoF2Remake.World
         }
 
         static readonly string[] HangarCubes = { "cubemap_hangar_terran", "cubemap_hangar_vossk", "cubemap_hangar_nivelian", "cubemap_hangar_midorian" };
+
+        /// <summary>Modified: a hangar's reflection cubemap in Resources/GoF2Reflections (HangarCubemapCapture writes it):
+        /// the four races' and the Valkyrie hangars' (7 deep science, 8 battlestation); null for the others.</summary>
+        public static string HangarCubeName(int hangarIndex) =>
+            hangarIndex >= 0 && hangarIndex < HangarCubes.Length ? HangarCubes[hangarIndex]
+            : hangarIndex == 7 ? "cubemap_hangar_deep_science" : hangarIndex == 8 ? "cubemap_hangar_battlestation" : null;
 
         static Cubemap black;
         static Cubemap Black
