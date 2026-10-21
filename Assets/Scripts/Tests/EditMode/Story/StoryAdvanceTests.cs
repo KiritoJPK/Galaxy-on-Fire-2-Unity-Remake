@@ -478,11 +478,12 @@ namespace GoF2Remake.Tests
         }
 
         [Test]
-        public void Step78TakesTheDriveFromTheHoldWhenNoneIsMounted()
+        public void Step78TakesTheDrivesFromTheHoldWhenNoneIsMounted()
         {
+            // Case 0x4d: Ship::removeCargo(getCargo(85)) removes that cargo item's whole amount (#131).
             Shop.AddToCargo(GalaxyMap.KhadorDriveItem, 2);
             EnterStep(78);
-            Assert.AreEqual(1, Shop.CargoOf(GalaxyMap.KhadorDriveItem));
+            Assert.AreEqual(0, Shop.CargoOf(GalaxyMap.KhadorDriveItem));
         }
 
         [Test]

@@ -315,6 +315,7 @@ namespace GoF2Remake.UI
             {
                 lockPlate.EnableInClassList("lock-plate--shown", true);
                 lockOre.text = locked.name;
+                lockOre.EnableInClassList("lock-ore--wanted", false);   // the shared plate's criminal red (CombatView) stayed on (Discord 2026-10-17)
                 // The remake's lockable waypoint shows its own marker, not the system's race icon (#28).
                 var icon = locked.kind == Navigation.Kind.Planet ? null
                          : locked.kind == Navigation.Kind.Waypoint ? Tex(locked.freelance ? "map_freelance" : "map_story")

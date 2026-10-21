@@ -432,9 +432,14 @@ namespace GoF2Remake.UI
                 // Equipment categories: the icon of a first item of the category (not the commodities; ore cores = "core").
                 var firstOf = new Dictionary<int, int>();
                 foreach (var it in db.Items) if (!it.modded && !firstOf.ContainsKey(it.categoryId)) firstOf[it.categoryId] = it.index;
+                // The booster's word inside the jump drive's (Russian "Ускоритель" / "Гипер-ускоритель"): the texts use the short
+                // one for the drive too (Alice's 2424 "ускоритель" is the jump drive), so it gets no icon there (#131).
+                string booster = Localization.Get(221 + 14), jumpDrive = Localization.Get(221 + 18);
+                bool boosterAmbiguous = !string.IsNullOrEmpty(booster) && !string.IsNullOrEmpty(jumpDrive)
+                    && jumpDrive.IndexOf(booster, System.StringComparison.OrdinalIgnoreCase) >= 0;
                 foreach (var kv in firstOf)
                 {
-                    if (kv.Key == 22) continue;
+                    if (kv.Key == 22 || (kv.Key == 14 && boosterAmbiguous)) continue;
                     string sprite = kv.Key == 24 ? "core" : $"item_{kv.Value:000}";
                     Add(Localization.Get(221 + kv.Key), sprite, true, pluralOnly: kv.Key == 11);   // 11 Mine: not "a friend of mine"
                 }

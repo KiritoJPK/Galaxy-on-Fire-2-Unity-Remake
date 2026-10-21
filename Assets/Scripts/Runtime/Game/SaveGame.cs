@@ -233,6 +233,7 @@ namespace GoF2Remake.Data
             Modding.ModSaves.Fix(s);   // modded items moved to their numbers now, or removed and refunded (mods turned off)
             DropUnknownItems(s, Database.Shared);
             Apply(s);
+            Session.ArrivedByLoad = true;   // ModStation::setGameLoaded: the station asks no docking fine
             return true;
         }
 

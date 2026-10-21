@@ -377,7 +377,7 @@ namespace GoF2Remake.UI
                 if (place == null)
                 {
                     if (load.IsFaulted || load.Result == null) return true;
-                    place = load.Result.InstantiateMainSceneAsync(holder.transform);
+                    place = ModGltf.InstantiateMain(load.Result, holder.transform);
                 }
                 return place.IsCompleted;
             }, () =>

@@ -4,8 +4,9 @@
 // The original has none (AbyssEngine::Engine::Vibrate is an empty stub, Globals::init switches it off). Created by
 // Bootstrap and kept for the whole run.
 //   output     follows InputMode: the controller last used while playing with a controller, the phone while playing by
-//              touch (touch or tilt steering), nothing with keyboard and mouse; on Android a controller's go to the device's
-//              own motor too (the Input System has no Android controller rumble; #73)
+//              touch (touch or tilt steering), nothing with keyboard and mouse; on Android a controller with vibrators
+//              rumbles itself (the Input System does it from Unity 6000.6 on), one without (a handheld's built-in controls,
+//              #73) hands its haptics to the device's own motor (#138: every controller went to the phone)
 //   strength   Settings.HapticsIntensity (Options > Controls "Vibration", 0 = off) scales every motor and phone amplitude
 //   events     Play(pulse) for one-off events (the presets below, called by the game code), Rumble(level) every frame for
 //              continuous ones (ChaseCamera's explosion / boost / Liberator rumble, CutsceneCamera's rumble, scraping a
@@ -78,6 +79,7 @@ namespace GoF2Remake.Flight
             pad = null;
             sentLow = sentHigh = -1f;
             nextPhoneRumble = nextPreview = resendAt = lastRunning = 0f;
+            vibrators.Clear();
         }
 
         public static void Install()
@@ -97,17 +99,39 @@ namespace GoF2Remake.Flight
                 if (Settings.HapticsIntensity <= 0f) return Output.None;
                 switch (InputMode.Current)
                 {
-                    // Android: the Input System sends no rumble to a controller there (its Android backend has no rumble
-                    // command; it only reads vibratorCount), so a controller's haptics go to the device's own motor: the
-                    // built-in controls of handhelds (the Konkr Pocket FIT's motor is in the device, #73) and phones in
-                    // controller grips feel them.
+                    // Android: a controller that reports vibrators rumbles itself (Xbox / PlayStation pads over Bluetooth on
+                    // Android 12+); one that reports none (a handheld's built-in controls: the Konkr Pocket FIT's motor is in
+                    // the device, #73) hands its haptics to the device's own motor. #138: from #73 on every Android
+                    // controller went to the phone, and an Xbox Elite pad stopped rumbling.
                     case InputKind.Gamepad:
+                        if (Gamepad.current != null && (Application.platform != RuntimePlatform.Android || HasVibrators(Gamepad.current)))
+                            return Output.Controller;
                         if (Application.platform == RuntimePlatform.Android) return PhoneVibrator.Supported ? Output.Phone : Output.None;
-                        return Gamepad.current != null ? Output.Controller : Output.None;
+                        return Output.None;
                     case InputKind.Touch: return PhoneVibrator.Supported ? Output.Phone : Output.None;
                     default: return Output.None;
                 }
             }
+        }
+
+        /// <summary>The Android description's capabilities (the Input System's own AndroidDeviceCapabilities is internal): only
+        /// the vibrator count is read.</summary>
+        [System.Serializable]
+        struct AndroidCapabilities { public int vibratorCount; }
+
+        static readonly System.Collections.Generic.Dictionary<int, bool> vibrators = new System.Collections.Generic.Dictionary<int, bool>();
+
+        /// <summary>Android: the controller reports at least one vibrator (cached per device). No capabilities, or 0: no.</summary>
+        static bool HasVibrators(Gamepad pad)
+        {
+            if (vibrators.TryGetValue(pad.deviceId, out bool has)) return has;
+            has = false;
+            var caps = pad.description.capabilities;
+            if (!string.IsNullOrEmpty(caps))
+                try { has = JsonUtility.FromJson<AndroidCapabilities>(caps).vibratorCount > 0; }
+                catch (System.ArgumentException) { }
+            vibrators[pad.deviceId] = has;
+            return has;
         }
 
         /// <summary>The game is held: paused, a menu or map over it, the sound paused, or the app in the background.</summary>

@@ -1297,9 +1297,12 @@ namespace GoF2Remake.World
                     for (int i = 2; i <= 4; i++) { S(i).scriptedSpeed = -1f; S(i).CloakingPossible = true; }
                     playerSpeed = 0f;
                     LeaveCutscene();
+                    timerMs = 0f;   // the original zeroes +0x90 here, and ev8 / ev9 share it
                     Step = 8;
                     break;
-                case 8: if (stepMs >= 60000f) { timerMs = 0f; Step = 9; } break;
+                // The +0x90 timer runs on from ev8 into ev9 (not zeroed): the first revive comes 50 s into ev9, 110 s after
+                // ev8 began (#132: zeroed here it came a minute late).
+                case 8: if (stepMs >= 60000f) Step = 9; break;
                 case 9:
                     if (timerMs >= 110000f)
                     {

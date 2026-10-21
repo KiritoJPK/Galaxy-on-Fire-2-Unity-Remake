@@ -282,6 +282,20 @@
     top: 56px;
 }
 
+/* Remake: with the FPS counter shown (FpsCounter, top 2, ~23 px tall) the top-centre plates move 24 px down under it
+   (#137: the HUD message was drawn over the counter). */
+.hud-fps .lock-plate {
+    top: 30px;
+}
+
+.hud-fps .hud-messages {
+    top: 16px;
+}
+
+.hud-fps .hud-messages--low {
+    top: 80px;
+}
+
 .hud-message {
     position: absolute;
     left: -200px;

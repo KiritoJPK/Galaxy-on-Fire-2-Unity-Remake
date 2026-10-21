@@ -702,7 +702,7 @@ namespace GoF2Remake.Data
                 case 63: RevealSystem(db, 24); break;                                       // Skavac
                 case 67:   // Cornelius' mines: 5 each of AMR Saber, Neutha EMP and Ksann'k in this station's stock
                     Session.StoryMission.value = 0;
-                    AddToCurrentStock(new ItemStack(60, 5), new ItemStack(61, 5), new ItemStack(62, 5));
+                    AddToCurrentStock(true, new ItemStack(60, 5), new ItemStack(61, 5), new ItemStack(62, 5));   // makeItem(5, 0): free
                     break;
                 case 69: Shop.RemoveFromCargo(175, CargoOf(175)); break;                // the Void Essence handed to Netor
                 case 75: RemoveCurrentDealerShips(); break;                                 // Station::removeShips
@@ -711,7 +711,7 @@ namespace GoF2Remake.Data
                 {
                     int drive = Session.Equipment.FindIndex(e => db.Item(e.item)?.categoryId == 18);
                     if (drive >= 0) Session.Equipment.RemoveAt(drive);
-                    else Shop.RemoveFromCargo(GalaxyMap.KhadorDriveItem, 1);
+                    else Shop.RemoveFromCargo(GalaxyMap.KhadorDriveItem, CargoOf(GalaxyMap.KhadorDriveItem));   // Ship::removeCargo(Item*): the whole stack
                     // The original's unsaleable flag was on that Item: it goes with it (the remake's flag is per item
                     // number, so it stayed and locked every later Khador Drive).
                     Session.Unsaleable.Remove(GalaxyMap.KhadorDriveItem);
@@ -791,8 +791,10 @@ namespace GoF2Remake.Data
             if (saleable) Session.Unsaleable.Remove(GalaxyMap.KhadorDriveItem); else Session.Unsaleable.Add(GalaxyMap.KhadorDriveItem);
         }
 
-        /// <summary>Station::addItem on the station the player is docked at (Status+0x198).</summary>
-        static void AddToCurrentStock(params ItemStack[] items)
+        /// <summary>Station::addItem on the station the player is docked at (Status+0x198). 'free': Item::makeItem(amount, 0),
+        /// the units cost nothing (StationStock.freeUnits; #131: Cornelius' mines were sold at the full price). Remake: free
+        /// also when the station already stocked the item (addItem merges into that row and its price, so there they cost).</summary>
+        static void AddToCurrentStock(bool free, params ItemStack[] items)
         {
             var stock = Session.RecentStations.Find(r => r.station == Session.StationIndex);
             if (stock == null) return;
@@ -800,6 +802,10 @@ namespace GoF2Remake.Data
             {
                 var row = stock.items.Find(x => x.item == it.item);
                 if (row != null) row.amount += it.amount; else Shop.InsertStock(stock, new ItemStack(it.item, it.amount));
+                if (!free) continue;
+                stock.freeUnits ??= new List<ItemStack>();
+                var f = stock.freeUnits.Find(x => x != null && x.item == it.item);
+                if (f != null) f.amount += it.amount; else stock.freeUnits.Add(new ItemStack(it.item, it.amount));
             }
         }
 

@@ -315,6 +315,10 @@ namespace GoF2Remake.Data
         /// <summary>Remake: the player docked from space (SpaceLevel.Dock), so the station opens with the hangar fly-in.</summary>
         public static bool DockedFromSpace;
 
+        /// <summary>The station was opened by loading a save (ModStation::setGameLoaded, +0xac): no docking fine then
+        /// (StationMenu.CheckDockingFine takes and clears it; SpaceLevel clears it too).</summary>
+        public static bool ArrivedByLoad;
+
         /// <summary>Arrived through a jumpgate or the Khador Drive: the arrival camera shows the orbit information
         /// (Hud::drawOrbitInformation, not after a planet jump).</summary>
         public static bool ArrivedBySystemJump;
@@ -508,6 +512,7 @@ namespace GoF2Remake.Data
             ArrivedByTravel = false;
             LaunchedFromStation = false;
             DockedFromSpace = false;
+            ArrivedByLoad = false;
             ArrivedBySystemJump = false;
             SystemVisible = null;
             SystemShown = new Dictionary<int, bool>();

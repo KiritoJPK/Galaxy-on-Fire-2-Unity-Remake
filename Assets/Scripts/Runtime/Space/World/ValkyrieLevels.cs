@@ -220,7 +220,11 @@ namespace GoF2Remake.World
                 var at = new Vector3(Sign() * R(20000) + 10000, Sign() * R(20000) + 10000, Sign() * R(20000) + 10000);
                 c.SpawnShip(Standing.Pirate, NpcTables.RandomFighter(Standing.Pirate), at, false, s => s.asleep = true);
             }
-            c.WinObjective = () => c.EnemiesLeft < 4;   // 0x1b (4)
+            // 0x1b (4): Level::init counts the enemies without the outpost (PlayerFixedObject sets KIPlayer[0x3d], which
+            // Level::init skips), so 6 pirates; its death still takes one off (Level::enemyDied). Any 3 kills win, the
+            // station usually still standing. The remake counts the outpost too (7): < 3 is the same win (#131: the
+            // pirates only gave Khador away once the station blew up).
+            c.WinObjective = () => c.EnemiesLeft < 3;
         }
 
         void Build64()

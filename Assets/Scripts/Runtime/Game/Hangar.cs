@@ -101,6 +101,10 @@ namespace GoF2Remake.Data
             if (!prices.ContainsKey(item)) { AddPrices(new List<int> { item }); PinPrices(); }
             return Story.AdjustPrice(Station, item, prices.TryGetValue(item, out int p) ? p : 0);
         }
+        /// <summary>What buying one unit costs: 0 while the station has free units of it (StationStock.freeUnits), else
+        /// PriceOf. Selling stays at PriceOf.</summary>
+        public int BuyPriceOf(int item) => !Storage && Stock.FreeOf(item) > 0 ? 0 : PriceOf(item);
+
         /// <summary>Item::isSaleable: story items (Gunant's Drill, the Alien Remains...) can't be sold or demounted (323).</summary>
         public static bool IsSaleable(int item) => !Session.Unsaleable.Contains(item);
         public int StockOf(int item) => Stock.items.Where(s => s.item == item).Sum(s => s.amount);
@@ -305,11 +309,13 @@ namespace GoF2Remake.Data
             need = 0;
             var row = Stock.items.Find(s => s.item == item && s.amount > 0);
             if (row == null) return Result.NoStock;
-            int price = Storage || Cheats.FreeShopping ? 0 : PriceOf(item);
-            if (GameHooks.FactionBuyPrice != null) price = GameHooks.FactionBuyPrice(Station, price);   // multiplayer: a faction station's cut / tax
+            bool free = !Storage && Stock.FreeOf(item) > 0;   // step 67's gifted mines (StationStock.freeUnits)
+            int price = Storage || Cheats.FreeShopping || free ? 0 : PriceOf(item);
+            if (GameHooks.FactionBuyPrice != null && !free) price = GameHooks.FactionBuyPrice(Station, price);   // multiplayer: a faction station's cut / tax
             if (Session.Credits < price) { need = price - Session.Credits; return Result.NoCredits; }
             row.amount--;
             if (row.amount <= 0) Stock.items.Remove(row);
+            if (free) Stock.TakeFree(item);
             if (!Storage) Shared(item, -1, price);   // multiplayer: the shared stock
             AddToCargo(item, 1);
             if (price > 0) ChangeCredits(-price);
@@ -419,7 +425,10 @@ namespace GoF2Remake.Data
             var e = Session.Equipment[equipmentIndex];
             if (e.builtIn) return;   // built into the ship (SyncBuiltIn)
             Session.Equipment.RemoveAt(equipmentIndex);
-            AddToCargo(e.item, Mathf.Max(1, e.amount));
+            // HangarWindow::demountItem: a secondary goes with its ammo, nothing when it is empty (#132: Max(1, ...) handed
+            // out a free missile); other items as 1 unit.
+            int amount = TypeOf(e.item) == 1 ? e.amount : Mathf.Max(1, e.amount);
+            if (amount > 0) AddToCargo(e.item, amount);
             SyncBuiltIn(db);   // a fitted item in a built-in one's place gone: the built-in one is back
         }
 

@@ -149,10 +149,11 @@ namespace GoF2Remake.UI
         // 3D
         GameObject world;
         Camera cam;
-        // Remake: the supernova system's sun on the map once the supernova is contained (step 158 done): sn_sun_011, the
-        // flight sun the orbit shows from then on (OrbitLayout), in place of the supernova glow.
-        const int SupernovaSystem = 27, SupernovaContainedStep = 158;
-        static bool SupernovaContained => Session.WorldIndex > SupernovaContainedStep;   // as OrbitLayout's sun, on the world's index
+        // Remake: the supernova system's sun on the map once the supernova is contained: sn_sun_011, the flight sun the orbit
+        // shows from then on, in place of the supernova glow. From 0x9e, as OrbitLayout (Status::inSupernovaSystem: system 27
+        // before 0x9e); it switched one step later, so step 158 had the calm sun in flight and the glow on the map.
+        const int SupernovaSystem = 27, SupernovaContainedStep = 0x9e;
+        static bool SupernovaContained => Session.WorldIndex >= SupernovaContainedStep;   // on the world's index, as OrbitLayout
         Material containedSun;
 
         /// <summary>A copy of the map sun material 'from' showing sn_sun_011 whole (the supernova material shows a corner of the

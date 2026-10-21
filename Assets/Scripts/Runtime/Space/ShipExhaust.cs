@@ -127,6 +127,12 @@ namespace GoF2Remake.Flight
                 if (scaled) main.scalingMode = ParticleSystemScalingMode.Hierarchy;
                 main.emitterVelocityMode = ParticleSystemEmitterVelocityMode.Transform;
                 main.maxParticles = 20;
+                // IParticleSystem::emit (0x1b2790) writes a ring: at the 20-particle cap the newest replaces the oldest, so the
+                // plume always starts at the nozzle. Unity's default drops new ones while the pool is full: at 2 u/ms the
+                // plume needs ~20 and more boosting, cruising or strafing, so a gap opened behind the nozzle and it flickered
+                // between full and not (Discord report "Thruster fire gap"). An expired particle held here is black with 0
+                // alpha under additive blending: unseen.
+                main.ringBufferMode = ParticleSystemRingBufferMode.PauseUntilReplaced;
                 var em = ps.emission;
                 em.rateOverTime = 0f;
                 em.rateOverDistance = 1f / (8f * M);   // one per 8 units

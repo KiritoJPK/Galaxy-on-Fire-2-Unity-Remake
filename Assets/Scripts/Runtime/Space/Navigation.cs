@@ -67,6 +67,7 @@ namespace GoF2Remake.Flight
             public NpcShip dockingShip;     // docking targets: the object
             public ulong client;             // multiplayer Assist: the squadmate calling for help
             public bool freelance;          // waypoints: a freelance mission's route (the white freelance icon, not the gold story one)
+            public bool eventWaypoint;      // waypoints: the event's own one (SetEventWaypoint), beside the player route
             public Vector3 Position => transform != null ? transform.position : fixedPosition;
         }
 
@@ -111,34 +112,57 @@ namespace GoF2Remake.Flight
         /// <summary>A campaign level's player route (Level+0x108, PlayerEgo::setRoute): its current waypoint is a landmark
         /// target named "Waypoint" (548): marked on the HUD, lockable, and the autopilot flies to it; "Waypoint reached."
         /// (543) / "Last waypoint reached." (544) as the route advances.</summary>
-        public void SetRoute(Route route, bool freelance = false)
+        public void SetRoute(Route route, bool freelance = false) => SetRoute(ref playerRoute, ref routeTarget, ref routeIndex, route, freelance, false);
+
+        /// <summary>Remake events: an event's waypoint (EventWaypoint: /waypoint, the graphs' Set Waypoint) in a slot of its own
+        /// beside the player route, so an event or a multiplayer bar mission graph and a campaign / freelance route both show
+        /// and clearing one leaves the other (a Discord report: the Pirate Hideout's waypoint replaced a lounge mission's, and
+        /// its Clear Waypoint removed both). 'name' (null = 548 "Waypoint") is the lock plate's and the autopilot menu's.</summary>
+        public void SetEventWaypoint(Route route, string name, bool freelance)
         {
-            playerRoute = route;
-            routeTarget = null;
-            Targets.RemoveAll(t => t.kind == Kind.Waypoint);
-            if (route == null) return;
-            routeTarget = new Target { kind = Kind.Waypoint, name = route.name ?? Localization.Get(548), freelance = freelance };
-            routeIndex = route.index;
-            UpdateRoute();
+            if (route != null && name != null) route.name = name;
+            SetRoute(ref eventRoute, ref eventTarget, ref eventIndex, route, freelance, true);
         }
 
-        Route playerRoute;
-        Target routeTarget;
-        int routeIndex;
+        void SetRoute(ref Route slot, ref Target target, ref int index, Route route, bool freelance, bool isEvent)
+        {
+            if (target != null)
+            {
+                Targets.Remove(target);
+                if (Locked == target || Candidate == target) { Locked = Candidate = null; LockTimer = 0f; }
+                if (isEvent && AutopilotTarget == target) SetAutopilot(null);   // the event's waypoint went: nothing to fly to
+            }
+            slot = route;
+            target = null;
+            if (route == null) return;
+            target = new Target { kind = Kind.Waypoint, name = route.name ?? Localization.Get(548), freelance = freelance, eventWaypoint = isEvent };
+            index = route.index;
+            UpdateRoute(slot, target, ref index);
+        }
+
+        Route playerRoute, eventRoute;
+        Target routeTarget, eventTarget;
+        int routeIndex, eventIndex;
 
         void UpdateRoute()
         {
-            if (playerRoute == null) return;
-            if (playerRoute.index != routeIndex)
+            UpdateRoute(playerRoute, routeTarget, ref routeIndex);
+            UpdateRoute(eventRoute, eventTarget, ref eventIndex);
+        }
+
+        void UpdateRoute(Route route, Target target, ref int index)
+        {
+            if (route == null || target == null) return;
+            if (route.index != index)
             {
-                routeIndex = playerRoute.index;
-                Say(Localization.Get(playerRoute.Waypoint == null ? 544 : 543));
-                if (AutopilotTarget == routeTarget) SetAutopilot(playerRoute.Waypoint == null ? null : routeTarget);
+                index = route.index;
+                Say(Localization.Get(route.Waypoint == null ? 544 : 543));
+                if (AutopilotTarget == target) SetAutopilot(route.Waypoint == null ? null : target);
             }
-            var wp = playerRoute.Waypoint;
-            if (wp == null) { Targets.Remove(routeTarget); if (Locked == routeTarget || Candidate == routeTarget) Locked = Candidate = null; return; }
-            routeTarget.fixedPosition = new Vector3(wp.Value.x, wp.Value.y, -wp.Value.z) * M;
-            if (!Targets.Contains(routeTarget)) Targets.Add(routeTarget);
+            var wp = route.Waypoint;
+            if (wp == null) { Targets.Remove(target); if (Locked == target || Candidate == target) Locked = Candidate = null; return; }
+            target.fixedPosition = new Vector3(wp.Value.x, wp.Value.y, -wp.Value.z) * M;
+            if (!Targets.Contains(target)) Targets.Add(target);
         }
 
         /// <summary>Landmark 3: named 545 "Wormhole" near the centre, icon 0x450 elsewhere; never a lock candidate (Radar::draw).</summary>
@@ -332,6 +356,8 @@ namespace GoF2Remake.Flight
                 // 573 "Waypoint": the player route's last waypoint isn't reached (Route::getLastWaypoint +300).
                 if (playerRoute != null && playerRoute.Waypoint != null && routeTarget != null)
                     list.Add(new Target { kind = Kind.Waypoint, name = playerRoute.name ?? Localization.Get(573) });
+                if (eventRoute != null && eventRoute.Waypoint != null && eventTarget != null)
+                    list.Add(new Target { kind = Kind.Waypoint, name = eventRoute.name ?? Localization.Get(573), eventWaypoint = true });
                 int prog = Session.ProgrammedStation;
                 if (prog >= 0 && prog != layout.stationIndex)
                     list.Add(new Target { kind = Kind.Destination, station = prog,
@@ -421,10 +447,12 @@ namespace GoF2Remake.Flight
             if (target.kind == Kind.Waypoint)
             {
                 // MGame::OnTouchEnd key 0x2000000: HUD event 0xd "Target: Waypoint" + 28; the autopilot follows the route.
-                if (routeTarget == null || playerRoute == null || playerRoute.Waypoint == null) return;
-                Say($"{Localization.Get(546)}: {playerRoute.name ?? Localization.Get(573)}", HudMessageKind.Target);
+                var route = target.eventWaypoint ? eventRoute : playerRoute;
+                var to = target.eventWaypoint ? eventTarget : routeTarget;
+                if (to == null || route == null || route.Waypoint == null) return;
+                Say($"{Localization.Get(546)}: {route.name ?? Localization.Get(573)}", HudMessageKind.Target);
                 Play(sounds?.autopilotOn);
-                SetAutopilot(routeTarget);
+                SetAutopilot(to);
                 return;
             }
             if (target.kind == Kind.KhadorDrive)
@@ -468,10 +496,12 @@ namespace GoF2Remake.Flight
             // PlayerEgo::update: whatever set the player route (a campaign level, a freelance mission's waypoints, a
             // Challenge's course, step 59's convoy point), Route::update advances it from the ship's position every frame;
             // UpdateRoute says 543 / 544 (HUD events 0x17 / 0x18).
-            if (playerRoute != null)
+            if (playerRoute != null || eventRoute != null)
             {
                 var p = ship.transform.position;
-                playerRoute.Update(new Vector3(p.x, p.y, -p.z) / M);
+                var at = new Vector3(p.x, p.y, -p.z) / M;
+                playerRoute?.Update(at);
+                eventRoute?.Update(at);
             }
             if (Jumping) { UpdateJump(dtMs); return; }
             if (paused || pauseMenuOpen) return;

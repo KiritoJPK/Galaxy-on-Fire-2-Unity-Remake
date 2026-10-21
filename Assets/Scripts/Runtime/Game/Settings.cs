@@ -369,8 +369,13 @@ namespace GoF2Remake.Data
         /// <summary>Remake (desktop): no sound while the window isn't focused (Bootstrap; the volume, not AudioListener.pause,
         /// which the pause menu uses).</summary>
         public static bool MuteInBackground { get => GetBool("muteInBackground", false); set => SetBool("muteInBackground", value); }
-        /// <summary>Remake: the frame rate at the top centre (FpsCounter).</summary>
+        /// <summary>Remake: the frame rate on screen (FpsCounter, placed by FpsPosition).</summary>
         public static bool ShowFps { get => GetBool("showFps", false); set => SetBool("showFps", value); }
+
+        /// <summary>Remake: where the FPS counter sits (Options > Graphics "FPS counter position", FpsCounter): the four corners
+        /// and the middles of the four sides, top centre by default.</summary>
+        public const int FpsTopLeft = 0, FpsTop = 1, FpsTopRight = 2, FpsLeft = 3, FpsRight = 4, FpsBottomLeft = 5, FpsBottom = 6, FpsBottomRight = 7;
+        public static int FpsPosition { get => Mathf.Clamp(Mathf.RoundToInt(Get("fpsPosition", FpsTop)), FpsTopLeft, FpsBottomRight); set => Set("fpsPosition", Mathf.Clamp(value, FpsTopLeft, FpsBottomRight)); }
         /// <summary>Remake (#40): the story step at the bottom right (StoryStepLabel), for bug reports; off by default.</summary>
         public static bool ShowStoryStep { get => GetBool("showStoryStep", true); set => SetBool("showStoryStep", value); }
 
@@ -401,7 +406,7 @@ namespace GoF2Remake.Data
         {
             "displayMode", "resolutionWidth", "resolutionHeight", "frameRate", "quality", "renderScale", "upscaler", "upscalerQuality",
             "msaa", "brightness", "bloom", "bloomStyle", "hangarShadows", "hangarDof", "lensFlare", "npcPlayerEngines", "fov",
-            "cameraShake", "originalChaseCamera", "showFps",
+            "cameraShake", "originalChaseCamera", "showFps", "fpsPosition",
         };
         public static readonly string[] ControlsKeys =
         {

@@ -423,7 +423,7 @@ namespace GoF2Remake.Flight
 
             if (liberator != null) UpdateLiberator(dtMs);
             var cam = Camera.main;
-            var homing = HomingLock(cam);
+            var homing = HomingLock();
             // Player::calcWeaponSounds 0xb00b0: only the first primary gun makes the shot sound (Player+0x10c). Remake option
             // (Settings.EachWeaponSound): the first gun of every primary weapon item, so a mixed loadout sounds each weapon.
             Rig soundRig = rigs.Find(x => !x.gun.isSecondary);
@@ -475,18 +475,14 @@ namespace GoF2Remake.Flight
             foreach (var r in rigs) if (!r.gun.isSecondary) r.gun.reloadAcc = 0f;
         }
 
-        /// <summary>RocketGun::seekEnemy 0x18bd70: missiles steer only toward a lock that is on screen (KIPlayer+0x72), not
-        /// cloaked (+0x70), and not while the camera looks around freely.</summary>
-        Target HomingLock(Camera cam)
+        /// <summary>RocketGun::seekEnemy 0x18bd70: missiles steer toward the lock while it isn't cloaked (+0x70). The original
+        /// also needs it on screen (KIPlayer+0x72, set only by Radar::draw's projection) and the camera out of free look, a
+        /// shortcut of its radar pass; remake: the missiles keep homing wherever the camera looks.</summary>
+        Target HomingLock()
         {
             var t = LockTarget;
-            if (t == null || !t.Alive || t.cloaked || cam == null) return null;
-            if (freeLook == null) freeLook = GetComponent<FreeLookCamera>();
-            if (freeLook != null && freeLook.FreeLookActive) return null;
-            var v = cam.WorldToViewportPoint(t.transform.position);
-            return v.z > 0f && v.x >= 0f && v.x <= 1f && v.y >= 0f && v.y <= 1f ? t : null;
+            return t != null && t.Alive && !t.cloaked ? t : null;
         }
-        FreeLookCamera freeLook;
         ShipController shipController;
         /// <summary>Where the shots leave: the banked, tilted model (ShipController.visualModel) when the ship has one, so
         /// bullets and muzzle flashes follow the wings through a turn (the root never rolls); else the ship itself.</summary>

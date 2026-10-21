@@ -1,6 +1,6 @@
 // FpsCounter.cs
-// Remake-only: the frame rate and frame time at the top centre (Options > Graphics "Show FPS", Settings.ShowFps), over
-// every scene and menu. Averaged over half a second of real time, so a paused game still counts. Created by Bootstrap and
+// Remake-only: the frame rate and frame time (Options > Graphics "Show FPS", Settings.ShowFps), over every scene and menu,
+// in a corner or the middle of a side (Settings.FpsPosition, top centre by default; #137), clear of the safe area's insets. Averaged over half a second of real time, so a paused game still counts. Created by Bootstrap and
 // kept for the whole run; its own panel (the star map's panel settings, sorted above everything else).
 
 using GoF2Remake.Data;
@@ -21,6 +21,9 @@ namespace GoF2Remake.UI
         PanelSettings runtimePanel;
         VisualTreeAsset emptyTree;
         Label label;
+        VisualElement bar, root;
+        int placedAt = -1;
+        Vector4 placedInsets;
         int frames;
         float elapsed;
 
@@ -65,18 +68,16 @@ namespace GoF2Remake.UI
             if (instance == this) instance = null;
         }
 
-        void OnUIReload(PanelRenderer renderer, VisualElement root, int version)
+        void OnUIReload(PanelRenderer renderer, VisualElement rootElement, int version)
         {
+            root = rootElement;
             root.pickingMode = PickingMode.Ignore;
             root.style.position = Position.Absolute;
             root.style.left = root.style.top = root.style.right = root.style.bottom = 0;
-            // Top centre: the corners hold the status bars, the cargo readout, the pause button and the touch controls.
-            var bar = new VisualElement { pickingMode = PickingMode.Ignore };
+            bar = new VisualElement { pickingMode = PickingMode.Ignore };
             bar.style.position = Position.Absolute;
-            bar.style.left = bar.style.right = 0;
-            bar.style.top = 2;
-            bar.style.alignItems = Align.Center;
             root.Add(bar);
+            placedAt = -1;
             label = new Label { pickingMode = PickingMode.Ignore };
             var s = label.style;
             s.fontSize = 15;
@@ -94,12 +95,36 @@ namespace GoF2Remake.UI
             if (label != null) label.style.display = Settings.ShowFps && !Suppressed ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
+        /// <summary>Gap to the screen's (safe area's) edge, panel units.</summary>
+        const float Edge = 2f;
+
+        /// <summary>The bar spans the screen (or its height, on the sides) and aligns the label to the chosen spot.</summary>
+        void Place()
+        {
+            int at = Settings.FpsPosition;
+            var insets = SafeArea.Panel(root, Screen.width, Screen.height, false);
+            if (at == placedAt && insets == placedInsets) return;
+            placedAt = at;
+            placedInsets = insets;
+            var s = bar.style;
+            s.left = insets.x + Edge;
+            s.right = insets.y + Edge;
+            bool top = at <= Settings.FpsTopRight, bottom = at >= Settings.FpsBottomLeft;
+            s.top = top || !bottom ? insets.z + Edge : StyleKeyword.Auto;
+            s.bottom = bottom || !top ? insets.w + Edge : StyleKeyword.Auto;
+            bool left = at == Settings.FpsTopLeft || at == Settings.FpsLeft || at == Settings.FpsBottomLeft;
+            bool right = at == Settings.FpsTopRight || at == Settings.FpsRight || at == Settings.FpsBottomRight;
+            s.alignItems = left ? Align.FlexStart : right ? Align.FlexEnd : Align.Center;
+            s.justifyContent = !top && !bottom ? Justify.Center : Justify.FlexStart;   // the sides: the middle of the height
+        }
+
         void Update()
         {
             if (label == null) return;
             var want = Settings.ShowFps && !Suppressed ? DisplayStyle.Flex : DisplayStyle.None;
             if (label.style.display != want) label.style.display = want;
             if (want == DisplayStyle.None) return;
+            Place();
             frames++;
             elapsed += Time.unscaledDeltaTime;
             if (elapsed < WindowSeconds) return;

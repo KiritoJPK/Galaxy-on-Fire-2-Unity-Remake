@@ -345,7 +345,10 @@ namespace GoF2Remake.Data
                 int sys = SystemOf(db, st);
                 var sd = Sys(db, sys);
                 if (sd == null || ExcludedTargets.Contains(st) || (st >= 109 && st <= 113)) continue;
-                if (vis != null && sys < vis.Length && !vis[sys]) continue;
+                // The player's own system counts as shown (StarMap does the same): in a system hidden on purpose (a mod's
+                // "available" condition, a mod campaign's galaxy) every pick failed all 10 000 tries, and the Courier /
+                // Passenger / Stolen goods retries on top froze the level's Awake (Discord report, Mod Builder freeze).
+                if (vis != null && sys < vis.Length && !vis[sys] && sys != curSys) continue;
                 if ((sd.jumpRoutesTo == null || sd.jumpRoutesTo.Count == 0) && sys != curSys) continue;
                 return st;
             }

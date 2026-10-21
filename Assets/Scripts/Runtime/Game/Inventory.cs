@@ -31,6 +31,28 @@ namespace GoF2Remake.Data
         public List<ItemStack> items = new List<ItemStack>();   // Generator::getItemBuyList, in item index order
         public List<int> ships = new List<int>();               // Generator::getShipBuyList
         public List<Agent> agents = new List<Agent>();  // Generator::createAgents (the bar's visitors)
+        /// <summary>Units of a row that cost nothing (Item::makeItem(amount, 0): step 67's mines from Cornelius; calcCargoPrices
+        /// leaves a 0 price alone). Only the gifted units: a sold unit is priced as usual (in the original it joined the free
+        /// row, an endless free-money loop). Bought first (Hangar.BuyPriceOf).</summary>
+        public List<ItemStack> freeUnits = new List<ItemStack>();
+
+        /// <summary>The free units of 'item' still in stock.</summary>
+        public int FreeOf(int item)
+        {
+            var f = freeUnits?.Find(x => x != null && x.item == item);
+            if (f == null || f.amount <= 0) return 0;
+            int stock = 0;
+            foreach (var s in items) if (s.item == item) stock += s.amount;
+            return System.Math.Min(f.amount, stock);
+        }
+
+        /// <summary>One free unit of 'item' bought.</summary>
+        public void TakeFree(int item)
+        {
+            var f = freeUnits?.Find(x => x != null && x.item == item);
+            if (f == null) return;
+            if (--f.amount <= 0) freeUnits.Remove(f);
+        }
 
         /// <summary>The Kaamo mods of dealer rows that carry any: a traded-in ship keeps its mods in the row that takes it
         /// (HangarWindow::OnTouchEnd 0x176d94 adds the old ship's mods to the new row's Ship), and buying that row gives them

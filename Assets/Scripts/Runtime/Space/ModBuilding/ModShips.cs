@@ -260,8 +260,9 @@ namespace GoF2Remake.Modding
                 if (rev != ModManager.Revision || holder == null) return;
                 var scene = new GameObject("scene");
                 scene.transform.SetParent(holder.transform, false);
-                if (!await import.InstantiateMainSceneAsync(scene.transform)) { Object.Destroy(scene); Warn(mod, $"{c.model}: no scene to show"); return; }
+                if (!await ModGltf.InstantiateMain(import, scene.transform)) { Object.Destroy(scene); Warn(mod, $"{c.model}: no scene to show"); return; }
                 if (rev != ModManager.Revision || holder == null) return;
+                if (ModGltf.HasNoMeshes(scene)) Warn(mod, $"{c.model}: the model has no meshes to show");   // #134: an empty turntable said nothing
                 var template = ModShipBuilder.Build(c, mod, scene);
                 template.transform.SetParent(holder.transform, false);
                 templates[c.index] = template;
@@ -320,7 +321,7 @@ namespace GoF2Remake.Modding
                 if (rev != ModManager.Revision || holder == null) return;
                 var part = new GameObject(file);
                 part.transform.SetParent(holder.transform, false);
-                if (!await import.InstantiateMainSceneAsync(part.transform)) { Object.Destroy(part); Warn(kit.mod, $"{file}: no scene to show"); return; }
+                if (!await ModGltf.InstantiateMain(import, part.transform)) { Object.Destroy(part); Warn(kit.mod, $"{file}: no scene to show"); return; }
                 if (rev != ModManager.Revision || holder == null) return;
                 ModShipBuilder.ApplyMaterials(kit.mod, kit.materials, part.GetComponentsInChildren<Renderer>(true), kit.Key);
                 partTemplates[kit.Key + "|" + file] = part;
@@ -672,7 +673,10 @@ namespace GoF2Remake.Modding
             if (ship >= 0 && templates.TryGetValue(ship, out var t) && t != null) return t;
             if (!Ready) Debug.LogWarning($"Mods: ship {ship}'s model is still loading: the game's model stands in");
             var db = Database.Shared;
-            var stand = (ship >= 0 ? db.ShipAssembly(ship, original: true) : null) ?? db.ShipAssembly(FallbackShip, original: true);
+            var stand = ship >= 0 ? db.ShipAssembly(ship, original: true) : null;
+            // A new mod ship's own number matches its own "ship_NNN_mod" assembly: the Phantom then (#134: a model that
+            // failed to build left an empty turntable instead of the stand-in).
+            if (stand == null || stand.pack == Pack) stand = db.ShipAssembly(FallbackShip, original: true);
             return stand != null && stand.pack != Pack ? Visuals.AssembledObject.LoadPrefab(stand) : null;
         }
 

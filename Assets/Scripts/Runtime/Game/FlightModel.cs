@@ -114,6 +114,11 @@ namespace GoF2Remake.Flight
         bool levelFine;       // PlayerEgo+0x324: the lean changed sides once, the last part goes slow
         bool rollLevelled;    // the roll part of a level-out is done
         bool levelSteerArmed; // the stick was neutral since the level-out began: steering now ends it (remake)
+        float levelNeutralMs; // how long the stick has been neutral during a level-out (arms it after LevelArmMs)
+        /// <summary>Remake: a level-out is armed by a neutral stick held this long (one stale neutral frame between a touch
+        /// double tap's taps armed it, and the second tap on the stick cancelled it at once), and only a real push
+        /// (LevelCancelInput of a full stick) ends it (a thumb resting past the dead zone did).</summary>
+        const float LevelArmMs = 150f, LevelCancelInput = 0.3f;
         /// <summary>Remake (#37, Settings.LevelPitch): a level-out also brings the nose to the horizon (world up, the
         /// orbit's and the station's up, like the autopilot's moveToPosition), not only the roll (the original).</summary>
         public bool LevelPitch;
@@ -569,7 +574,7 @@ namespace GoF2Remake.Flight
         public void UpdateCruise(bool cruising, float dtMs) =>
             CruiseVisual = Mathf.MoveTowards(CruiseVisual, cruising ? 1f : 0f, Mathf.Max(0f, dtMs) / CruiseEaseMs);
 
-        public void AlignToHorizon() { IsLeveling = true; levelSide = 0; levelFine = false; rollLevelled = false; levelSteerArmed = false; }
+        public void AlignToHorizon() { IsLeveling = true; levelSide = 0; levelFine = false; rollLevelled = false; levelSteerArmed = false; levelNeutralMs = 0f; }
         /// <summary>A manual roll (remake) cancels the auto-level.</summary>
         public void StopLeveling() => IsLeveling = false;
 
@@ -607,10 +612,13 @@ namespace GoF2Remake.Flight
             // levelled too (LevelPitch) it pulled the nose back to the horizon whenever pitch was let go, and with the nose
             // steep it never finished, so it fought the player's flying. Only steering that starts after the stick was
             // neutral counts: the touch double tap's second tap lands on the stick, and keys may still be held.
+            // Armed by a neutral stick held LevelArmMs, ended by a push of at least LevelCancelInput (Discord report,
+            // 2026-10-18: level out didn't work by the touch double tap and ended early on a controller).
             if (IsLeveling)
             {
-                if (!yawInput && !pitchInput) levelSteerArmed = true;
-                else if (levelSteerArmed) IsLeveling = false;
+                float levelPush = Mathf.Max(Mathf.Abs(steer.x), Mathf.Abs(steer.y));
+                if (!yawInput && !pitchInput) { if ((levelNeutralMs += dtMs) >= LevelArmMs) levelSteerArmed = true; }
+                else { levelNeutralMs = 0f; if (levelSteerArmed && levelPush >= LevelCancelInput) IsLeveling = false; }
             }
 
             // ---- rotation for this frame --------------------------------------------------------
@@ -675,6 +683,7 @@ namespace GoF2Remake.Flight
         readonly float[] autopilotTurns = new float[5];
         int autopilotTurnCount, autopilotTurnIndex;
         float autopilotRate;
+        float autopilotSampleTurn, autopilotSampleMs;   // the turn summed over the 33.3 ms sample being gathered
 
         /// <summary>The autopilot's model bank (PlayerEgo::moveToPosition / update): 'turnLeft' = this frame's turn in radians,
         /// positive to the left; 'frameMs' = the frame's real length (unscaled); after Step, which left the bank at 0.</summary>
@@ -685,14 +694,22 @@ namespace GoF2Remake.Flight
             // depend on the frame rate. Fast-forward runs the original's whole update with dt x 5 (autopilot_travel.md 4), so
             // each sample carries five times the turn and the ship banks hard into the turn (to the limit): per real time, not
             // per game time, keeps that (a player's report with the original's video; it was divided away).
-            if (frameMs > 0f) turnLeft *= 33.333f / frameMs;
-            autopilotTurns[autopilotTurnIndex] = turnLeft;
-            autopilotTurnIndex = (autopilotTurnIndex + 1) % autopilotTurns.Length;
-            autopilotTurnCount = Mathf.Min(autopilotTurnCount + 1, autopilotTurns.Length);
+            // A sample is the turn over 33.3 ms of real time (not one rendered frame scaled up): at 261 fps the five samples
+            // spanned 19 ms instead of the original's 167, and the frame-time noise reached the yaw rate and the bank, so
+            // the ship wobbled on the autopilot (Discord report, 2026-10-18).
+            autopilotSampleTurn += turnLeft;
+            autopilotSampleMs += Mathf.Max(0f, frameMs);
+            if (autopilotSampleMs >= 33.333f)
+            {
+                autopilotTurns[autopilotTurnIndex] = autopilotSampleTurn * 33.333f / autopilotSampleMs;
+                autopilotTurnIndex = (autopilotTurnIndex + 1) % autopilotTurns.Length;
+                autopilotTurnCount = Mathf.Min(autopilotTurnCount + 1, autopilotTurns.Length);
+                autopilotSampleTurn = autopilotSampleMs = 0f;
+            }
             float sum = 0f;
             for (int i = 0; i < autopilotTurnCount; i++) sum += autopilotTurns[i];
             float limit = TargetRateScale * he / TargetRateDivisor * 1.2f;
-            float target = Mathf.Clamp(sum / autopilotTurnCount * limit * AutopilotBankGain, -limit, limit);
+            float target = autopilotTurnCount > 0 ? Mathf.Clamp(sum / autopilotTurnCount * limit * AutopilotBankGain, -limit, limit) : 0f;
             autopilotRate = Mathf.MoveTowards(autopilotRate, target, dtMs * he / 81f);
             VisualYawBank = autopilotRate / (TargetRateScale / TargetRateDivisor);
             // PlayerEgo::update: +0x280 becomes the yaw rate +0x27c, which banks the model (ShipController.UpdateVisualBank
@@ -702,7 +719,7 @@ namespace GoF2Remake.Flight
         }
 
         /// <summary>The autopilot let go (PlayerEgo::update: +0x2a4 / +0x2a8 cleared).</summary>
-        public void ResetAutopilotBank() { autopilotTurnCount = 0; autopilotTurnIndex = 0; autopilotRate = 0f; }
+        public void ResetAutopilotBank() { autopilotTurnCount = 0; autopilotTurnIndex = 0; autopilotRate = 0f; autopilotSampleTurn = autopilotSampleMs = 0f; }
 
         /// <summary>PlayerEgo::updateManeuver: handleShip is skipped (no steering ramp, no turn from the rates); the yaw rate
         /// is the maneuver's (it banks the model and decays normally afterwards); the ship flies on at its speed.</summary>

@@ -1162,6 +1162,11 @@ namespace GoF2Remake.UI
         {
             if (fineChecked || level == null || level.Station == null) return false;
             fineChecked = true;
+            // ModStation::OnInitialize skips the whole block after a load (setGameLoaded sets +0xac): #131, a save made at a
+            // station with a low reputation charged the fine at every load.
+            bool loaded = Session.ArrivedByLoad;
+            Session.ArrivedByLoad = false;
+            if (loaded) return false;
             int st = level.Station.index;
             var sys = level.Database.Systems.Find(s => s.index == level.Station.system);
             int race = sys != null ? sys.raceId : -1;
@@ -2515,9 +2520,19 @@ namespace GoF2Remake.UI
             // button when the controller becomes the input, but a station loaded with the controller already in use (the menu
             // still away behind the hangar flight) or a closed window can leave nothing focused: the D-pad then did nothing
             // until a dialog, a menu or a touch set the focus again.
-            if (InputMode.Current == InputKind.Gamepad && !HangarOpen && root.focusController?.focusedElement == null
-                && !(missions != null && missions.IsOpen) && !(status != null && status.IsOpen) && !(lounge != null && lounge.ChatOpen))
-                Select(DefaultFocus());
+            // Remake (Discord report 2026-10-18, still on 10.18): also on a navigation press while the input mode isn't the
+            // controller (Android sends a controller's B as Escape, some pads the D-pad as arrow keys), with touch mode left
+            // first (Select does nothing in it), and into the open Missions / Status window or lounge chat.
+            if (!HangarOpen && root.focusController != null && root.focusController.focusedElement == null
+                && (InputMode.Current == InputKind.Gamepad || MenuFocus.NavPressed(pad, kb)))
+            {
+                SetTouchMode(false);
+                var target = missions != null && missions.IsOpen ? MenuFocus.First(missions.NavItems())
+                           : status != null && status.IsOpen ? MenuFocus.First(status.NavItems())
+                           : lounge != null && lounge.ChatOpen ? MenuFocus.First(lounge.NavItems())
+                           : DefaultFocus();
+                target?.Focus();
+            }
             if (DialogOpen || SystemMenuOpen) return;
             if (missions != null && missions.IsOpen) return;
             if (status != null && status.IsOpen) return;

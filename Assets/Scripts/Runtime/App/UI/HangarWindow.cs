@@ -653,7 +653,7 @@ namespace GoF2Remake.UI
                     int mountedUnits = hangar.MountedOf(row.item);
                     if (mountedUnits > 0) subText.text += "  " + MountedNote(mountedUnits);
                     if (hangar.Storage) break;   // the storage draws no prices
-                    int p = hangar.PriceOf(row.item);
+                    int p = hangar.BuyPriceOf(row.item);   // 0 for step 67's gifted mines
                     price.text = ItemInfo.Credits(p);
                     price.EnableInClassList("row-price--expensive", p > Session.Credits);
                     break;
@@ -999,7 +999,7 @@ namespace GoF2Remake.UI
                     bool store = hangar.Storage;
                     sellLabel.text = "‹ " + (store ? Localization.Extra("shopStore", "STORE") : Localization.Extra("shopSell", "SELL"));
                     buyLabel.text = (store ? Localization.Extra("shopTake", "TAKE") : Localization.Extra("shopBuy", "BUY")) + " ›";
-                    int stock = hangar.StockOf(item), cargo = hangar.CargoOf(item), price = hangar.PriceOf(item);
+                    int stock = hangar.StockOf(item), cargo = hangar.CargoOf(item), price = hangar.BuyPriceOf(item);
                     tradeStock.text = $"{stock} t";
                     tradeCargo.text = $"{cargo} t";
                     // Remake: the hold's amount leaves out what is mounted (a launcher's remaining missiles): shown under it.

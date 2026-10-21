@@ -53,6 +53,9 @@ namespace GoF2Remake.Flight
         public Func<bool> Blocked;
         /// <summary>While Blocked: the turret views may still be cycled (docked at an object, SpaceLevel), not free look.</summary>
         public Func<bool> TurretAllowed;
+        /// <summary>Docked at an object (not hacking): MGame::switchCamera doesn't go back to the standard view there, the
+        /// camera button cycles the manual turrets and free look (SpaceLevel).</summary>
+        public Func<bool> DockedView;
 
         ChaseCamera chase;
         int turretIndex;   // which manual turret the Turret mode looks through
@@ -118,6 +121,16 @@ namespace GoF2Remake.Flight
         /// <summary>The camera button (touch, V, D-pad up).</summary>
         public void Cycle()
         {
+            // Docked at an object: each manual turret -> free look -> the turrets again (#132: the remake had no free look
+            // there at all).
+            if (DockedView != null && DockedView() && (Blocked == null || !Blocked()))
+            {
+                if (Current == Mode.Turret && turretIndex + 1 < Manual().Count) { EnterTurret(turretIndex + 1, true); return; }
+                bool turrets = TurretMode && TurretAllowed != null && TurretAllowed();
+                Set(Current != Mode.Turret && turrets ? Mode.Turret : Mode.FreeLook);
+                if (Current == Mode.Standard) Set(Mode.FreeLook);   // a turret view refused
+                return;
+            }
             if (Blocked != null && Blocked())
             {
                 // Docked at an object: standard -> each manual turret -> standard (PlayerEgo::setTurretMode allows it there).
@@ -167,6 +180,16 @@ namespace GoF2Remake.Flight
             if (announce) Message?.Invoke(Localization.Get(218) + (count > 1 ? " " + (index + 1) : ""));
         }
 
+        /// <summary>Docked at an object (ObjectDocking.Docked): MGame::OnUpdate's switchCamera(3) with its preset orbit
+        /// (MGame+0x110 / +0x114 = -98 / 35 px, +0xb8 = 3800 units).</summary>
+        public void EnterDockedLook()
+        {
+            if (Current == Mode.FreeLook) return;
+            Set(Mode.FreeLook);
+            px = -98f; py = 35f; distance = 3800f;
+            Place();
+        }
+
         void EnterFreeLook()
         {
             px = 0f; py = 0f; fling = Vector2.zero; wheel = 0f;
@@ -200,7 +223,9 @@ namespace GoF2Remake.Flight
         void Update()
         {
             bool halted = Time.timeScale <= 0f;
-            if (!halted && cycleAction.WasPressedThisFrame()) Cycle();
+            // Not under a menu either (Navigation.PressesBlocked): in a multiplayer session the game doesn't pause, and the
+            // pause / autopilot / secondary weapon menus' D-pad up cycled the camera (Discord report, 2026-10-17).
+            if (!halted && !Navigation.PressesBlocked && cycleAction.WasPressedThisFrame()) Cycle();
             // Remake: free look while a key is held (GameControls.FreeLookHold, EVERSPACE 2's Alt in the free-flight layout):
             // from the standard view, back to it on release.
             if (!halted && !Navigation.InputHalted)
@@ -214,7 +239,7 @@ namespace GoF2Remake.Flight
             if (Current != Mode.FreeLook) return;
             if (Blocked != null && Blocked()) { Set(Base, false); return; }
             if (chase != null && chase.follow != anchor && chase.follow != null) { Current = Mode.Standard; Set(Base, false); return; }   // taken over (the Liberator)
-            if (halted) return;
+            if (halted || Navigation.InputHalted) return;   // a menu's sticks and keys aren't the orbit's
 
             float frames = Time.deltaTime * 1000f / FrameMs;
             float scale = 1080f / Mathf.Max(1, Screen.height);   // the original's pixels
@@ -253,6 +278,10 @@ namespace GoF2Remake.Flight
             // A notch reads 1 (the Input System's uniform scroll) or 120 (raw): one step either way.
             if (mouse != null) wheel += Mathf.Clamp(mouse.scroll.ReadValue().y, -1f, 1f);
             if (Mathf.Abs(wheel) > 0.01f) { distance += wheel * -50f * frames; wheel *= Mathf.Pow(0.9f, frames); } else wheel = 0f;
+            // Remake: the throttle binding (LB / RB, ] / /) zooms in free look; ShipController leaves the throttle alone meanwhile
+            // (Discord report, 2026-10-17: no zoom on a controller).
+            float zoom = GameControls.Throttle.ReadValue<float>();
+            if (Mathf.Abs(zoom) > 0.01f) distance -= zoom * 150f * frames;
             // Modified: up and down turned the other way round in free look, for the mouse, a finger and the right stick alike
             // (the Invert orbit Y option still flips it back).
             delta.y = -delta.y;

@@ -208,6 +208,7 @@ namespace GoF2Remake.World
         {
             Story.ReopenUnshownSuccess();   // #88
             HullCollision.Suppressed = false;   // the main menu's backdrop had them off (whichever scene's code runs first)
+            Session.ArrivedByLoad = false;   // a load's no-fine docking is only the station it opened
             // Multiplayer: loaded after its session ended (a docking queued behind the menu): on to the menu (nothing is
             // saved, SaveGame.SessionGame).
             if (GoF2Remake.Data.NetSession.SessionLost) SceneManager.LoadScene("MainMenu");
@@ -334,7 +335,8 @@ namespace GoF2Remake.World
             Docking.Setup(db, Player, chase, Weapons);
             if (FreeLook != null)
                 FreeLook.Blocked = () => Cutscene || !LaunchCameraOver || (Mining != null && Mining.State != Mining.Phase.Idle)
-                                         || (Docking != null && Docking.Busy && Docking.State != ObjectDocking.Phase.Approach)   // the approach is an autopilot leg
+                                         // the approach is an autopilot leg; docked (not hacking) free look is the view (#132)
+                                         || (Docking != null && Docking.Busy && Docking.State != ObjectDocking.Phase.Approach && !DockedLook)
                                          || (Navigation != null && Navigation.Jumping)
                                          || (SystemJump != null && SystemJump.Cinematic) || (Health != null && Health.Dead);
             // MGame::switchCamera / PlayerEgo::setTurretMode refuse the turret view only while docking to an asteroid, mining,
@@ -342,6 +344,14 @@ namespace GoF2Remake.World
             // the remake refused it from the approach on).
             if (FreeLook != null) FreeLook.TurretAllowed = () => Docking != null && (Docking.State == ObjectDocking.Phase.Entering || Docking.IsDocked)
                                                                  && Docking.Hacking == null && !Cutscene;
+            if (FreeLook != null)
+            {
+                // PlayerEgo::approachDockingPoint / MGame::OnUpdate: docked, the camera goes to free look by itself (not while
+                // hacking: setDockingState(2) suppresses it); the undock's end goes back to the standard view (Blocked while
+                // leaving).
+                FreeLook.DockedView = () => DockedLook;
+                Docking.Docked += () => { if (DockedLook) FreeLook.EnterDockedLook(); };
+            }
             Navigation.Docking = Docking;
             Navigation.Ships = Traffic.Ships;
             Collision.docking = Docking;
@@ -492,6 +502,9 @@ namespace GoF2Remake.World
         public bool ComingFromVoid { get; private set; }
 
         /// <summary>A cinematic, a jump, the launch camera or the player's death stops the time extender (MGame::OnUpdate 0x1af162).</summary>
+        /// <summary>Docked at an object and not hacking (free look allowed, FreeLookCamera.DockedView).</summary>
+        bool DockedLook => Docking != null && Docking.IsDocked && Docking.Hacking == null && !Cutscene;
+
         bool ExtenderBlocked => launchCameraMs > 0f || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Cutscene
                                 || Health == null || Health.Dead;
 
@@ -537,7 +550,8 @@ namespace GoF2Remake.World
             {
                 hiddenCheckMs = HiddenCheckMs;
                 bool hidden = GalaxyMap.ForcedHidden(Layout.systemIndex);
-                if (!hidden) { hiddenMs = 0f; return; }
+                if (!hidden) { hiddenMs = 0f; hiddenNowhere = false; return; }
+                if (hiddenNowhere) return;   // no shown system to go to: the player stays
                 if (hiddenMs <= 0f)
                 {
                     hiddenMs = 0.001f;
@@ -548,8 +562,13 @@ namespace GoF2Remake.World
             hiddenMs += Time.deltaTime * 1000f;
             if (hiddenMs < HiddenLeaveMs) return;
             hiddenMs = 0f;
-            TravelTo(GalaxyMap.FallbackStation(db, Layout.systemIndex));
+            int to = GalaxyMap.FallbackStation(db, Layout.systemIndex);
+            if (to < 0 || to == Layout.stationIndex) { hiddenNowhere = true; return; }   // nowhere shown: stay (it looped into hidden Mido)
+            TravelTo(to);
         }
+
+        /// <summary>The hidden system has no shown system to leave for (GalaxyMap.FallbackStation -1): the player stays.</summary>
+        bool hiddenNowhere;
 
         // ---- the wormhole (landmark 3) -----------------------------------------------------------------------
 

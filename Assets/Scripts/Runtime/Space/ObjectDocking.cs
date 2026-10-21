@@ -63,6 +63,9 @@ namespace GoF2Remake.Flight
         public event Action<string> Message;
         /// <summary>Docked at a hackable object's won game (the generic hidden-blueprint wrecks use it).</summary>
         public event Action<NpcShip> HackWon;
+        /// <summary>The ease-in finished: docked (PlayerEgo::approachDockingPoint sets +0x1c4 = 1 and, unless a script set
+        /// docking state 2, +0xb1: MGame::OnUpdate switches to free look).</summary>
+        public event Action Docked;
 
         /// <summary>While approaching: game units from the ship to the approach point, else -1 (Navigation.CanFastForward).</summary>
         public float ApproachDistanceUnits => State == Phase.Approach && Target != null && ship != null
@@ -282,6 +285,7 @@ namespace GoF2Remake.Flight
             noCabinShown = transferDoneShown = hackWonReported = false;
             TransferLabel = null;
             if (Target.DockingType == Hackable) StartHacking();
+            Docked?.Invoke();
         }
 
         void UpdateDocked(float dtMs)

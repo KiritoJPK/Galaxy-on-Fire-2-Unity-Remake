@@ -542,8 +542,10 @@ namespace GoF2Remake.UI
         /// open panel's first item or the main column's.</summary>
         void KeepControllerFocus()
         {
-            if (screen != MenuState.Menu || InputMode.Current != InputKind.Gamepad || root.focusController == null
-                || root.focusController.focusedElement != null) return;
+            if (screen != MenuState.Menu || root.focusController == null || root.focusController.focusedElement != null) return;
+            // Also on a navigation press outside the controller input mode (Android: B arrives as Escape, some pads send the
+            // D-pad as arrow keys; Discord report 2026-10-18).
+            if (InputMode.Current != InputKind.Gamepad && !MenuFocus.NavPressed(Gamepad.current, Keyboard.current)) return;
             if ((focusRetry -= Time.unscaledDeltaTime) > 0f) return;   // a page with nothing to focus: not every frame
             focusRetry = 0.25f;
             SetTouchMode(false);

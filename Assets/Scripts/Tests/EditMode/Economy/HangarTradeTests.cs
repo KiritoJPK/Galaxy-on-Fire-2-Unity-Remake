@@ -29,6 +29,28 @@ namespace GoF2Remake.Tests
             CollectionAssert.Contains(Session.SeenItems, 122);
         }
 
+        /// <summary>Step 67's mines (Item::makeItem(5, 0), StationStock.freeUnits): the gifted units cost nothing, then the
+        /// usual price; a sold unit doesn't become free (#131).</summary>
+        [Test]
+        public void GiftedUnitsAreFreeThenFullPrice()
+        {
+            Session.Credits = 10000;
+            var h = Dis(122, 5);
+            h.Stock.freeUnits.Add(new ItemStack(122, 2));
+            int price = h.PriceOf(122);   // a price depends on the item's place in the station's lists
+            Assert.Greater(price, 0);
+            Assert.AreEqual(0, h.BuyPriceOf(122));
+            h.Buy(122, out _);
+            h.Buy(122, out _);
+            Assert.AreEqual(10000, Session.Credits, "the two gifted units");
+            Assert.AreEqual(price, h.BuyPriceOf(122));
+            h.Sell(122);
+            Assert.AreEqual(10000 + price, Session.Credits, "selling pays the price");
+            Assert.AreEqual(0, h.Stock.FreeOf(122), "a sold unit isn't free");
+            h.Buy(122, out _);
+            Assert.AreEqual(10000, Session.Credits);
+        }
+
         [Test]
         public void BuyingTheLastUnitRemovesTheRow()
         {

@@ -472,7 +472,10 @@ namespace GoF2Remake.World
                  : spec.missionCrate >= 0 ? new List<ItemStack> { new ItemStack(spec.missionCrate, 1) }
                  : spec.noLoot ? new List<ItemStack>() : RollLoot();
             if (spec.lootItem >= 0 && spec.extraLoot != null)   // remake: a pirate outpost's crate by its tier
+            {
                 foreach (var st in spec.extraLoot) if (st != null && st.amount > 0) loot.Add(new ItemStack(st.item, st.amount));
+                multiKindLoot = true;
+            }
 
             sfx = gameObject.AddComponent<AudioSource>();
             Setup3D(sfx);
@@ -2010,7 +2013,12 @@ namespace GoF2Remake.World
         }
 
         /// <summary>Remake (CapitalShips): the cargo it drops when it dies (a capital ship's crate).</summary>
-        public void SetLoot(List<ItemStack> items) => loot = items ?? new List<ItemStack>();
+        public void SetLoot(List<ItemStack> items) { loot = items ?? new List<ItemStack>(); multiKindLoot = true; }   // a capital ship's
+
+        /// <summary>Remake: loot of several kinds given on purpose (a pirate outpost's tier loot, a capital ship's crate) drops a
+        /// crate per kind. An ordinary fighter's roll can hold two stacks too (NpcTables.RollLoot): it drops one crate, as the
+        /// original (#Discord 2026-10-20: ships killed by NPCs, wingmen or turrets dropped two crates).</summary>
+        bool multiKindLoot;
 
         bool crateDropped;
 
@@ -2033,7 +2041,7 @@ namespace GoF2Remake.World
             // Remake: loot of several kinds (a pirate outpost's by its tier, a capital ship's) drops a crate per kind (one
             // crate still holds all of one thing), thrown off in different directions; the original's ships drop one stack.
             var stacks = loot.FindAll(s => s != null && s.amount > 0);
-            bool split = stacks.Count > 1 && Spec.missionCrate < 0;
+            bool split = stacks.Count > 1 && Spec.missionCrate < 0 && multiKindLoot;
             var dirs = split ? SpreadDirections(stacks.Count) : null;
             for (int i = 0; i < (split ? stacks.Count : 1); i++)
             {

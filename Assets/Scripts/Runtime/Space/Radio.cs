@@ -1,7 +1,10 @@
 // Radio.cs
 // A campaign level's radio messages (Radio / RadioMessage, Reference/research/dialogue_cutscenes.md 2): the lines of
 // Level::createRadioMessages for the index (StoryStep.radio), each shown once when its trigger holds.
-//   RadioMessage::triggered 0x17c5d8    tested in array order while no line is showing; the first newly true one shows
+//   RadioMessage::triggered 0x17c5d8    tested in array order every frame and latched once true; the original shows a newly
+//                                       triggered line at once over the one showing, the remake queues it (a voiced line
+//                                       isn't cut off): #132, a trigger true for one frame (a level script's event) while
+//                                       another line showed was lost when the remake tested only with none showing
 //   Radio::update / draw 0x180380       nothing for 2000 ms, then the box for lines * 2000 + 1500 ms; the voice plays when
 //                                       it appears; "over" when the display time has passed
 // Trigger types implemented (the rest never fire yet): 0 route waypoint passed, 1 any listed ship dead, 2 any listed
@@ -51,6 +54,8 @@ namespace GoF2Remake.Flight
         /// <summary>RadioMessage+0x24: the route index this line saw last (types 0 / 0x19 fire on the frame it moves on).</summary>
         readonly int[] lastRoute;
         readonly bool[] routeEdge;
+        /// <summary>Lines whose trigger fired while another line showed, in the order they fired.</summary>
+        readonly Queue<int> waiting = new Queue<int>();
         int showing = -1;
         float showMs, durationMs;
 
@@ -71,7 +76,7 @@ namespace GoF2Remake.Flight
         /// <summary>The line on screen now (after the 2 s delay), null = none. Fast-forward is blocked while it shows.</summary>
         public RadioLine Visible => showing >= 0 && showMs >= DelayMs ? lines[showing] : null;
         public int VisibleIndex => Visible != null ? showing : -1;
-        public bool Busy => showing >= 0;
+        public bool Busy => showing >= 0 || waiting.Count > 0;
         /// <summary>Remake: the box stays up at least until the line's voice clip is over (the text formula undershoots a third
         /// of the clips, by up to 5.7 s).</summary>
         public void HoldFor(float ms) { if (showing >= 0) durationMs = Mathf.Max(durationMs, ms); }
@@ -81,6 +86,12 @@ namespace GoF2Remake.Flight
         {
             for (int i = 0; i < n && i < lines.Count; i++) triggered[i] = over[i] = true;
             if (showing >= 0 && showing < n) showing = -1;
+            if (waiting.Count > 0)
+            {
+                var keep = new List<int>(waiting);
+                waiting.Clear();
+                foreach (int i in keep) if (i >= n) waiting.Enqueue(i);
+            }
         }
 
         public void Update(float dtMs, IRadioWorld w)
@@ -98,19 +109,24 @@ namespace GoF2Remake.Flight
             {
                 showMs += dtMs;
                 if (showMs >= DelayMs + durationMs) { over[showing] = true; showing = -1; }
-                return;
             }
+            // Radio::update: every line's trigger every frame, latched once true (RadioMessage+0x20).
             for (int i = 0; i < lines.Count; i++)
             {
                 if (triggered[i] || !Test(i, lines[i], w)) continue;
                 triggered[i] = true;
-                showing = i;
-                showMs = 0f;
-                float perLine = StoryTable.UsesAlienFont(lines[i].speaker) ? AlienCharsPerLine : CharsPerLine;
-                int n = Mathf.Max(1, Mathf.CeilToInt(Localization.Get(lines[i].text).Length / perLine));
-                durationMs = n * LineMs + ExtraMs;
-                return;
+                waiting.Enqueue(i);
             }
+            if (showing < 0 && waiting.Count > 0) Show(waiting.Dequeue());
+        }
+
+        void Show(int i)
+        {
+            showing = i;
+            showMs = 0f;
+            float perLine = StoryTable.UsesAlienFont(lines[i].speaker) ? AlienCharsPerLine : CharsPerLine;
+            int n = Mathf.Max(1, Mathf.CeilToInt(Localization.Get(lines[i].text).Length / perLine));
+            durationMs = n * LineMs + ExtraMs;
         }
 
         /// <summary>RadioMessage::triggered 0x17c5d8.</summary>

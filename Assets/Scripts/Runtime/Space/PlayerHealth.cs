@@ -189,7 +189,7 @@ namespace GoF2Remake.Flight
                         if (src != null && src.HasProperty("_BaseMap")) bubbleMaterial.SetTexture("_NoiseMap", src.GetTexture("_BaseMap"));
                         br.sharedMaterial = bubbleMaterial;
                     }
-                OpaqueTexture.Request(this, true);
+                GoF2Remake.Visuals.CloakPass.Request(this, true);   // the bubble refracts CloakPass's copy of the frame
                 var r = ship.visualModel != null ? ship.visualModel.GetComponentInChildren<Renderer>() : null;
                 float radiusUnits = r != null ? r.bounds.extents.magnitude / M : 1500f;
                 bubbleScale = radiusUnits / 500f + 0.1f;
@@ -221,7 +221,7 @@ namespace GoF2Remake.Flight
             if (invincibleLoop != null) invincibleLoop.Stop();
             if (bubble != null) Destroy(bubble);
             if (bubbleMaterial != null) Destroy(bubbleMaterial);
-            OpaqueTexture.Request(this, false);
+            GoF2Remake.Visuals.CloakPass.Request(this, false);
         }
 
         // ---- shield injector (PlayerEgo::update 0xa8f4e) ------------------------------------------------------

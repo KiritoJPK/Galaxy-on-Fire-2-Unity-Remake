@@ -481,8 +481,13 @@ namespace GoF2Remake.Tests
             m.AlignToHorizon();
             m.Step(new Vector2(1f, 0f), 10f, up, right);   // still held from the double tap: keeps leveling
             Assert.IsTrue(m.IsLeveling);
-            m.Step(Vector2.zero, 10f, up, right);
+            m.Step(Vector2.zero, 10f, up, right);          // one neutral frame (between a double tap's taps): not armed yet
+            m.Step(new Vector2(1f, 0f), 10f, up, right);
+            Assert.IsTrue(m.IsLeveling, "a single neutral frame doesn't arm it");
+            for (int i = 0; i < 16; i++) m.Step(Vector2.zero, 10f, up, right);   // 160 ms neutral: armed
             Assert.IsTrue(m.IsLeveling);
+            m.Step(new Vector2(0.2f, 0f), 10f, up, right);
+            Assert.IsTrue(m.IsLeveling, "a thumb resting just off centre doesn't end it");
             m.Step(new Vector2(1f, 0f), 10f, up, right);
             Assert.IsFalse(m.IsLeveling);
         }

@@ -261,6 +261,18 @@ namespace GoF2Remake.UI
                 () => Settings.OriginalChaseCamera ? 1 : 0, i => Settings.OriginalChaseCamera = i == 1,
                 () => X("chaseCameraHelp", "Remake: the camera stays close behind the ship, which stays near the middle of the screen. Original: the camera follows more slowly, as in the original game: in a turn the ship swings out to the side and the crosshair moves off centre.")));
             list.Add(Toggle("showFps", OptionPage.Graphics, () => X("showFps", "Show FPS"), () => Settings.ShowFps, v => Settings.ShowFps = v));
+            // Remake (#137): the counter in any corner or the middle of any side, so it can stay clear of what a player watches.
+            var fpsPosition = Choice("fpsPosition", OptionPage.Graphics, () => X("fpsPosition", "FPS counter position"), false,
+                () => new[]
+                {
+                    X("fpsPosTopLeft", "Top left"), X("fpsPosTop", "Top"), X("fpsPosTopRight", "Top right"),
+                    X("fpsPosLeft", "Left"), X("fpsPosRight", "Right"),
+                    X("fpsPosBottomLeft", "Bottom left"), X("fpsPosBottom", "Bottom"), X("fpsPosBottomRight", "Bottom right"),
+                },
+                () => Settings.FpsPosition, i => Settings.FpsPosition = i,
+                () => X("fpsPositionHelp", "Where on the screen the FPS counter sits: a corner, or the middle of a side."));
+            fpsPosition.visible = () => Settings.ShowFps;
+            list.Add(fpsPosition);
 
             // ---- controls
             // Remake: free flight after EVERSPACE 2 (Settings.FlightStyle, FlightModel.StepFree); it switches the key layout too.

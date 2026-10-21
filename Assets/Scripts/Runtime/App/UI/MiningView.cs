@@ -211,6 +211,7 @@ namespace GoF2Remake.UI
             lockPlate.EnableInClassList("lock-plate--shown", target != null && mining.State != Mining.Phase.Mining);
             if (target != null)
             {
+                lockOre.EnableInClassList("lock-ore--wanted", false);   // the shared plate's criminal red (CombatView)
                 SetImage(lockClass, classFrames[Mathf.Clamp(7 - target.quality, 0, 4)]);
                 // Remake: with a mining beam, how much of the rock it has cut.
                 float cut = mining.BeamProgress(target);

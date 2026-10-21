@@ -39,12 +39,37 @@ namespace GoF2Remake.Modding
                     stripped.textureImage.TryGetValue(texture, out int i) && stripped.images.TryGetValue(i, out var img)
                         ? ModMaterials.Image(mod, img.hash, role, metal, rough) : null;
             }
-            var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials(images));
+            // glTFast's own messages collected (without a logger it says nothing): why a model can't be read reaches the
+            // mod's warnings (#134: a compression extension without its package looked like an empty model).
+            var log = new GLTFast.Logging.CollectingLogger();
+            var import = new GLTFast.GltfImport(null, agent, new ModGltfMaterials(images), log);
             var settings = new GLTFast.ImportSettings { GenerateMipMaps = true, AnisotropicFilterLevel = 8 };
             if (await import.Load(bytes, null, settings)) return import;
             import.Dispose();
+            if (log.Items != null)
+                foreach (var item in log.Items)
+                {
+                    if (item.Type != LogType.Error && item.Type != LogType.Exception) continue;
+                    string message = $"glTFast: {item}";
+                    if (!mod.Warnings.Contains(message)) mod.Warnings.Add(message);
+                    Debug.LogWarning($"Mods: {mod.Id}: {message}");
+                }
             return null;
         }
+
+        /// <summary>The model's scene under 'parent': its default scene, else its first (#134: glTFast's main scene is
+        /// nothing when the file sets no "scene", which the glTF viewers ignore by showing the first; the model came out
+        /// empty with no warning). False when the file has no scene or it can't be built.</summary>
+        public static Task<bool> InstantiateMain(GLTFast.GltfImport import, Transform parent)
+        {
+            if (import == null || import.SceneCount <= 0) return Task.FromResult(false);
+            return import.InstantiateSceneAsync(parent, import.DefaultSceneIndex ?? 0);
+        }
+
+        /// <summary>The instantiated model shows nothing: no mesh renderer under 'root' (a file of empty nodes, a scene
+        /// without the meshes).</summary>
+        public static bool HasNoMeshes(GameObject root) =>
+            root.GetComponentsInChildren<MeshRenderer>(true).Length == 0 && root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length == 0;
 
         /// <summary>A model's glTF animations loop for good, like the game's own (PartAnimation): glTFast puts them on a legacy
         /// Animation with the first clip, at the default wrap mode, which plays it once and stops (a mod ship's turning

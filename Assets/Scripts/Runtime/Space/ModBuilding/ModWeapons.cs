@@ -498,7 +498,7 @@ namespace GoF2Remake.Modding
             var root = new GameObject($"{d.mod.Id}:{d.label} turret");
             root.transform.SetParent(holder.transform, false);
             owned.Add(root);
-            if (!await import.InstantiateMainSceneAsync(root.transform)) { Warn(d.mod, $"{d.turretModel}: no scene to show"); return null; }
+            if (!await ModGltf.InstantiateMain(import, root.transform)) { Warn(d.mod, $"{d.turretModel}: no scene to show"); return null; }
             if (rev != ModManager.Revision || holder == null) return null;
             Reshape(root.transform, TurretRig(root.transform), d);
             return root;
@@ -608,7 +608,7 @@ namespace GoF2Remake.Modding
                 if (rev != ModManager.Revision || holder == null) return null;
                 visual = new GameObject("model");
                 visual.transform.SetParent(holder.transform, false);
-                if (!await import.InstantiateMainSceneAsync(visual.transform)) { Object.Destroy(visual); Warn(d.mod, $"{p.model}: no scene to show"); return null; }
+                if (!await ModGltf.InstantiateMain(import, visual.transform)) { Object.Destroy(visual); Warn(d.mod, $"{p.model}: no scene to show"); return null; }
                 if (rev != ModManager.Revision || holder == null) return null;
             }
             var root = new GameObject($"{d.mod.Id}:{d.label} {PartNames[kind]}");

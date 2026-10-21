@@ -693,7 +693,10 @@ namespace GoF2Remake.UI
                       && !level.Cutscene && level.LaunchCameraOver && Time.timeScale > 0f && (health == null || !health.Dead)
                       // the Liberator too: the mouse steers it (it was off); docked at an object only the turret view (it aims the
                       // turret; the cursor is free for the HUD otherwise)
-                      && (level.Docking == null || !level.Docking.Busy || PlayerTurret.ViewActive(ship.gameObject))
+                      // (#132: the approach to the docking point is an ordinary autopilot leg: the cursor stays locked, it showed
+                      // the OS pointer on that leg)
+                      && (level.Docking == null || !level.Docking.Busy || level.Docking.State == ObjectDocking.Phase.Approach
+                          || PlayerTurret.ViewActive(ship.gameObject))
                       && !GoF2Remake.Multiplayer.NetChat.Typing   // multiplayer: the cursor free for the chat
                       && !MultiplayerWindow.IsOpenAny;            // and for the multiplayer window
             // PlayerEgo::right etc. forward to the MiningGame while drilling (0xacd48): the mouse steers the drill then (the PC
@@ -806,6 +809,9 @@ namespace GoF2Remake.UI
             int hudMode = Settings.HudMode;   // Options > Gameplay "Flight HUD" (immersion): FlightHud.uss hides the markings
             root.EnableInClassList("hud-minimal", hudMode == Settings.HudMinimal);
             root.EnableInClassList("hud-off", hudMode == Settings.HudOff);
+            // The FPS counter at the top centre (its default place, FpsCounter): the lock plate and the HUD messages move
+            // under it (#137: a mission's reward line was drawn over the counter).
+            root.EnableInClassList("hud-fps", Settings.ShowFps && Settings.FpsPosition == Settings.FpsTop);
             if (mapOpen) return;   // the map has its own input
 
             // MGame::OnUpdate: DialogueWindow::update runs only while the player lives; a conversation open at the death waits.
@@ -969,6 +975,9 @@ namespace GoF2Remake.UI
                 // Dead: no HUD, no controls (PlayerEgo::explode); then the game-over screen.
                 root.EnableInClassList("hud-cinematic", true);
                 dockPrompt.EnableInClassList("dock-prompt--hidden", true);
+                // The transfer counter sits on the root, outside what hud-cinematic hides (#131: "9 / 10 unloaded" stayed up through
+                // 92's Specter cutscene, which starts the frame the last evacuee is unloaded; Hud::draw doesn't run then).
+                transferCounter?.EnableInClassList("transfer-counter--hidden", true);
                 ship.SetSteer(Vector2.zero);
                 UpdateGameOver();
                 return;
@@ -981,6 +990,9 @@ namespace GoF2Remake.UI
                 // A LevelScript cutscene (MGame+0x5f): no HUD, no controls; the radio and fades still show.
                 root.EnableInClassList("hud-cinematic", true);
                 dockPrompt.EnableInClassList("dock-prompt--hidden", true);
+                // The transfer counter sits on the root, outside what hud-cinematic hides (#131: "9 / 10 unloaded" stayed up through
+                // 92's Specter cutscene, which starts the frame the last evacuee is unloaded; Hud::draw doesn't run then).
+                transferCounter?.EnableInClassList("transfer-counter--hidden", true);
                 ship.SetSteer(Vector2.zero);
                 weapons?.SetPrimaryHeld(false);
                 combatView.Update(radar, traffic, health, Camera.main, true, false);

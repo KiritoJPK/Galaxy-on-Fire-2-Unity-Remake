@@ -1,8 +1,9 @@
 // EventWaypoint.cs
 // Remake events: an event's waypoint on this player's game (/waypoint, the event graphs' Set Waypoint;
-// NetAdmin.Order.Waypoint): in that station's orbit the navigation shows a lockable "Waypoint" (548) there, the autopilot
-// flies to it (Navigation.SetRoute with a one-point Route), and reaching it says "Last waypoint reached." (544) and clears
-// it. Applied again whenever this player enters that orbit; cleared by "/waypoint off", the event's end and the session's.
+// NetAdmin.Order.Waypoint): in that station's orbit the navigation shows a lockable "Waypoint" (548; on a bar mission graph
+// the mission's title) there, the autopilot flies to it (Navigation.SetEventWaypoint with a one-point Route, a slot of its
+// own beside a campaign / freelance route), and reaching it says "Last waypoint reached." (544) and clears it. Applied
+// again whenever this player enters that orbit; cleared by "/waypoint off", the event's end and the session's.
 
 using GoF2Remake.Flight;
 using GoF2Remake.World;
@@ -47,7 +48,7 @@ namespace GoF2Remake.Events
 
         void Clear()
         {
-            if (appliedTo != null && appliedTo.Navigation != null) appliedTo.Navigation.SetRoute(null);
+            if (appliedTo != null && appliedTo.Navigation != null) appliedTo.Navigation.SetEventWaypoint(null, null, false);
             appliedTo = null;
             route = null;
         }
@@ -63,12 +64,11 @@ namespace GoF2Remake.Events
             {
                 route = new Route(false);
                 route.points.Add(point);
-                level.Navigation.SetRoute(route);
+                var mission = EventMissions.Active;
+                level.Navigation.SetEventWaypoint(route, string.IsNullOrEmpty(mission?.title) ? null : mission.title, mission != null);
                 appliedTo = level;
             }
-            // Route::update: reaching it advances the route past its one point (544, the marker goes).
-            var p = level.Player.transform.position / OrbitLayout.MetersPerUnit;
-            route.Update(new Vector3(p.x, p.y, -p.z));
+            // Route::update (Navigation advances it): reaching it moves the route past its one point (544, the marker goes).
             if (route.Waypoint == null) station = -1;
         }
     }

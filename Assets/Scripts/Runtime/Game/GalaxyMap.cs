@@ -119,7 +119,8 @@ namespace GoF2Remake.Data
             if (last >= 0 && db.Stations.Find(x => x.index == last) is StationData ls && ls.system != system && Shown(ls.system)) return last;
             foreach (var s in db.Systems)
                 if (s.index != system && Shown(s.index) && StationIn(s.index) is int st && st >= 0) return st;
-            return 78;
+            // Var Hastra only when Mido is shown (a mod campaign's galaxy can leave it out): -1 = nowhere to go.
+            return db.Stations.Find(x => x.index == 78) is StationData vh && Shown(vh.system) ? 78 : -1;
         }
 
         /// <summary>An event's / quest's "system &lt;system&gt; show | hide | reset" (NetAdmin Order.System): 'shown' true / false

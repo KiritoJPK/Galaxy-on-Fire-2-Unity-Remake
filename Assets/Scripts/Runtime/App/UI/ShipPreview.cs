@@ -184,6 +184,17 @@ namespace GoF2Remake.UI
             light.type = LightType.Directional;
             light.cullingMask = 1 << PreviewLayer;
             light.intensity = 1f;
+            // On only while its own camera draws: the PC renderer is Forward+, which ignores a light's culling mask, so this
+            // light (pointing slightly up) lit the whole hangar while a ship row was selected and the ceiling went dark on an
+            // item row (Discord report "[10.18] Hangar: Visual glitch").
+            light.enabled = false;
+            previewLight = light;
+            if (!lightHooked)
+            {
+                UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering += OnBeginCamera;
+                UnityEngine.Rendering.RenderPipelineManager.endCameraRendering += OnEndCamera;
+                lightHooked = true;
+            }
             image.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(rt));
             yawPx = 260f;   // ListItemWindow: starts at 260 px
             flingPx = 0f;
@@ -380,8 +391,21 @@ namespace GoF2Remake.UI
         }
 
         /// <summary>Takes the ship, its camera and texture away and hides the box.</summary>
+        Light previewLight;
+        bool lightHooked;
+
+        void OnBeginCamera(UnityEngine.Rendering.ScriptableRenderContext _, Camera c) { if (previewLight != null) previewLight.enabled = c == cam; }
+        void OnEndCamera(UnityEngine.Rendering.ScriptableRenderContext _, Camera c) { if (previewLight != null && c == cam) previewLight.enabled = false; }
+
         public void Hide()
         {
+            if (lightHooked)
+            {
+                UnityEngine.Rendering.RenderPipelineManager.beginCameraRendering -= OnBeginCamera;
+                UnityEngine.Rendering.RenderPipelineManager.endCameraRendering -= OnEndCamera;
+                lightHooked = false;
+            }
+            previewLight = null;
             Element.style.display = DisplayStyle.None;
             image.style.backgroundImage = StyleKeyword.None;
             EndDrag();

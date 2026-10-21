@@ -501,9 +501,12 @@ namespace GoF2Remake.Multiplayer
             // Shots hit its real shape; a fighter's (a ship's model that leaves no wreck: not a freighter or a fixed object,
             // not a turret or junk) only with Precise ship collision (HullBody.flyableShip).
             bool fighter = junkKind.Value < 0 && wreck < 0 && !leavesWreck.Value && path.Contains("/ships/");
-            if (target != null) HullCollision.Attach(visual, target, null, fighter);
+            if (target != null && !(radius.Value <= 0f && !IsJunk)) HullCollision.Attach(visual, target, null, fighter);   // a fighter turret: none
+            turretHullDetached = false;
             if (prefab != null && junkKind.Value < 0 && wreck < 0) { cloakLook?.Dispose(); cloakLook = new World.NpcCloak(visual.transform); }
         }
+
+        bool turretHullDetached;
 
         void SetShown(bool on)
         {
@@ -550,7 +553,12 @@ namespace GoF2Remake.Multiplayer
             float cloaked = life.Value == Flying ? cloakPct.Value : 0f;
             cloakLook?.Show(cloaked, Time.deltaTime * 1000f);
             target.cloaked = cloaked >= 25f;
-            target.untargetable = hidden.Value || life.Value != Flying || cloaked >= 25f;
+            // A fighter turret (ships 45 / 51, radius 0 on the owner's side: Traffic.AttachFighterTurret) is nobody's target
+            // and has no hull on the others' copies either; it had a marker and a hull bar there, soaked shots and, its
+            // owner's turret being invulnerable, never died (Discord report "Indestructible turret").
+            bool fighterTurret = radius.Value <= 0f && !IsJunk;
+            if (fighterTurret && !turretHullDetached) { HullCollision.Detach(target); turretHullDetached = true; }
+            target.untargetable = hidden.Value || life.Value != Flying || cloaked >= 25f || fighterTurret;
             // A mission ship's name only for the mission's team (its owner and their squad).
             bool team = !missionShip.Value || NetSquad.SameClient(OwnerClientId, NetPlayer.Local);
             // The owner's game writes the label (a wingman's name comes from its save): no rich-text tags reach the others'

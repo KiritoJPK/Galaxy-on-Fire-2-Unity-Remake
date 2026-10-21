@@ -170,6 +170,10 @@ namespace GoF2Remake.Flight
             var mouse = Mouse.current;
             if (!mouseSteering || mouse == null) { MouseOffset = Vector2.zero; MouseInDeadzone = true; return Vector2.zero; }
             if (Model.FreeFlight) return ReadVirtualStick(mouse);
+            // Centred while the autopilot steers, as free flight's stick (#132: the offset kept adding up on the autopilot, the
+            // HUD drew a steering dot that steered nothing, and the ship lurched when it handed back). Not while steering is
+            // locked: the mouse aims the turret view or the Liberator then (SteerInput).
+            if (autopilotTarget != null) { MouseOffset = Vector2.zero; MouseInDeadzone = true; return Vector2.zero; }
             var lim = new Vector2(Screen.width * 0.5f * 0.7f, Screen.height * 0.5f * 0.7f);
             var o = MouseOffset + mouse.delta.ReadValue();
             MouseOffset = new Vector2(Mathf.Clamp(o.x, -lim.x, lim.x), Mathf.Clamp(o.y, -lim.y, lim.y));
@@ -344,7 +348,9 @@ namespace GoF2Remake.Flight
                 // world up (the ship levels out, no roll).
                 float turn = Mathf.Min(stats.handling / 100f + 0.2f * stats.handlingUpgrades + 2.7f, 4f) * Model.TurnScale;   // remake debug: a heavy hull turns slower
                 var to = (autopilotTarget() - transform.position).normalized;
-                var dir = (transform.forward + (to - transform.forward) * ((int)(dtMs * turn) / 4096f)).normalized;
+                // Remake: without the original's (int): at 30 fps it rounds off under 1 %, at 261 fps up to 10 % a frame, a
+                // wobble on the autopilot (Discord report, 2026-10-18).
+                var dir = (transform.forward + (to - transform.forward) * (dtMs * turn / 4096f)).normalized;
                 // The model banks into the turn (#45: it flew the turns flat).
                 float turnAngle = Mathf.Acos(Mathf.Clamp(Vector3.Dot(transform.forward, dir), -1f, 1f));
                 if (Vector3.Dot(transform.right, dir) > 0f) turnAngle = -turnAngle;
@@ -437,8 +443,13 @@ namespace GoF2Remake.Flight
         {
             if (freeLook == null) freeLook = GetComponent<FreeLookCamera>();
             if (freeLook == null || !freeLook.FreeLookActive) return false;
+            // A quick flick can press and release inside one input update: WasPressedThisFrame holds but activeControl is
+            // already gone, so the binding's paths decide (Discord report, 2026-10-17: the right stick dodged in free look).
             var c = a.activeControl;
-            return c != null && c.path.Contains("Stick", System.StringComparison.OrdinalIgnoreCase);
+            if (c != null) return c.path.Contains("Stick", System.StringComparison.OrdinalIgnoreCase);
+            foreach (var b in a.bindings)
+                if (b.effectivePath != null && b.effectivePath.Contains("Stick", System.StringComparison.OrdinalIgnoreCase)) return true;
+            return false;
         }
 
         bool brakeOverridden;
@@ -453,7 +464,10 @@ namespace GoF2Remake.Flight
                 return Vector2.ClampMagnitude(GameControls.Steer.ReadValue<Vector2>(), 1f);
             }
             float throttle = GameControls.Throttle.ReadValue<float>();
-            if (Mathf.Abs(throttle) > 0.01f) Model.ChangeThrottle(throttle * throttleChangePerSecond * Time.deltaTime);
+            if (freeLook == null) freeLook = GetComponent<FreeLookCamera>();
+            // In free look the throttle keys zoom the camera instead (FreeLookCamera; a controller has no wheel or pinch).
+            if (Mathf.Abs(throttle) > 0.01f && (freeLook == null || !freeLook.FreeLookActive))
+                Model.ChangeThrottle(throttle * throttleChangePerSecond * Time.deltaTime);
             // Brake (S): the engines stop while it is held (FlightModel.Braking); a boost overrides it until it is pressed again.
             bool brake = GameControls.Brake.IsPressed();
             // Presses wait while a menu holds the controls and on the frame it closes (#85: A in the pause, autopilot and quick
