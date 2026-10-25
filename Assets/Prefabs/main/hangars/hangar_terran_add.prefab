@@ -52,6 +52,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: ef23b8b98c3dc7a4990e66ced1e2d71a, type: 2}
+    - target: {fileID: -851574285813221713, guid: f58b510d1a9514944bb4b8a70666f390, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: ef23b8b98c3dc7a4990e66ced1e2d71a, type: 2}
     - target: {fileID: -41635380193343634, guid: f58b510d1a9514944bb4b8a70666f390, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -69,6 +73,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: ef23b8b98c3dc7a4990e66ced1e2d71a, type: 2}
     - target: {fileID: 7173693446578330598, guid: f58b510d1a9514944bb4b8a70666f390, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: ef23b8b98c3dc7a4990e66ced1e2d71a, type: 2}
+    - target: {fileID: 9020490581559434797, guid: f58b510d1a9514944bb4b8a70666f390, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: ef23b8b98c3dc7a4990e66ced1e2d71a, type: 2}
@@ -105,6 +113,7 @@ MonoBehaviour:
   loop: 1
   loopStartMs: 0
   pingPongRotation: 0
+  headingFirst: 0
   speed: 1
   metersPerUnit: 0.05
   positionMap:

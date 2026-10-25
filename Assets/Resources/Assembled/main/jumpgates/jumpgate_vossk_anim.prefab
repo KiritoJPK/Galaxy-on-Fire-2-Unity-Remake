@@ -120,6 +120,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7011334790693965385}
     m_Modifications:
+    - target: {fileID: 4620925756925912110, guid: c67a27b5f610c764a9c4a68e48258fd2, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 8454734239449473197, guid: c67a27b5f610c764a9c4a68e48258fd2, type: 3}
       propertyPath: m_Name
       value: jumpgate_vossk_jump_anim_add
@@ -283,6 +287,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7011334790693965385}
     m_Modifications:
+    - target: {fileID: 1317426306369283075, guid: 47250646aeb615b46a26d1cdfcc90629, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 4719806065867754454, guid: 47250646aeb615b46a26d1cdfcc90629, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -355,6 +363,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7011334790693965385}
     m_Modifications:
+    - target: {fileID: 6128204790828990187, guid: 49713af6679141941a2c7538c04a3df9, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 7323028817806680635, guid: 49713af6679141941a2c7538c04a3df9, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -538,6 +550,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 6666053612689044696, guid: 86a88fb25de96404aa821fb4318f5ffd, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -676,6 +692,10 @@ PrefabInstance:
     - target: {fileID: 822650969792600912, guid: 7a10d3f96bbd8c645b37dc38d3299ec0, type: 3}
       propertyPath: m_Name
       value: jumpgate_vossk_lod_1_anim
+      objectReference: {fileID: 0}
+    - target: {fileID: 8202565040519556627, guid: 7a10d3f96bbd8c645b37dc38d3299ec0, type: 3}
+      propertyPath: loopStartMs
+      value: 50
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

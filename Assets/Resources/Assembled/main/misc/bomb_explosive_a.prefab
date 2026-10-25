@@ -68,6 +68,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: bomb_explosive_a
       objectReference: {fileID: 0}
+    - target: {fileID: 6293774689868023530, guid: 4363eec179e71aa4b9aa4799a9c4d1d2, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 6427557458630998284, guid: 4363eec179e71aa4b9aa4799a9c4d1d2, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -126,6 +130,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 785917054601256999}
     m_Modifications:
+    - target: {fileID: 326148798559069053, guid: e8ba4276965579d4f8d77c75ab86b4fd, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 8457101438647310990, guid: e8ba4276965579d4f8d77c75ab86b4fd, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

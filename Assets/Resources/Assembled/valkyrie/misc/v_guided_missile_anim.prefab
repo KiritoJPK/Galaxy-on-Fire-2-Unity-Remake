@@ -126,6 +126,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 9095262893490094096}
     m_Modifications:
+    - target: {fileID: 3897892283605192630, guid: 1a42d61d4b67d534b9a8bfeb5850120c, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 6976059440321234756, guid: 1a42d61d4b67d534b9a8bfeb5850120c, type: 3}
       propertyPath: m_Name
       value: v_guided_missile_anim

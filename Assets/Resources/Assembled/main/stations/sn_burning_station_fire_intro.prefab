@@ -172,6 +172,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 9063569849865242190, guid: fac0c08c4982e4944843f77c939f14fd, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -190,6 +194,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4327299303212495175}
     m_Modifications:
+    - target: {fileID: 1957605700036079109, guid: 1505590b32787b24ca7ce69539d202cf, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 8574172682627798960, guid: 1505590b32787b24ca7ce69539d202cf, type: 3}
       propertyPath: m_Name
       value: sn_burning_station_fire_intro_anim_add

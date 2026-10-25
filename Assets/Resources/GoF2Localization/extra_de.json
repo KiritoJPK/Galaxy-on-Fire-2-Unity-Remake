@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Freier Blick (halten)",
  "kitExhaustColor": "Strahlfarbe",
  "kitExhaustColor2": "Zweite Farbe",
- "mbTestStart": "Testflug: Piraten voraus. Dock an der Station an (oder Esc > Zurück zum Mod Builder), um zurückzukehren."
+ "mbTestStart": "Testflug: Piraten voraus. Dock an der Station an (oder Esc > Zurück zum Mod Builder), um zurückzukehren.",
+ "hudSwitchTab": "TAB WECHSELN",
+ "hudChangeValue": "WERT ÄNDERN",
+ "hudMoveChange": "BEWEGEN / ÄNDERN",
+ "pirateHelp": "Piratenaktivität\n\nDie Behörden melden Außenposten und Piratenbosse, die in den Systemen gesichtet wurden. Die Tafel nennt das System, nicht die Station: Du musst die Orbits absuchen. Jede Meldung zeigt die Gefahrenstufe, das Kopfgeld und wie lange sie auf der Tafel bleibt. Zerstöre den Außenposten oder den Boss, um das Kopfgeld zu erhalten.",
+ "debugHelp": "Testwerkzeuge des Remakes.\n\n{0}: Schalter, die die Spielregeln ändern (Gottmodus, unendliche Munition, kostenloses Einkaufen...).\n{1}: sofortige Änderungen (Credits, Reparatur, Energiezellen, die ganze Sternenkarte, Frieden mit allen Rassen).\n{2}: jeder Gegenstand in den Frachtraum oder gleich montiert.\n{3}: fliege jedes Schiff des Spiels.\n{4}: bis zu 14 gespeicherte Schiffe mit ihrer Ausrüstung.\n{5} (im Flug): Schiffe, Großkampfschiffe und Objekte in deiner Nähe.\n\nDas Ergebnis der letzten Aktion steht unter den Tabs."
 }

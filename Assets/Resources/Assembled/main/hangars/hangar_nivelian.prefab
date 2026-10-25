@@ -739,6 +739,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: hangar_nivelian_add
       objectReference: {fileID: 0}
+    - target: {fileID: 7903632561326608751, guid: 69f207fe5eea617429b015c4040672dc, type: 3}
+      propertyPath: loopStartMs
+      value: 33.333332
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

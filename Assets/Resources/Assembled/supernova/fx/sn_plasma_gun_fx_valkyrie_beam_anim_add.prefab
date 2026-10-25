@@ -65,6 +65,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3576448754335606441}
     m_Modifications:
+    - target: {fileID: 4342206475272997856, guid: 3e822571381c1844f964420b392bbb6c, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 4712203303540593175, guid: 3e822571381c1844f964420b392bbb6c, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -127,6 +131,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3576448754335606441}
     m_Modifications:
+    - target: {fileID: 119942920737240354, guid: c742e5ba6d6d31742b680f4a62dd58f2, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 132280057679691414, guid: c742e5ba6d6d31742b680f4a62dd58f2, type: 3}
       propertyPath: m_Name
       value: sn_plasma_gun_fx_valkyrie_cone_anim_add
@@ -189,6 +197,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3576448754335606441}
     m_Modifications:
+    - target: {fileID: 1944861638420954245, guid: ec883456eff7ba141a4c9105dccb7d50, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 5975625926198599247, guid: ec883456eff7ba141a4c9105dccb7d50, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

@@ -56,6 +56,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: hangar_terran_x5
       objectReference: {fileID: 0}
+    - target: {fileID: 7757258161764176109, guid: 073d4e39d299f8645b07290df778e14d, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

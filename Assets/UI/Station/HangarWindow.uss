@@ -26,6 +26,14 @@
     display: none;
 }
 
+/* Modified: the shop's controls are in its "i" (left of Menu): no hint row under the window (more specific than the
+   input modes' display: flex in StationMenu.uss). */
+.input-keyboard.hangar-open .station-hints,
+.input-gamepad.hangar-open .station-hints,
+.input-touch.hangar-open .station-hints {
+    display: none;
+}
+
 .hangar-open .station-hints {
     left: 48px;
     right: 40px;

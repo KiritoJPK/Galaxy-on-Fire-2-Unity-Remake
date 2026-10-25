@@ -229,6 +229,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 8820889887752760899, guid: 9c50e493eecd2f84d8b6441b9464c502, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 9018900304240449185, guid: 9c50e493eecd2f84d8b6441b9464c502, type: 3}
       propertyPath: m_Name
       value: station_032_nivelian_lights_add

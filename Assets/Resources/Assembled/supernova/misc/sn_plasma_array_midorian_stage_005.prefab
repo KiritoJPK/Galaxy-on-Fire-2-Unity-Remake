@@ -68,6 +68,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8635302414260550525}
     m_Modifications:
+    - target: {fileID: 1173256315638714398, guid: 85b3a0672b8777f4da96e829014c805d, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33
+      objectReference: {fileID: 0}
     - target: {fileID: 5934427708595923157, guid: 85b3a0672b8777f4da96e829014c805d, type: 3}
       propertyPath: m_Name
       value: sn_plasma_array_midorian_stage_005_glow_anim_add
@@ -139,6 +143,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8635302414260550525}
     m_Modifications:
+    - target: {fileID: 3754995067729863393, guid: d86e80271ac884c4493f11a2a74cf500, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33
+      objectReference: {fileID: 0}
+    - target: {fileID: 3754995067729863393, guid: d86e80271ac884c4493f11a2a74cf500, type: 3}
+      propertyPath: applyMaterialChannels
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 4785154226075943501, guid: d86e80271ac884c4493f11a2a74cf500, type: 3}
       propertyPath: m_Name
       value: sn_plasma_array_midorian_stage_005_lights_anim_add

@@ -66,6 +66,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8805993943313254864}
     m_Modifications:
+    - target: {fileID: 1213364829323487749, guid: fec84369cac18a5459604392535d2917, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 2811144509024509973, guid: fec84369cac18a5459604392535d2917, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -128,6 +132,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8805993943313254864}
     m_Modifications:
+    - target: {fileID: 2979567571198965526, guid: c663555fb0f955142851d529ac3351d6, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 8186126662805217481, guid: c663555fb0f955142851d529ac3351d6, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -295,6 +303,10 @@ PrefabInstance:
     - target: {fileID: 817019177829677129, guid: a4055ab615dd43b4b8e1690ac156337e, type: 3}
       propertyPath: m_Name
       value: v_station_deep_science_damaged_emitters_anim_add
+      objectReference: {fileID: 0}
+    - target: {fileID: 5415895262174147024, guid: a4055ab615dd43b4b8e1690ac156337e, type: 3}
+      propertyPath: loopStartMs
+      value: 50
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

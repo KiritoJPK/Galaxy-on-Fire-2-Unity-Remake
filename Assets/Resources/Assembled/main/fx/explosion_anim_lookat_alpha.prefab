@@ -64,6 +64,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6359275718703026741}
     m_Modifications:
+    - target: {fileID: 1078241122374676778, guid: 5d2d1ff02f47ee84fb3ddd4e508b4145, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 2331469680906055664, guid: 5d2d1ff02f47ee84fb3ddd4e508b4145, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -169,6 +173,10 @@ PrefabInstance:
     - target: {fileID: 5215165615972333627, guid: 0f48074cb2403a3418fc49c0ef9a77ae, type: 3}
       propertyPath: m_Name
       value: explosion_anim_lookat_alpha
+      objectReference: {fileID: 0}
+    - target: {fileID: 5462411484056271586, guid: 0f48074cb2403a3418fc49c0ef9a77ae, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

@@ -52,6 +52,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 2dd4c15e421d5bc4498714f0cd7b475d, type: 2}
+    - target: {fileID: 762602927910289926, guid: 02555257a97f8344d812a1e59f0b1b8b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2dd4c15e421d5bc4498714f0cd7b475d, type: 2}
     - target: {fileID: 919132149155446097, guid: 02555257a97f8344d812a1e59f0b1b8b, type: 3}
       propertyPath: m_Name
       value: hangar_terran_x2_shadow_alpha

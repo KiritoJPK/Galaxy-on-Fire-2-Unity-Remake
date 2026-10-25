@@ -81,6 +81,67 @@
     scale: 1.25 1.25;
 }
 
+/* Modified: the options' sliders (OptionControl.BuildSliderBox): the name, then at the row's right the value in a small
+   outlined box (the Sound page: a speaker before it, a click mutes) and the bar, as wide as the drop-downs, as before. */
+.option-slider > .unity-base-field__label {
+    flex-grow: 1;
+    flex-shrink: 1;
+}
+
+.option-slider > .unity-base-slider__input {
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 23%;
+    min-width: 150px;
+}
+
+/* One fixed size for every value ("100 %" fits), the text centred; only its outline (a Label is .unity-label too: it must
+   not grow like the name). */
+.option-slider > .option-slider-value {
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 78px;
+    min-width: 78px;
+    height: 30px;
+    margin: 0 10px 0 0;
+    padding: 0;
+    white-space: nowrap;
+    font-size: 17px;
+    letter-spacing: 1px;
+    -unity-text-align: middle-center;
+    color: var(--gof-cyan);
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 1px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+}
+
+.option-slider:focus > .option-slider-value,
+.autopilot-menu-item--selected > .option-slider-value {
+    color: var(--gof-amber);
+    border-color: var(--gof-amber);
+}
+
+.option-slider-mute {
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    margin-right: 8px;
+    -unity-background-scale-mode: scale-to-fit;
+    -unity-background-image-tint-color: var(--gof-text);
+    opacity: 0.85;
+}
+
+.can-hover .option-slider-mute:hover {
+    -unity-background-image-tint-color: var(--gof-amber);
+    opacity: 1;
+}
+
+.option-slider-mute--muted {
+    -unity-background-image-tint-color: var(--gof-text-dim);
+}
+
 /* ---- Toggle -------------------------------------------------------------------------- */
 
 .unity-toggle {
@@ -212,6 +273,136 @@
     color: var(--gof-amber);
 }
 
+/* Modified: the long lists' drop-down (ChoiceRow, ChoicePopup) in place of the ‹ value › stepper: a box with the value in
+   the middle and a down chevron at its right, in the options' cyan; amber while hovered, pressed, open or the row has the
+   focus. Its list: the menus' dark panel and cyan line, one row per value, hover cyan, the current value amber and
+   ticked. */
+.choice-dropdown {
+    /* At the row's right end, about a quarter of its width (a long value slides: ChoiceRow.Marquee). */
+    flex-grow: 0;
+    flex-shrink: 0;
+    width: 23%;
+    min-width: 150px;
+    margin-left: auto;
+    flex-direction: row;
+    align-items: center;
+    min-height: 36px;
+    margin-top: 0;
+    margin-bottom: 0;
+    margin-right: 0;
+    padding: 0 12px 0 12px;
+    background-color: rgba(255, 255, 255, 0.04);
+    border-width: 1px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+    /* Only the colours: its width (a share of the row) eased in each time a page showed, and the value with it. */
+    transition-property: background-color, border-color;
+    transition-duration: 0.15s;
+}
+
+.can-hover .choice-dropdown:hover,
+.choice-dropdown:active,
+.choice-row:focus .choice-dropdown,
+.autopilot-menu-item--selected .choice-dropdown {
+    background-color: var(--gof-cyan-faint);
+    border-color: var(--gof-amber);
+}
+
+.choice-dropdown-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    align-self: stretch;
+    overflow: hidden;
+}
+
+/* Placed by ChoiceRow.Marquee (its left and width): centred when it fits, sliding when it doesn't. */
+.choice-dropdown .choice-value {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    flex-grow: 0;
+    flex-shrink: 0;
+    white-space: nowrap;
+    -unity-text-align: middle-left;
+}
+
+.choice-dropdown-chevron {
+    width: 9px;
+    height: 9px;
+    margin: -5px 2px 0 10px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: var(--gof-cyan);
+    rotate: 45deg;
+}
+
+.can-hover .choice-dropdown:hover .choice-dropdown-chevron,
+.choice-row:focus .choice-dropdown-chevron,
+.autopilot-menu-item--selected .choice-dropdown-chevron {
+    border-color: var(--gof-amber);
+}
+
+.choice-popup {
+    padding: 4px;
+    background-color: var(--gof-panel);
+    border-width: 1px;
+    border-color: var(--gof-line);
+    border-radius: 4px;
+}
+
+.choice-popup-item {
+    flex-direction: row;
+    align-items: center;
+    margin: 0;
+    padding: 0 14px;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-left-width: 3px;
+    border-left-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+    transition-duration: 0.12s;
+}
+
+.can-hover .choice-popup-item:hover {
+    background-color: var(--gof-cyan-faint);
+    border-left-color: var(--gof-cyan);
+}
+
+.choice-popup-item:active {
+    background-color: var(--gof-amber-soft);
+}
+
+.choice-popup-text {
+    flex-grow: 1;
+    font-size: 17px;
+    letter-spacing: 1px;
+    -unity-text-align: middle-center;
+    color: var(--gof-text);
+}
+
+.choice-popup-item--current {
+    background-color: rgba(255, 166, 48, 0.12);
+    border-left-color: var(--gof-amber);
+}
+
+.choice-popup-item--current .choice-popup-text {
+    color: var(--gof-amber);
+}
+
+/* A tick: two sides of a turned box. */
+.choice-popup-tick {
+    position: absolute;
+    right: 16px;
+    top: 11px;
+    width: 7px;
+    height: 13px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-color: var(--gof-amber);
+    rotate: 45deg;
+}
+
 /* ---- BindingRow (Options > Controls: a control, its two keys and its controller button) --------------- */
 
 .binding-row {
@@ -322,10 +513,35 @@
 }
 
 .option-description {
+    display: none;   /* Modified: the "?" icon's window (OptionInfo) has it; the line shows with a controller only */
     margin: 0 0 6px 13px;
     font-size: 15px;
     color: var(--gof-text-dim);
     white-space: normal;
+}
+
+/* Modified: an option's "?" icon (OptionInfo, GoF2Hud/option_info), placed by OptionControl at the row's right end, in
+   the room every option row keeps for it (not the key bindings: their header's columns line up with them). With a
+   controller the description line shows instead. */
+.option-item--info-room {
+    padding-right: 32px;
+}
+
+.option-info {
+    -unity-background-scale-mode: scale-to-fit;
+    opacity: 0.85;
+}
+
+.can-hover .option-info:hover {
+    opacity: 1;
+}
+
+.input-gamepad .option-description {
+    display: flex;
+}
+
+.input-gamepad .option-info {
+    display: none;
 }
 
 /* ---- ScrollView ----------------------------------------------------------------------
@@ -360,6 +576,48 @@
 .unity-scroll-view__vertical-scroller,
 .unity-scroll-view__horizontal-scroller {
     display: none;
+}
+
+/* Modified: the hangar list's scrollbar on every vertical scroll view (ScrollBars): a slim track along the right edge and
+   a handle to drag, shown only while the content overflows; the content then keeps clear of it. */
+.gof-scroll-bar {
+    position: absolute;
+    width: 12px;
+}
+
+.gof-scroll-bar-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+}
+
+.gof-scroll-bar-thumb {
+    position: absolute;
+    left: 0;
+    right: 0;
+    min-height: 30px;
+    background-color: rgba(62, 200, 255, 0.45);
+    border-radius: 6px;
+}
+
+.can-hover .gof-scroll-bar:hover .gof-scroll-bar-thumb,
+.gof-scroll-bar-thumb--dragging {
+    background-color: var(--gof-cyan);
+}
+
+/* Phones: a finger-wide touch area around the same slim track and handle. */
+.layout-phone .gof-scroll-bar {
+    width: 56px;
+}
+
+.layout-phone .gof-scroll-bar-track,
+.layout-phone .gof-scroll-bar-thumb {
+    left: 22px;
+    right: 22px;
 }
 
 /* ---- save slots (main menu Load, station Save game; SaveSlotRow) ------------------------------------------------------------------- */
@@ -500,14 +758,6 @@
     color: #FFFFFF;
     background-color: var(--gof-cyan-faint);
     border-bottom-color: var(--gof-amber);
-}
-
-.debug-tab-hint {
-    margin-left: auto;
-    align-self: center;
-    font-size: 16px;
-    letter-spacing: 2px;
-    color: var(--gof-text-dim);
 }
 
 .debug-status {
@@ -728,6 +978,31 @@
     justify-content: center;
 }
 
+/* Modified: the name's one line under the icon, the label inside placed by TextMarquee (centred, or sliding). */
+.debug-item-name-clip {
+    align-self: stretch;
+    height: 22px;
+    margin-top: 4px;
+}
+
+.debug-item-name-clip > .debug-item-name {
+    margin: 0;
+    max-height: none;
+}
+
+.debug-item-cell--text .debug-item-name-clip {
+    height: 28px;
+}
+
+.layout-phone .debug-item-name-clip {
+    height: 26px;
+}
+
+/* Modified: no description "?" on a grid's row (the Ships tab's showed one beside the grid). */
+.debug-item-grid-row > .option-info {
+    display: none;
+}
+
 .debug-item-cell--text .debug-item-icon {
     display: none;
 }
@@ -774,10 +1049,6 @@
 .ui-large .debug-tab {
     padding: 14px 24px;
     font-size: 26px;
-}
-
-.ui-large .debug-tab-hint {
-    font-size: 20px;
 }
 
 .ui-large .debug-status {
@@ -1160,6 +1431,23 @@
 
 /* ---- remake: the orbit views around the player's ship, Inspect ship (station) and Action Freeze (flight), OrbitViewUi:
    the title at the top left, the controls at the top right, Back in the footer, the message above it ---------------- */
+
+/* Modified: Inspect ship's and Action Freeze's controls behind an "i" at the top right (OptionInfo), the title's height;
+   their hint row unseen (kept: OverControl still asks it). Hide UI clears the "i" too. */
+.inspect-overlay > .orbit-view-hints,
+.photo-overlay > .orbit-view-hints {
+    display: none;
+}
+
+.orbit-view-keys {
+    position: absolute;
+    right: 64px;
+    top: 40px;
+}
+
+.orbit-view--clean .orbit-view-keys {
+    display: none;
+}
 
 .orbit-view-title {
     position: absolute;

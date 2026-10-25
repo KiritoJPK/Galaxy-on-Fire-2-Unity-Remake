@@ -155,10 +155,18 @@ namespace GoF2Remake.UI
             buyLabel = root.Q<Label>("buyLabel");
             root.Q<Button>("hangarClose").text = Localization.Extra("hudBack", "BACK");
 
-            tabShip.clicked += () => { menu.PlayPush(); SetTab(Tab.Ship); };
-            tabShop.clicked += () => { menu.PlayPush(); SetTab(Tab.Shop); };
-            tabBlueprints.clicked += () => { menu.PlayPush(); SetTab(Tab.Blueprints); };
+            // Modified: the main menu's click sound (the release) on the tabs.
+            tabShip.clicked += () => { menu.PlayRelease(); SetTab(Tab.Ship); };
+            tabShop.clicked += () => { menu.PlayRelease(); SetTab(Tab.Shop); };
+            tabBlueprints.clicked += () => { menu.PlayRelease(); SetTab(Tab.Blueprints); };
             root.Q<Button>("hangarClose").clicked += () => { menu.PlayRelease(); if (!Back()) menu.CloseHangar(); };
+            // Modified: a "?" beside Back with the help of the tab shown (OptionInfo): Ship 623, Shop 622, Blueprints 625.
+            var hangarClose = root.Q<Button>("hangarClose");
+            var help = OptionInfo.Icon(() => Localization.Get(tab == Tab.Ship ? 623 : tab == Tab.Blueprints ? 625 : 622));
+            help.AddToClassList("window-help");
+            help.style.position = Position.Relative;
+            help.style.width = help.style.height = 34f;
+            hangarClose.parent.Insert(hangarClose.parent.IndexOf(hangarClose), help);
             actionButton.clicked += Action;
             if (actionButton2 != null) actionButton2.clicked += SecondaryAction;
             HookArrow(sellButton, -1);

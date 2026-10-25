@@ -324,6 +324,7 @@ namespace GoF2Remake.UI
         void OnUIReload(PanelRenderer renderer, VisualElement rootElement, int version)
         {
             root = rootElement;
+            ScrollBars.Watch(rootElement);   // Modified: the hangar's scrollbar on every scroll view that needs one
             root.style.flexGrow = 1;
             root.pickingMode = PickingMode.Ignore;
             touch = root.Q("mapTouch");
@@ -345,6 +346,38 @@ namespace GoF2Remake.UI
             dialogYes = root.Q<Button>("dialogYes");
             dialogNo = root.Q<Button>("dialogNo");
             root.Q<Label>("mapTitle").text = T(177).ToUpperInvariant();
+            // Modified: opened from a station's Map: "STATION | MAP" (SetStationTitle), as the station's views.
+            var mapTitleLabel = root.Q<Label>("mapTitle");
+            if (mapTitleLabel != null && mapTitleLabel.parent.Q<Label>("mapViewTitle") == null)
+            {
+                var view = new Label { name = "mapViewTitle", pickingMode = PickingMode.Ignore };
+                view.AddToClassList("map-view-title");
+                mapTitleLabel.parent.Insert(mapTitleLabel.parent.IndexOf(mapTitleLabel) + 1, view);
+            }
+            RefreshStationTitle();
+            // Modified: the map's help (the station's first-visit hint) behind a "?" at the header's right, the size of
+            // the title (OptionInfo: 1 s of the mouse on it, or a press). Only while there is one (SetHelp). Left of it an "i"
+            // with the key hints (in place of the hint boxes along the bottom).
+            var header = root.Q(className: "map-header");
+            if (header != null && header.Q(name: "mapKeys") == null)
+            {
+                var keys = OptionInfo.Icon(HintsContent, Resources.Load<Texture2D>("GoF2Hud/option_keys"));
+                keys.name = "mapKeys";
+                keys.AddToClassList("map-keys");
+                keys.style.position = Position.Relative;
+                keys.style.width = keys.style.height = 40f;
+                header.Add(keys);
+            }
+            if (header != null && header.Q(name: "mapHelp") == null)
+            {
+                var help = OptionInfo.Icon(() => HelpText);
+                help.name = "mapHelp";
+                help.AddToClassList("map-help");
+                help.style.position = Position.Relative;
+                help.style.width = help.style.height = 40f;
+                header.Add(help);
+            }
+            RefreshHelp();
             backButton.text = Localization.Extra("hudBack", "BACK");
             keyButton.text = T(400).ToUpperInvariant();
             voidButton.text = VoidButtonText;
@@ -390,7 +423,7 @@ namespace GoF2Remake.UI
                     // it, so "its order - 1" kept the map over the builder's panels.
                     if (runtimePanel != null) runtimePanel.sortingOrder = baseSortingOrder - 1;
                     root.AddToClassList("map-builder");
-                    foreach (var n in new[] { "mapTitle", "backButton", "keyButton", "zoomButton", "voidButton", "hints" })
+                    foreach (var n in new[] { "mapTitle", "mapKeys", "mapHelp", "backButton", "keyButton", "zoomButton", "voidButton", "hints" })
                         if (root.Q(n) is VisualElement el) el.style.display = DisplayStyle.None;
                 }
                 // askVoid: the original asks 422 before the map shows; remake: the map opens and the footer's Jump to the Void
@@ -835,6 +868,8 @@ namespace GoF2Remake.UI
         {
             var it = new Item { root = new VisualElement { pickingMode = PickingMode.Ignore } };
             it.root.AddToClassList("map-item");
+            // Modified: unseen until first placed (Place): for a frame every name box sat at the top left corner.
+            it.root.style.visibility = Visibility.Hidden;
             it.pulse = Img(it.root, "map-pulse", Tex("map_pulse"));
             it.ring = Img(it.root, "map-ring", Tex("map_ring"));
             var row = new VisualElement { pickingMode = PickingMode.Ignore };
@@ -998,6 +1033,7 @@ namespace GoF2Remake.UI
         {
             e.style.left = p.x;
             e.style.top = p.y;
+            e.style.visibility = StyleKeyword.Null;   // Modified: shown once placed (MakeItem)
         }
 
         void UpdateOverlay()
@@ -1362,6 +1398,67 @@ namespace GoF2Remake.UI
         }
 
         string pendingHint;
+
+        string helpText;
+
+        string stationTitle;
+
+        /// <summary>Modified: the station's title in the header with "| MAP" after it (null: the map's own title).</summary>
+        public void SetStationTitle(string title)
+        {
+            stationTitle = string.IsNullOrEmpty(title) ? null : title;
+            RefreshStationTitle();
+        }
+
+        void RefreshStationTitle()
+        {
+            var title = root?.Q<Label>("mapTitle");
+            var view = root?.Q<Label>("mapViewTitle");
+            if (title == null || view == null) return;
+            bool station = stationTitle != null && builder == null;
+            title.text = station ? stationTitle : T(177).ToUpperInvariant();
+            view.text = station ? T(177).ToUpperInvariant() : "";
+            view.style.display = station ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        /// <summary>Modified: the "i" window's key hints: BuildHints' rows (keys, then the label), for the keyboard or the
+        /// controller in use (the keyboard's on touch).</summary>
+        VisualElement HintsContent()
+        {
+            var c = new VisualElement { pickingMode = PickingMode.Ignore };
+            c.AddToClassList("map-hints-popup");
+            var saved = hints;
+            hints = c;
+            try { BuildHints(InputMode.Current == InputKind.Gamepad ? InputKind.Gamepad : InputKind.KeyboardMouse); }
+            finally { hints = saved; }
+            return c;
+        }
+
+        /// <summary>Modified: the help text the header's "?" shows (null: no "?").</summary>
+        /// <summary>Modified: what the "?" shows: the text SetHelp gave, else the map's own help (the station's first-visit
+        /// hint 628 / 631, its key variant off touch), so the flight's map (K, the Khador Drive) has it too.</summary>
+        string HelpText => helpText ?? DefaultHelp;
+
+        static string DefaultHelp
+        {
+            get
+            {
+                int text = Session.WorldIndex > 15 ? 628 : 631;
+                return World.FlightHints.KeyTokens(Localization.Get(InputMode.Current != InputKind.Touch ? text + 1 : text));
+            }
+        }
+
+        public void SetHelp(string text)
+        {
+            helpText = string.IsNullOrEmpty(text) ? null : text;
+            RefreshHelp();
+        }
+
+        void RefreshHelp()
+        {
+            var help = root?.Q(name: "mapHelp");
+            if (help != null) help.style.display = HelpText != null ? DisplayStyle.Flex : DisplayStyle.None;
+        }
 
         /// <param name="noFirst">No has the keyboard / controller focus when it opens (else Yes).</param>
         void ShowDialog(string text, Action onYes, Action onNo, bool info = false, bool noFirst = false)
@@ -1872,7 +1969,11 @@ namespace GoF2Remake.UI
         {
             var h = new VisualElement { pickingMode = PickingMode.Ignore };
             h.AddToClassList("hint");
-            foreach (var g in glyphs) h.Add(g);
+            // Modified: the glyphs in a row of their own (hint-keys) and the label under them, as in the hangar window.
+            var keys = new VisualElement { pickingMode = PickingMode.Ignore };
+            keys.AddToClassList("hint-keys");
+            foreach (var g in glyphs) keys.Add(g);
+            h.Add(keys);
             var l = new Label(label) { pickingMode = PickingMode.Ignore };
             l.AddToClassList("hint-label");
             l.AddToClassList("gof-semibold");

@@ -181,6 +181,7 @@ namespace GoF2Remake.UI
         void OnUIReload(PanelRenderer renderer, VisualElement rootElement, int version)
         {
             root = rootElement;
+            ScrollBars.Watch(rootElement);   // Modified: the hangar's scrollbar on every scroll view that needs one
             root.style.flexGrow = 1;   // no default theme to stretch the document root
             root.pickingMode = PickingMode.Ignore;
             safeArea = root.Q("safeArea");
@@ -250,8 +251,10 @@ namespace GoF2Remake.UI
             storyDialogue = new DialogueView(root, voiceSource) { ButtonSound = PlayButton };
             pauseMenu?.Close();   // a UI reload rebuilds it: don't leave the game paused
             pauseMenu = new PauseMenu(root, BackToMenu);
-            ButtonSounds(root.Q(className: "pause-backdrop"));
+            ButtonSounds(root);   // Modified: every button and toggle of the HUD's menus (was the pause menu's and the autopilot menu's)
             pauseMenu.InfoSound = () => PlayUi(CombatAudio.Load()?.messageInfo);
+            pauseMenu.HoverSound = PlayHover;   // Modified: the menus' hover / arrow sound
+            pauseMenu.ButtonSound = PlayButton;
             pauseMenu.Photo = new PhotoMode(root, this) { ButtonSound = PlayButton };
             radioBox = root.Q("radio");
             screenFade = root.Q("screenFade");
@@ -266,7 +269,29 @@ namespace GoF2Remake.UI
             gameOver.RegisterCallback<PointerDownEvent>(_ => LoadLastSave());
             navView.AutopilotButton += OnAutopilotButton;
             autopilotMenu = root.Q("autopilotMenu");
-            ButtonSounds(autopilotMenu);
+            // Modified: the mouse drives the menu's highlight while it moves (only the entry under it, none over nothing; no hover
+            // sound: the cursor crossing it made a burst of them); the keys / a controller bring the highlight back
+            // (UpdateAutopilotMenu, with the arrows' sound).
+            autopilotMenu.RegisterCallback<PointerMoveEvent>(e =>
+            {
+                if (e.pointerType != UnityEngine.UIElements.PointerType.mouse || menuPointer) return;
+                menuPointer = true;
+                HighlightMenu();
+            }, TrickleDown.TrickleDown);
+            autopilotMenu.RegisterCallback<PointerOverEvent>(e =>
+            {
+                if (e.pointerType != UnityEngine.UIElements.PointerType.mouse || !(e.target is VisualElement t)) return;
+                var b = MenuButtonAt(t);
+                if (b == menuHover) return;
+                menuHover = b;
+                if (menuPointer) HighlightMenu();
+            });
+            autopilotMenu.RegisterCallback<PointerLeaveEvent>(e =>
+            {
+                if (e.target != autopilotMenu) return;
+                menuHover = null;
+                if (menuPointer) HighlightMenu();
+            });
             autopilotMenuItems = root.Q("autopilotMenuItems");
             root.Q<Label>("autopilotMenuTitle").text = Localization.Get(571).ToUpperInvariant();   // Autopilot
             var menuIcon = Resources.Load<Texture2D>("GoF2Hud/autopilot_title");
@@ -667,7 +692,11 @@ namespace GoF2Remake.UI
         {
             var h = new VisualElement { pickingMode = PickingMode.Ignore };
             h.AddToClassList("hint");
-            foreach (var g in glyphs) h.Add(g);
+            // Modified: the glyphs in a row of their own (hint-keys), the label under them (GoF2InputGlyphs.uss).
+            var keys = new VisualElement { pickingMode = PickingMode.Ignore };
+            keys.AddToClassList("hint-keys");
+            foreach (var g in glyphs) keys.Add(g);
+            h.Add(keys);
             var l = new Label(label) { pickingMode = PickingMode.Ignore };
             l.AddToClassList("hint-label");
             l.AddToClassList("gof-semibold");
@@ -1229,6 +1258,7 @@ namespace GoF2Remake.UI
             menuIndex = 0;
             lastMenuMove = 0;
             menuOpenedFrame = Time.frameCount;
+            menuPointer = false;   // Modified: opened with a key / button: its first entry is highlighted
             autopilotMenu.EnableInClassList("autopilot-menu--actions", actions);   // Modified: the actions menu (E) on the right
             autopilotMenu.AddToClassList("autopilot-menu--shown");
             HighlightMenu();
@@ -1262,7 +1292,7 @@ namespace GoF2Remake.UI
             touch?.ReleaseAll();
             weapons?.SetPrimaryHeld(false);
             carrierShop ??= new CarrierShopWindow(safeArea ?? root, level.Database, health, PlayButton, PlayUi,
-                                                  text => miningView?.ShowMessage(text), OnCarrierShopClosed);
+                                                  text => miningView?.ShowMessage(text), OnCarrierShopClosed) { HoverSound = PlayHover };
             carrierShop.Open(docking != null ? docking.Target : null);
             BuildHints(InputMode.Current);
             // Inside the carrier: the station hangar's ambience under the window (it plays through the paused game).
@@ -1305,8 +1335,26 @@ namespace GoF2Remake.UI
         void HighlightMenu()
         {
             bool keys = InputMode.Current != InputKind.Touch;
-            for (int i = 0; i < menuButtons.Count; i++) menuButtons[i].button.EnableInClassList("autopilot-menu-item--selected", keys && i == menuIndex);
+            // Modified: with the mouse only the entry under it (the keys go on from there).
+            int under = menuPointer && menuHover != null ? menuButtons.FindIndex(m => m.button == menuHover) : -1;
+            if (under >= 0) menuIndex = under;
+            int marked = !keys ? -1 : menuPointer ? under : menuIndex;
+            for (int i = 0; i < menuButtons.Count; i++) menuButtons[i].button.EnableInClassList("autopilot-menu-item--selected", i == marked);
         }
+
+        /// <summary>Modified: the mouse moved last in the autopilot / actions menu (HighlightMenu); the entry under it.</summary>
+        bool menuPointer;
+        VisualElement menuHover;
+
+        VisualElement MenuButtonAt(VisualElement t)
+        {
+            for (var v = t; v != null && v != autopilotMenu; v = v.parent)
+                if (menuButtons.Exists(m => m.button == v)) return v;
+            return null;
+        }
+
+        /// <summary>Modified: the menus' hover sound (the station's: the button push, softer).</summary>
+        void PlayHover() => PlayUi(CombatAudio.Load()?.buttonPush, 0.45f);
 
         /// <summary>While the menu is open (game paused): keys / D-pad pick, 1-8 choose an entry (the PC version's menu
         /// select), Esc / Q / E / B / View close.</summary>
@@ -1333,10 +1381,17 @@ namespace GoF2Remake.UI
                 if (dir != 0 && dir != lastMenuMove) move = dir;
                 lastMenuMove = dir;
             }
+            if (move != 0 && menuPointer)
+            {
+                // Modified: the keys take over from the mouse; over nothing the first press only shows the highlight.
+                menuPointer = false;
+                if (menuHover == null) { HighlightMenu(); PlayHover(); move = 0; }
+            }
             if (move != 0 && menuButtons.Count > 0)
             {
                 menuIndex = (menuIndex + move + menuButtons.Count) % menuButtons.Count;
                 HighlightMenu();
+                PlayHover();   // Modified: the arrows' sound
             }
             bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
                            || (pad != null && (pad.buttonSouth.wasPressedThisFrame || pad.buttonWest.wasPressedThisFrame));
@@ -1344,10 +1399,12 @@ namespace GoF2Remake.UI
             {
                 var digits = new[] { kb.digit1Key, kb.digit2Key, kb.digit3Key, kb.digit4Key, kb.digit5Key, kb.digit6Key, kb.digit7Key, kb.digit8Key };
                 for (int d = 0; d < digits.Length; d++)
-                    if (digits[d].wasPressedThisFrame && d < menuButtons.Count) { menuIndex = d; HighlightMenu(); confirm = true; break; }
+                    if (digits[d].wasPressedThisFrame && d < menuButtons.Count) { menuPointer = false; menuIndex = d; HighlightMenu(); confirm = true; break; }
             }
+            if (confirm && menuPointer && menuHover == null) { menuPointer = false; HighlightMenu(); confirm = false; }   // Modified: nothing marked yet
             if (confirm && menuIndex < menuButtons.Count)
             {
+                PlayButton(false);   // Modified: the entry's sound (a click has its own)
                 if (menuIndex < menuActions.Count && menuActions[menuIndex] != null) menuActions[menuIndex]();
                 else ChooseMenuTarget(menuButtons[menuIndex].target);
             }
@@ -1666,13 +1723,25 @@ namespace GoF2Remake.UI
 
         AudioSource uiSource;
 
+        /// <summary>Modified: a click sounds as in the main menu: only the release, on the click (a pointer press's push is left
+        /// out, but in the carrier's shop window), once per frame.</summary>
+        int pressFrame = -1, releaseFrame = -1;
+
         void PlayButton(bool push)
         {
+            if (push && pressFrame == Time.frameCount) return;
+            if (!push)
+            {
+                if (releaseFrame == Time.frameCount) return;
+                releaseFrame = Time.frameCount;
+            }
             var audio = CombatAudio.Load();
             PlayUi(audio == null ? null : push ? audio.buttonPush : audio.buttonRelease);
         }
 
-        void PlayUi(AudioClip clip)
+        void PlayUi(AudioClip clip) => PlayUi(clip, 1f);
+
+        void PlayUi(AudioClip clip, float volume)
         {
             if (clip == null) return;
             if (uiSource == null)
@@ -1682,21 +1751,17 @@ namespace GoF2Remake.UI
                 uiSource.spatialBlend = 0f;
                 uiSource.ignoreListenerPause = true;   // the pause menu pauses the listener
             }
-            uiSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(clip), Settings.SfxVolume);
+            uiSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(clip), Settings.SfxVolume * volume);
         }
 
-        /// <summary>Every button inside this container clicks: push on pointer down, release on the click.</summary>
+        /// <summary>Every button and toggle inside this container clicks. Modified: as in the main menu, only the release on the
+        /// click (the push on the press is gone, also a button's own: PlayButton); not in the carrier's shop window (its own).</summary>
         void ButtonSounds(VisualElement container)
         {
             if (container == null) return;
-            container.RegisterCallback<PointerDownEvent>(e => { if (InButton(e.target)) PlayButton(true); }, TrickleDown.TrickleDown);
-            container.RegisterCallback<ClickEvent>(e => { if (InButton(e.target)) PlayButton(false); });
+            container.RegisterCallback<PointerDownEvent>(e => { if (UiHover.SilentPress(e.target)) pressFrame = Time.frameCount; }, TrickleDown.TrickleDown);
+            container.RegisterCallback<ClickEvent>(e => { if (UiHover.ClickSounds(e.target)) PlayButton(false); });
         }
 
-        static bool InButton(IEventHandler target)
-        {
-            for (var v = target as VisualElement; v != null; v = v.parent) if (v is Button) return true;
-            return false;
-        }
     }
 }

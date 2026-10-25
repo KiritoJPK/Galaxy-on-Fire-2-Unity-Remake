@@ -67,6 +67,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4341197277889607879}
     m_Modifications:
+    - target: {fileID: 2206071265346884710, guid: b6c41b3827714f24d8de585660473616, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 2206071265346884710, guid: b6c41b3827714f24d8de585660473616, type: 3}
+      propertyPath: rotationMap.Array.data[0].sign
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2206071265346884710, guid: b6c41b3827714f24d8de585660473616, type: 3}
+      propertyPath: rotationMap.Array.data[2].sign
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6285028453491186984, guid: b6c41b3827714f24d8de585660473616, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -235,6 +247,18 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5769720458532352162, guid: cc520d24087305a4c98d70493be62ff5, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 5769720458532352162, guid: cc520d24087305a4c98d70493be62ff5, type: 3}
+      propertyPath: rotationMap.Array.data[0].sign
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5769720458532352162, guid: cc520d24087305a4c98d70493be62ff5, type: 3}
+      propertyPath: rotationMap.Array.data[2].sign
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -297,6 +321,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: bar_vossk_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 9167959444213151365, guid: 2a79e288aaaf8ca41b4dc0df6bb0dbb7, type: 3}
+      propertyPath: loopStartMs
+      value: 500
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -315,6 +343,18 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 4341197277889607879}
     m_Modifications:
+    - target: {fileID: 1358246558769113525, guid: fc1d03e92fce89f46a6faff1ce6faefd, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 1358246558769113525, guid: fc1d03e92fce89f46a6faff1ce6faefd, type: 3}
+      propertyPath: rotationMap.Array.data[0].sign
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1358246558769113525, guid: fc1d03e92fce89f46a6faff1ce6faefd, type: 3}
+      propertyPath: rotationMap.Array.data[2].sign
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2347642075136033472, guid: fc1d03e92fce89f46a6faff1ce6faefd, type: 3}
       propertyPath: m_Name
       value: bar_vossk_bot_c_anim_alpha

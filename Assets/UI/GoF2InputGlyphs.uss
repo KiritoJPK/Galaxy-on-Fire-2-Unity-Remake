@@ -12,20 +12,64 @@
     display: none;
 }
 
+/* Modified: every hint's keys in a row of their own (hint-keys) with the label under them on one line, both centred, as in
+   the hangar window; the box has a grey border. The label's own line spacing (capitals, nothing below the line) leaves
+   more room under it than above the keys, so the bottom padding is that much smaller. */
 .hint {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    padding: 7px 12px 3px 12px;
+    background-color: rgba(4, 10, 18, 0.5);
+    border-width: 2px;
+    border-color: rgba(150, 158, 166, 0.7);
+    border-radius: 4px;
+}
+
+/* Modified: an "i" window's controls (OptionInfo: the star map, Inspect ship, Action Freeze, the shop): one a line, its
+   keys then its label, no boxes. Here, not in GoF2Common.uss: the theme's rules lose to this sheet's own .hint. */
+.hints-popup {
+    flex-direction: column;
+}
+
+.hints-popup .hint {
     flex-direction: row;
     align-items: center;
-    margin-top: 6px;
-    padding: 6px 12px;
-    background-color: rgba(4, 10, 18, 0.5);
-    border-radius: 4px;
+    justify-content: flex-start;
+    margin: 3px 0;
+    padding: 2px 4px;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+}
+
+.hints-popup .hint-keys {
+    min-width: 150px;
+    justify-content: flex-end;
+    margin-right: 14px;
+}
+
+.hints-popup .hint-label {
+    margin: 0;
+    padding: 0;
+    font-size: 17px;
+    white-space: nowrap;
+    -unity-text-align: middle-left;
+}
+
+.hint-keys {
+    flex-direction: row;
+    align-items: center;
 }
 
 .hint-label {
     font-size: 17px;
     letter-spacing: 2px;
     color: var(--gof-text-dim);
-    margin-left: 10px;
+    margin: 3px 0 0 0;
+    padding: 0;
+    white-space: nowrap;
+    -unity-text-align: middle-center;
 }
 
 .keycap {

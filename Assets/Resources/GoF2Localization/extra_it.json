@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Visuale libera (tieni premuto)",
  "kitExhaustColor": "Colore scarico",
  "kitExhaustColor2": "Secondo colore",
- "mbTestStart": "Volo di prova: pirati davanti. Attracca alla stazione (o Esc > Torna al Costruttore di mod) per tornare."
+ "mbTestStart": "Volo di prova: pirati davanti. Attracca alla stazione (o Esc > Torna al Costruttore di mod) per tornare.",
+ "hudSwitchTab": "CAMBIA SCHEDA",
+ "hudChangeValue": "CAMBIA VALORE",
+ "hudMoveChange": "SPOSTA / CAMBIA",
+ "pirateHelp": "Attività pirata\n\nLe autorità segnalano avamposti e capi pirati avvistati nei sistemi. La bacheca indica il sistema, non la stazione: dovrai cercare nelle orbite. Ogni segnalazione mostra il livello di minaccia, la taglia e per quanto resta in bacheca. Distruggi l'avamposto o il capo per riscuotere la taglia.",
+ "debugHelp": "Strumenti di prova del remake.\n\n{0}: opzioni che cambiano le regole del gioco (modalità dio, munizioni infinite, acquisti gratuiti...).\n{1}: cambiamenti immediati (crediti, riparazione, celle di energia, tutta la mappa stellare, pace con tutte le razze).\n{2}: qualsiasi oggetto nella stiva, o già montato.\n{3}: pilota qualsiasi nave del gioco.\n{4}: fino a 14 navi salvate con il loro equipaggiamento.\n{5} (in volo): navi, navi capitali e oggetti vicino a te.\n\nIl risultato dell'ultima azione compare sotto le schede."
 }

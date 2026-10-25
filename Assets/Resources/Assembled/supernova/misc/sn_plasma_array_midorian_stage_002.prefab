@@ -233,6 +233,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: sn_plasma_array_midorian_stage_002_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 8245853832193997665, guid: 85c916ca0a2abd64ab90d7f05c431456, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33
+      objectReference: {fileID: 0}
+    - target: {fileID: 8245853832193997665, guid: 85c916ca0a2abd64ab90d7f05c431456, type: 3}
+      propertyPath: applyMaterialChannels
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

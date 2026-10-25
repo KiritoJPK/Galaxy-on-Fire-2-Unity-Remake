@@ -68,6 +68,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7429058009969382762}
     m_Modifications:
+    - target: {fileID: 2517317653527030965, guid: 4e27e479d01392c48a1e4145ac2ff8cf, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 2538289219809428495, guid: 4e27e479d01392c48a1e4145ac2ff8cf, type: 3}
       propertyPath: m_Name
       value: v_ship_037_deep_science

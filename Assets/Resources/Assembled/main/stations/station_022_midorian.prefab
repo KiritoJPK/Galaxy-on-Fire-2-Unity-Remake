@@ -65,6 +65,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 392064889607742522}
     m_Modifications:
+    - target: {fileID: 8077914808333026508, guid: 600af03e8dc3f7d458fe792702272572, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 8155961229833496780, guid: 600af03e8dc3f7d458fe792702272572, type: 3}
       propertyPath: m_Name
       value: station_022_midorian_lights_add

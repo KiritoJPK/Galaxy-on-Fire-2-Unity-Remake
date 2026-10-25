@@ -42,6 +42,8 @@ namespace GoF2Remake.UI
         readonly Label wantedName, wantedStatus, wantedBounty, wantedText;
         readonly List<Button> wantedRows = new List<Button>();
         enum Tab { Missions, Wanted, Pirates }
+
+        const string PirateHelpEnglish = "Pirate activity\n\nThe authorities report pirate outposts and pirate bosses sighted in the systems. The board names the system but not the station: you have to search its orbits. Each report shows its threat level, the bounty and how long it stays on the board. Destroy the outpost or the boss to collect the bounty.";
         Tab tab;
         bool wantedShown => tab != Tab.Missions;   // the list-and-details panel (the Most Wanted's or the pirates')
         int wantedSelected = -1, pirateSelected = -1;
@@ -61,6 +63,18 @@ namespace GoF2Remake.UI
             storyScroll = Scroll("storyScroll");
             freelanceScroll = Scroll("freelanceScroll");
             close = Bind("missionsClose", Close);
+            // Modified: a "?" beside Back with the help of the tab shown (OptionInfo): Missions 635, Most Wanted 601, Pirate
+            // activity (new: pirateHelp).
+            var help = OptionInfo.Icon(() => tab == Tab.Pirates ? Localization.Extra("pirateHelp", PirateHelpEnglish)
+                                            : tab == Tab.Wanted ? Localization.Get(601) : Localization.Get(635));
+            help.AddToClassList("window-help");
+            help.style.position = Position.Relative;
+            help.style.width = help.style.height = 34f;
+            close.parent.Insert(close.parent.IndexOf(close), help);
+            // Modified: an "i" with the window's keys (MenuKeys: select, switch tab with Q / E or LB / RB, confirm, back) left of the "?".
+            var keys = MenuKeys.KeysIcon(() => MenuKeys.Content(MenuKeys.Rows.Select | MenuKeys.Rows.Tabs | MenuKeys.Rows.Confirm | MenuKeys.Rows.Back), 34f);
+            keys.AddToClassList("window-help");
+            close.parent.Insert(close.parent.IndexOf(help), keys);
             storyMap = Bind("storyMap", () => ShowOnMap(storyMapTarget, storyMap));
             freelanceMap = Bind("freelanceMap", () => ShowOnMap(Freelance.Active ? Freelance.MapStation : GoF2Remake.Events.EventRunner.LocalMissionTarget, freelanceMap));
             discard = Bind("freelanceDiscard", AskDiscard);
@@ -129,6 +143,18 @@ namespace GoF2Remake.UI
         static bool PiratesHere => PirateReports.Enabled
             && (GoF2Remake.Multiplayer.NetGame.Active || (Session.Rank >= 2 && (Session.FreePlay || Session.CampaignMission >= 0x10)));
 
+        /// <summary>Modified: Q / E, LB / RB: the next / previous tab shown (Missions, Pirate activity, Most Wanted).</summary>
+        public void StepTab(int dir)
+        {
+            var order = new List<Tab> { Tab.Missions };
+            if (PiratesHere) order.Add(Tab.Pirates);
+            if (BoardHere) order.Add(Tab.Wanted);
+            if (order.Count < 2) return;
+            int i = Mathf.Max(0, order.IndexOf(tab));
+            ShowTab(order[((i + dir) % order.Count + order.Count) % order.Count]);
+            menu.PlayRelease();
+        }
+
         void ShowTab(Tab t)
         {
             tab = t == Tab.Wanted && !BoardHere || t == Tab.Pirates && !PiratesHere ? Tab.Missions : t;
@@ -140,8 +166,8 @@ namespace GoF2Remake.UI
             var db = level.Database;
             bool board = BoardHere, pirates = PiratesHere;
             if (tab == Tab.Wanted && !board || tab == Tab.Pirates && !pirates) tab = Tab.Missions;
-            bool tabs = board || pirates;
-            missionsTab.EnableInClassList("missions-tab--hidden", !tabs);
+            // Modified: the Missions tab always shows (the window's title is gone: the tabs name it, as in the hangar).
+            missionsTab.EnableInClassList("missions-tab--hidden", false);
             wantedTab.EnableInClassList("missions-tab--hidden", !board);
             pirateTab.EnableInClassList("missions-tab--hidden", !pirates);
             missionsTab.EnableInClassList("missions-tab--active", tab == Tab.Missions);
@@ -237,6 +263,7 @@ namespace GoF2Remake.UI
                 menu.Focus(from);
             }, -1, target, false, routeFromSystem, -1, menu.CanTravelFromMap);
             if (map == null) root.RemoveFromClassList("station-map-open");
+            else map.SetHelp(menu.MapHelpText);   // Modified: the station map's "?" here too
         }
 
         /// <summary>423 Discard -> 418 "Are you sure?" -> the same clean-up as a discarded mission.</summary>
@@ -257,8 +284,8 @@ namespace GoF2Remake.UI
             if (!missionsTab.ClassListContains("missions-tab--hidden"))
             {
                 l.Add(missionsTab);
+                if (!pirateTab.ClassListContains("missions-tab--hidden")) l.Add(pirateTab);   // Modified: in the tabs' order
                 if (!wantedTab.ClassListContains("missions-tab--hidden")) l.Add(wantedTab);
-                if (!pirateTab.ClassListContains("missions-tab--hidden")) l.Add(pirateTab);
             }
             if (wantedShown)
             {

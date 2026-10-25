@@ -47,6 +47,26 @@ namespace GoF2Remake.UI
             close.clicked += () => { menu.PlayRelease(); Close(); };
             root.Q<Label>("statusTitle").text = T(169).ToUpperInvariant();
             root.Q<Label>("medalsTitle").text = T(168).ToUpperInvariant();
+            // Modified: as the Missions window: two tabs, Status and Medals, in place of the title (one page at a time), and a
+            // "?" beside Back with the help of the tab shown (640 / 641 the status, 647 the medals; the hint box under the
+            // medals now shows only a picked medal's hint). The medals' own title gives way to their tab.
+            var title = root.Q<Label>("statusTitle");
+            title.style.display = DisplayStyle.None;
+            root.Q<Label>("medalsTitle").style.display = DisplayStyle.None;
+            statusTab = TabButton(T(169), false);
+            medalsTab = TabButton(T(168), true);
+            int at = title.parent.IndexOf(title);
+            title.parent.Insert(at + 1, statusTab);
+            title.parent.Insert(at + 2, medalsTab);
+            var help = OptionInfo.Icon(() => showMedals ? T(647) : T(InputMode.Current == InputKind.Touch ? 640 : 641));
+            help.AddToClassList("window-help");
+            help.style.position = Position.Relative;
+            help.style.width = help.style.height = 34f;
+            close.parent.Insert(close.parent.IndexOf(close), help);
+            // Modified: an "i" with the window's keys (MenuKeys: select, switch tab with Q / E or LB / RB, confirm, back) left of the "?".
+            var keys = MenuKeys.KeysIcon(() => MenuKeys.Content(MenuKeys.Rows.Select | MenuKeys.Rows.Tabs | MenuKeys.Rows.Confirm | MenuKeys.Rows.Back), 34f);
+            keys.AddToClassList("window-help");
+            close.parent.Insert(close.parent.IndexOf(help), keys);
             scroll = root.Q<ScrollView>("medalScroll");
             scroll.verticalScrollerVisibility = ScrollerVisibility.Auto;
             scroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
@@ -60,6 +80,7 @@ namespace GoF2Remake.UI
         {
             root.AddToClassList("status-open");
             Build();
+            ShowTab(false);   // Modified: the Status page first
         }
 
         public void Close()
@@ -133,7 +154,7 @@ namespace GoF2Remake.UI
             bool medals = !GoF2Remake.Multiplayer.NetGame.Active;
             var column = root.Q(className: "status-right");
             if (column != null) column.style.display = medals ? DisplayStyle.Flex : DisplayStyle.None;
-            if (!medals) { hint.text = ""; menu.Focus(close); return; }
+            if (!medals) { hint.text = ""; hint.style.display = DisplayStyle.None; menu.Focus(close); return; }
             for (int i = 0; i < Achievements.Count; i++)
             {
                 int medal = i;
@@ -163,7 +184,8 @@ namespace GoF2Remake.UI
                 grid.Add(m);
                 medalButtons.Add(m);
             }
-            hint.text = T(647);
+            hint.text = "";
+            hint.style.display = DisplayStyle.None;   // Modified: until a medal is picked (its help is the title's "?")
             menu.Focus(close);
         }
 
@@ -230,17 +252,61 @@ namespace GoF2Remake.UI
             selectedMedal = medal;
             for (int i = 0; i < medalButtons.Count; i++) medalButtons[i].EnableInClassList("medal--selected", i == medal);
             hint.text = $"{T(1507 + medal)}\n{Achievements.Hint(medal)}";
+            hint.style.display = DisplayStyle.Flex;
         }
 
 
         // ---- building blocks -----------------------------------------------------------------------------
 
-        static void Plate(VisualElement parent, string text)
+        static Label Plate(VisualElement parent, string text)
         {
             var l = new Label(text.ToUpperInvariant()) { pickingMode = PickingMode.Ignore };
             l.AddToClassList("status-plate");
             l.AddToClassList("gof-semibold");
             parent.Add(l);
+            return l;
+        }
+
+        // ---- tabs (Modified) ----------------------------------------------------------------------------------
+
+        Button statusTab, medalsTab;
+        bool showMedals;
+        static bool MedalsShown => !GoF2Remake.Multiplayer.NetGame.Active;   // none in multiplayer
+
+        Button TabButton(string text, bool medals)
+        {
+            var b = new Button { text = text.ToUpperInvariant() };
+            b.AddToClassList("missions-tab");
+            b.AddToClassList("gof-semibold");
+            b.clicked += () => { menu.PlayRelease(); ShowTab(medals); };
+            return b;
+        }
+
+        /// <summary>The Status page or the Medals page, its tab marked.</summary>
+        void ShowTab(bool medals)
+        {
+            showMedals = medals && MedalsShown;
+            statusTab.EnableInClassList("missions-tab--active", !showMedals);
+            medalsTab.EnableInClassList("missions-tab--active", showMedals);
+            medalsTab.style.display = MedalsShown ? DisplayStyle.Flex : DisplayStyle.None;
+            var leftScroll = root.Q("statusLeftScroll");
+            var right = root.Q(className: "status-right");
+            if (leftScroll != null) { leftScroll.style.display = showMedals ? DisplayStyle.None : DisplayStyle.Flex; leftScroll.style.paddingRight = 0f; }
+            if (right != null)
+            {
+                right.style.display = showMedals ? DisplayStyle.Flex : DisplayStyle.None;
+                right.style.borderLeftWidth = 0f;   // alone: no divider
+                right.style.paddingLeft = 0f;
+            }
+            if (!showMedals) { hint.text = ""; hint.style.display = DisplayStyle.None; }
+        }
+
+        /// <summary>Q / E, LB / RB: the other tab.</summary>
+        public void StepTab(int dir)
+        {
+            if (!MedalsShown) return;
+            menu.PlayRelease();
+            ShowTab(!showMedals);
         }
 
         static VisualElement Row(VisualElement parent)
@@ -401,7 +467,11 @@ namespace GoF2Remake.UI
 
         public VisualElement[] NavItems()
         {
-            var l = new List<VisualElement>(medalButtons) { close };
+            // Modified: the tabs first, then the page's items (the medals on their page), Back.
+            var l = new List<VisualElement> { statusTab };
+            if (MedalsShown) l.Add(medalsTab);
+            if (showMedals) l.AddRange(medalButtons);
+            l.Add(close);
             return l.ToArray();
         }
     }

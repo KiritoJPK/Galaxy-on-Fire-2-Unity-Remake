@@ -122,8 +122,8 @@
                 <ui:VisualElement class="hangar-top">
                     <ui:Label name="missionsTitle" class="missions-title gof-semibold" picking-mode="Ignore" />
                     <ui:Button name="missionsTab" class="missions-tab gof-semibold" />
-                    <ui:Button name="wantedTab" class="missions-tab gof-semibold" />
                     <ui:Button name="pirateTab" class="missions-tab gof-semibold" />
+                    <ui:Button name="wantedTab" class="missions-tab gof-semibold" />
                     <ui:VisualElement class="hangar-top-spacer" picking-mode="Ignore" />
                     <ui:Button name="missionsClose" class="hangar-close gof-semibold" />
                 </ui:VisualElement>

@@ -96,6 +96,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2104243683181813729}
     m_Modifications:
+    - target: {fileID: 3932058668565788722, guid: cdab6342560ca2d4fa80167de10002e1, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 6024720465375236758, guid: cdab6342560ca2d4fa80167de10002e1, type: 3}
       propertyPath: m_Name
       value: v_autoturret_001_gun_anim
@@ -158,6 +162,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2104243683181813729}
     m_Modifications:
+    - target: {fileID: 3275355339464151442, guid: adf4bf3a5b6d5e54294476c3a2508a29, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 4767335801388417009, guid: adf4bf3a5b6d5e54294476c3a2508a29, type: 3}
       propertyPath: m_Name
       value: v_autoturret_001_anim

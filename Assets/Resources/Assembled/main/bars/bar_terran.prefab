@@ -234,6 +234,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: bar_terran_bot_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 7963037676020759667, guid: f08143aaea8dbcb49a473bc37341bfbe, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -252,6 +256,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7944766865276631319}
     m_Modifications:
+    - target: {fileID: 390151575600662008, guid: 171bee22bb359aa4ebd3a48d477b4ab0, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 1157080246409168462, guid: 171bee22bb359aa4ebd3a48d477b4ab0, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

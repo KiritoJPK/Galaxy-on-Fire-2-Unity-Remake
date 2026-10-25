@@ -127,6 +127,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 403229068335195504}
     m_Modifications:
+    - target: {fileID: 4606592628976302394, guid: 2a893495be6eba342b5f4e61c518bb33, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 4953783303351811064, guid: 2a893495be6eba342b5f4e61c518bb33, type: 3}
       propertyPath: m_Name
       value: station_000_nivelian_lights_add

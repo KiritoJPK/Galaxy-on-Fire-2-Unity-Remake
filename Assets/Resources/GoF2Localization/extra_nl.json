@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Vrij rondkijken (ingedrukt houden)",
  "kitExhaustColor": "Uitlaatkleur",
  "kitExhaustColor2": "Tweede kleur",
- "mbTestStart": "Testvlucht: piraten vooruit. Meer aan bij het station (of Esc > Terug naar de Mod Builder) om terug te gaan."
+ "mbTestStart": "Testvlucht: piraten vooruit. Meer aan bij het station (of Esc > Terug naar de Mod Builder) om terug te gaan.",
+ "hudSwitchTab": "TABBLAD WISSELEN",
+ "hudChangeValue": "WAARDE WIJZIGEN",
+ "hudMoveChange": "BEWEGEN / WIJZIGEN",
+ "pirateHelp": "Piratenactiviteit\n\nDe autoriteiten melden buitenposten en piratenbazen die in de systemen zijn gezien. Het bord noemt het systeem, niet het station: je moet de banen afzoeken. Elke melding toont het dreigingsniveau, de premie en hoe lang ze op het bord blijft. Vernietig de buitenpost of de baas om de premie te innen.",
+ "debugHelp": "Testgereedschap van de remake.\n\n{0}: schakelaars die de spelregels veranderen (godmodus, oneindige munitie, gratis winkelen...).\n{1}: directe wijzigingen (credits, reparatie, energiecellen, de hele sterrenkaart, vrede met alle rassen).\n{2}: elk voorwerp in het vrachtruim, of meteen gemonteerd.\n{3}: vlieg met elk schip uit het spel.\n{4}: tot 14 opgeslagen schepen met hun uitrusting.\n{5} (tijdens het vliegen): schepen, kapitaalschepen en objecten bij je in de buurt.\n\nHet resultaat van de laatste actie staat onder de tabbladen."
 }

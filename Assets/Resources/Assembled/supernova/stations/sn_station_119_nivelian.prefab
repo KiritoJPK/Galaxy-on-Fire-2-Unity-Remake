@@ -127,6 +127,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 5438366327649898368}
     m_Modifications:
+    - target: {fileID: 5616741456903201277, guid: 5bbbbde2ed5818244895a729896ce03d, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 8374817844099726869, guid: 5bbbbde2ed5818244895a729896ce03d, type: 3}
       propertyPath: m_Name
       value: sn_station_119_nivelian_add

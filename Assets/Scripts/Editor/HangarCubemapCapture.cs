@@ -12,9 +12,15 @@
 //   - in space: the sky alone (the skybox: nebula and stars, no sun, planets or station) over the system's
 //     cubemap_skybox_XXX.png (SkyReflection.SystemCubeName), in the sky's own frame (OrbitBuilder.SkyRotation undone,
 //     so every station of the system can use it, as the original's).
+// Modified: and all of them at once, like "GoF2/Build/Space Skies":
+//   - "Capture All Sky Reflection Cubemaps" (Edit or Play mode, no visit): every system sky 0..18 from the baked layers
+//     (Resources/GoF2Sky: the nebula and the stars of the first system with that sky), in the sky's own frame.
+//   - "Capture All Hangar Reflection Cubemaps" (Play mode, docked anywhere): the hangar room built as each race's and
+//     each Valkyrie hangar in turn (StationLevel.RebuildHangarAs), captured once it has settled, then the station's own back.
 
 using System.Collections.Generic;
 using System.IO;
+using GoF2Remake.Data;
 using GoF2Remake.World;
 using UnityEditor;
 using UnityEngine;
@@ -66,6 +72,114 @@ namespace GoF2Remake.EditorTools
             var space = Object.FindFirstObjectByType<SpaceLevel>();
             if (space != null && space.Layout != null) { CaptureSky(space.Layout); return; }
             EditorUtility.DisplayDialog("GoF2", "Enter Play mode and dock in a hangar (its room) or fly in space (the system's sky) first.", "OK");
+        }
+
+        [MenuItem("GoF2/Tools/Capture All Sky Reflection Cubemaps", priority = 401)]
+        static void CaptureAllSkies()
+        {
+            var template = Resources.Load<Material>("GoF2Sky/SpaceSky");
+            if (template == null)
+            {
+                EditorUtility.DisplayDialog("GoF2", "Run GoF2/Build/Space Skies first (Resources/GoF2Sky).", "OK");
+                return;
+            }
+            Database db = null;
+            try { db = Database.Load(); } catch (System.Exception e) { Debug.LogWarning($"GoF2: no database, stars layer 2 for every sky ({e.Message})."); }
+            var sky = new Material(template) { name = "SpaceSky (reflection capture)", hideFlags = HideFlags.DontSave };
+            sky.SetMatrix("_SkyRotation", Matrix4x4.identity);   // the sky's own frame
+            var saved = RenderSettings.skybox;
+            int done = 0;
+            try
+            {
+                for (int t = 0; t <= 18; t++)
+                {
+                    if (EditorUtility.DisplayCancelableProgressBar("GoF2", $"Sky reflection cubemap {t}", t / 19f)) break;
+                    var nebula = Resources.Load<Cubemap>($"GoF2Sky/nebula_{t:000}");
+                    if (nebula == null) { Debug.LogWarning($"GoF2: GoF2Sky/nebula_{t:000} missing, sky {t} skipped."); continue; }
+                    // The stars layer goes with the system (index % 3, OrbitBuilder.SetupSky): the first system with this sky's.
+                    var sys = db?.Systems.Find(x => x.textureIndex == t);
+                    int stars = sys != null ? sys.index % 3 : 2;
+                    sky.SetTexture("_Stars", Resources.Load<Cubemap>($"GoF2Sky/stars_{stars:000}"));
+                    sky.SetTexture("_Nebula", nebula);
+                    RenderSettings.skybox = sky;
+                    string name = SkyReflection.SystemCubeName(new OrbitLayout { systemTexture = t });
+                    Write(name, Render(Vector3.zero, Quaternion.identity, CameraClearFlags.Skybox, 0));
+                    done++;
+                }
+            }
+            finally
+            {
+                RenderSettings.skybox = saved;
+                EditorUtility.ClearProgressBar();
+                Object.DestroyImmediate(sky);
+            }
+            var space = Application.isPlaying ? Object.FindFirstObjectByType<SpaceLevel>() : null;
+            if (space != null && space.Layout != null) SkyReflection.SetSystem(space.Layout);
+            Debug.Log($"GoF2: {done} sky reflection cubemaps captured ({FaceSize} px faces) to {OutDir}.");
+        }
+
+        // ---- every hangar (Play mode) --------------------------------------------------------------------------
+
+        static readonly List<(int hangar, int race)> hangarQueue = new List<(int, int)>();
+        static StationLevel hangarLevel;
+        static int hangarWaitFrame, hangarDone;
+        const int SettleFrames = 30;   // the room's animated layers and the new ship's shadow in place
+
+        [MenuItem("GoF2/Tools/Capture All Hangar Reflection Cubemaps", priority = 402)]
+        static void CaptureAllHangars()
+        {
+            var level = Application.isPlaying ? Object.FindFirstObjectByType<StationLevel>() : null;
+            if (level == null || level.Layout == null)
+            {
+                EditorUtility.DisplayDialog("GoF2", "Enter Play mode and dock at any station first (the hangars are built there in turn).", "OK");
+                return;
+            }
+            if (hangarLevel != null) return;   // already running
+            var db = Database.Load();
+            int Race(int station)
+            {
+                var st = db.Stations.Find(s => s.index == station);
+                var sys = st != null ? db.Systems.Find(s => s.index == st.system) : null;
+                return sys != null ? sys.raceId : 0;
+            }
+            hangarQueue.Clear();
+            for (int i = 0; i < 4; i++) hangarQueue.Add((i, i));   // Terran, Vossk, Nivelian, Midorian
+            hangarQueue.Add((7, Race(100)));                       // the Valkyrie's deep science station
+            hangarQueue.Add((8, Race(101)));                       // and its battlestation
+            hangarLevel = level;
+            hangarDone = 0;
+            NextHangar();
+            EditorApplication.update += StepHangars;
+        }
+
+        static void NextHangar()
+        {
+            var (hangar, race) = hangarQueue[0];
+            hangarLevel.RebuildHangarAs(hangar, race);
+            hangarWaitFrame = Time.frameCount + SettleFrames;
+        }
+
+        static void StepHangars()
+        {
+            if (!Application.isPlaying || hangarLevel == null) { StopHangars(false); return; }
+            if (Time.frameCount < hangarWaitFrame) return;
+            var (hangar, _) = hangarQueue[0];
+            EditorUtility.DisplayProgressBar("GoF2", $"Hangar reflection cubemap {hangar}", hangarDone / 6f);
+            if (hangarLevel.HangarRoom != null) { CaptureHangar(hangarLevel); hangarDone++; }
+            hangarQueue.RemoveAt(0);
+            if (hangarQueue.Count > 0) NextHangar();
+            else StopHangars(true);
+        }
+
+        static void StopHangars(bool finished)
+        {
+            EditorApplication.update -= StepHangars;
+            EditorUtility.ClearProgressBar();
+            if (hangarLevel != null) hangarLevel.RestoreHangar();
+            hangarLevel = null;
+            hangarQueue.Clear();
+            Debug.Log(finished ? $"GoF2: {hangarDone} hangar reflection cubemaps captured ({FaceSize} px faces) to {OutDir}."
+                               : "GoF2: the hangar captures stopped (Play mode left).");
         }
 
         static void CaptureHangar(StationLevel level)

@@ -189,6 +189,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8349584369142560859}
     m_Modifications:
+    - target: {fileID: 5939856877256832612, guid: e769c729027dfc04dba5d4ca4d3ac87e, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 7019737436149153355, guid: e769c729027dfc04dba5d4ca4d3ac87e, type: 3}
       propertyPath: m_Name
       value: sn_station_114_midorian_add

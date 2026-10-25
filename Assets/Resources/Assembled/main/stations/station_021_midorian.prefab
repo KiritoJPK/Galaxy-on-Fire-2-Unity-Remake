@@ -229,6 +229,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3219832751925872099, guid: 80a93cda1b38d4a429b35f700518b1ac, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 3252548052551637801, guid: 80a93cda1b38d4a429b35f700518b1ac, type: 3}
       propertyPath: m_Name
       value: station_021_midorian_lights_add

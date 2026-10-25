@@ -233,6 +233,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: sn_station_118_midorian_add
       objectReference: {fileID: 0}
+    - target: {fileID: 7940066496051765945, guid: 128e6689f7726ef4fa97c803f28a908b, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

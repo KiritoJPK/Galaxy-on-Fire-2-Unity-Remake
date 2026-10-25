@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Swobodne rozglądanie (przytrzymaj)",
  "kitExhaustColor": "Kolor wydechu",
  "kitExhaustColor2": "Drugi kolor",
- "mbTestStart": "Lot próbny: przed tobą piraci. Zadokuj na stacji (albo Esc > Wróć do Kreatora modów), aby wrócić."
+ "mbTestStart": "Lot próbny: przed tobą piraci. Zadokuj na stacji (albo Esc > Wróć do Kreatora modów), aby wrócić.",
+ "hudSwitchTab": "ZMIEŃ KARTĘ",
+ "hudChangeValue": "ZMIEŃ WARTOŚĆ",
+ "hudMoveChange": "RUCH / ZMIANA",
+ "pirateHelp": "Aktywność piratów\n\nWładze zgłaszają placówki i przywódców piratów widzianych w systemach. Tablica podaje system, ale nie stację: musisz przeszukać orbity. Każde zgłoszenie pokazuje poziom zagrożenia, nagrodę i jak długo pozostaje na tablicy. Zniszcz placówkę lub przywódcę, aby odebrać nagrodę.",
+ "debugHelp": "Narzędzia testowe remake’u.\n\n{0}: przełączniki zmieniające zasady gry (tryb boga, nieskończona amunicja, darmowe zakupy...).\n{1}: natychmiastowe zmiany (kredyty, naprawa, ogniwa energetyczne, cała mapa gwiezdna, pokój ze wszystkimi rasami).\n{2}: dowolny przedmiot do ładowni lub od razu zamontowany.\n{3}: leć dowolnym statkiem z gry.\n{4}: do 14 zapisanych statków z wyposażeniem.\n{5} (w locie): statki, okręty liniowe i obiekty obok ciebie.\n\nWynik ostatniej akcji pojawia się pod kartami."
 }

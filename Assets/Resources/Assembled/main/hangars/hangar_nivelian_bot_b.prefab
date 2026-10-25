@@ -64,6 +64,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 830902293823221733}
     m_Modifications:
+    - target: {fileID: 5920171108001530490, guid: 7b82db6b379c6bc4d9cf7ebea501a8cf, type: 3}
+      propertyPath: loopStartMs
+      value: 33.333332
+      objectReference: {fileID: 0}
     - target: {fileID: 6139882937633916666, guid: 7b82db6b379c6bc4d9cf7ebea501a8cf, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -169,6 +173,10 @@ PrefabInstance:
     - target: {fileID: 2036035618616025943, guid: 8fc3339289c3ac54d83bcdc8f586f23b, type: 3}
       propertyPath: m_Name
       value: hangar_nivelian_bot_b_anim
+      objectReference: {fileID: 0}
+    - target: {fileID: 4640154858148595340, guid: 8fc3339289c3ac54d83bcdc8f586f23b, type: 3}
+      propertyPath: loopStartMs
+      value: 33.333332
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

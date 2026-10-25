@@ -126,6 +126,7 @@ namespace GoF2Remake.UI
                 rootElement.schedule.Execute(() => OnUIReload(renderer, rootElement, version)).ExecuteLater(1);
                 return;
             }
+            ScrollBars.Watch(rootElement);   // Modified: the hangar's scrollbar on every scroll view that needs one
             if (!Localization.IsLoaded && languageTables != null && languageTables.Length > 0)
             {
                 int i = languageCodes != null ? System.Array.IndexOf(languageCodes, Settings.Language) : -1;
@@ -192,6 +193,23 @@ namespace GoF2Remake.UI
             storyDialogue = new DialogueView(root, voiceSource) { ButtonSound = push => Play(push ? buttonPush : buttonRelease) };
             storyDialogue.PageShown = id => { if (id == 1833) StartVoidAlarm(); };
             Bind("menuButton", OpenSystemMenu);
+            // Modified: an "i" left of Menu with the shop's controls (OptionInfo), in place of the hint row under the window.
+            var menuB = root.Q<Button>("menuButton");
+            if (menuB != null && menuB.parent.Q(name: "shopKeys") == null)
+            {
+                var shopKeys = OptionInfo.Icon(ShopHintsContent, Resources.Load<Texture2D>("GoF2Hud/option_keys"));
+                shopKeys.name = "shopKeys";
+                shopKeys.AddToClassList("station-keys");
+                shopKeys.style.position = Position.Relative;
+                shopKeys.style.width = shopKeys.style.height = 40f;
+                menuB.parent.Insert(menuB.parent.IndexOf(menuB), shopKeys);
+                // Modified: and a "?" with the lounge's help (627) while the lounge shows (StationMenu.uss .station-lounge-help).
+                var loungeHelp = OptionInfo.Icon(() => Localization.Get(627));
+                loungeHelp.AddToClassList("station-lounge-help");
+                loungeHelp.style.position = Position.Relative;
+                loungeHelp.style.width = loungeHelp.style.height = 40f;
+                menuB.parent.Insert(menuB.parent.IndexOf(menuB), loungeHelp);
+            }
             systemMenu = root.Q("systemMenu");
             systemMain = root.Q("systemMenuMain");
             systemSave = root.Q("systemMenuSave");
@@ -249,7 +267,9 @@ namespace GoF2Remake.UI
 
             HookDrag();
             root.RegisterCallback<PointerDownEvent>(OnPointerDown, TrickleDown.TrickleDown);
-            root.RegisterCallback<PointerMoveEvent>(e => { if (e.pointerType == PointerType.mouse) SetTouchMode(false); }, TrickleDown.TrickleDown);
+            // Modified: the main menu's click sound on every button and toggle clicked (those without one had none).
+            root.RegisterCallback<ClickEvent>(e => { if (UiHover.ClickSounds(e.target)) Play(buttonRelease); });
+            root.RegisterCallback<PointerMoveEvent>(e => { if (e.pointerType == PointerType.mouse) { SetTouchMode(false); pointerDriven = true; pointerPos = e.position; } }, TrickleDown.TrickleDown);
             // The mouse takes the selection along to the button it is over (like MainMenu.HookFocusSound): a menu opened with
             // the mouse focused its first entry, and that highlight stayed beside the hovered one.
             root.RegisterCallback<PointerOverEvent>(e =>
@@ -257,8 +277,14 @@ namespace GoF2Remake.UI
                 if (e.pointerType != PointerType.mouse || !InputMode.MouseMovedRecently || !(e.target is VisualElement t)) return;   // not a list scrolling under it
                 var b = t as Button ?? t.GetFirstAncestorOfType<Button>();
                 if (b != null && b.ClassListContains("station-button") && Navigable(b) && b.focusController?.focusedElement != b) b.Focus();
+                // Modified: the hover sound when the mouse comes onto a tab or a side menu button (the main view's); anything
+                // else is silent under the mouse (UiHover.MenuTarget). The keys still sound on every move (FocusIn below).
+                var h = UiHover.MenuTarget(t);
+                if (h != lastHover) { lastHover = h; if (h != null && h.enabledInHierarchy) PlayHover(); }
             });
             root.RegisterCallback<NavigationMoveEvent>(OnNavigate, TrickleDown.TrickleDown);
+            // Modified: the hover sound also when the keys / a controller move the selection to a button.
+            root.RegisterCallback<FocusInEvent>(e => { if (!pointerDriven && !touchMode && e.target is VisualElement v && IsHoverable(v)) PlayHover(); }, TrickleDown.TrickleDown);
             // The hangar window keeps its own selection; Enter / A are read in Update, so no button may also take them.
             root.RegisterCallback<NavigationSubmitEvent>(e =>
             {
@@ -299,8 +325,7 @@ namespace GoF2Remake.UI
             bool inLounge = level.View == StationView.Lounge;
             hangarButton.EnableInClassList("station-button--current", HangarOpen);
             loungeButton.EnableInClassList("station-button--current", inLounge);
-            viewTitle.text = HangarOpen ? Localization.Get(167).ToUpperInvariant() : inLounge ? Localization.Get(398).ToUpperInvariant() : "";
-            viewTitle.style.display = viewTitle.text.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            RefreshViewTitle();
             // Inspect ship: the hangar's view only (not in the lounge, nor in VR, which stands in the room already).
             inspectButton.style.display = inLounge || Vr.VrMode.Enabled ? DisplayStyle.None : StyleKeyword.Null;
             RefreshCustomizeButton();
@@ -740,7 +765,14 @@ namespace GoF2Remake.UI
             if (!Settings.TutorialHints) { }   // the tutorial popups option
             else if (cm > 15 && Session.Hints.Add(0xe)) map.ShowHint(HintText(628, true));
             else if (cm < 16 && Session.Hints.Add(0xf)) map.ShowHint(HintText(631, true));
+            // Modified: the same help any time, behind the map's "?" (top right).
+            map.SetHelp(MapHelpText);
+            // Modified: and the station's title with "| MAP" in its header, as the station's own views.
+            map.SetStationTitle(root.Q<Label>("stationTitle")?.text);
         }
+
+        /// <summary>Modified: the star map's help (the first-visit hint 628 / 631) for its "?" (also the Missions window's map).</summary>
+        public string MapHelpText => HintText(Session.WorldIndex > 15 ? 628 : 631, true);
 
         /// <summary>Remake: whether the Missions window's map may travel: what the Map button needs (unlocked, a controlling
         /// device, the map not refused by the story).</summary>
@@ -1325,6 +1357,12 @@ namespace GoF2Remake.UI
             loadGameButton = SystemButton(Localization.Get(29), 1, () => ShowSystemPage(SysPage.Load), systemMain);
             optionsButton = SystemButton(Localization.Get(31), 3, () => ShowSystemPage(SysPage.Options), systemMain);
             aboutButton = SystemButton(Localization.Get(43), 4, () => { ShowDialog(AboutText.Get(), null, true); AboutText.Hook(root.Q<Label>("dialogText")); }, systemMain);
+            // Modified: no New game and About in the station's menu (the main menu has them); Back at the panel's top right,
+            // like the shop's Back (StationMenu.uss .system-menu-close), on the menu's own page only.
+            newGameButton.style.display = DisplayStyle.None;
+            aboutButton.style.display = DisplayStyle.None;
+            var menuPanel0 = root.Q(className: "system-menu");
+            if (menuPanel0 != null && systemClose != null) { menuPanel0.Add(systemClose); systemClose.AddToClassList("system-menu-close"); }
             // Remake: the Debug page once the main menu's Debug panel has been opened (Cheats); in multiplayer whenever the
             // session allows it (made in every session: a server's admin may switch it on or off meanwhile, ShowSystemPage).
             if (Cheats.PageShown || GoF2Remake.Multiplayer.NetGame.Active)
@@ -1357,7 +1395,7 @@ namespace GoF2Remake.UI
             optionsView.DefaultsRestored += () => Play(buttonRelease);
             optionsView.FooterChanged += () => Select(optionsView.FooterFocus);   // the defaults prompt opened / closed
             optionsView.Changed += c => { if (c.def.kind == OptionKind.Choice || c.def.kind == OptionKind.Toggle) Play(buttonRelease); };
-            optionsView.TabChanged += () => Select(optionsView.ActiveTab);
+            optionsView.TabChanged += () => { Play(buttonRelease); Select(optionsView.ActiveTab); };   // Modified: a tab's sound
             systemMenu.Add(optionsView.Root);
         }
 
@@ -1370,6 +1408,7 @@ namespace GoF2Remake.UI
 
         /// <summary>The Debug page: the cheat toggles and actions (CheatsCatalog); an action reports in a toast.</summary>
         int stationDebugTab;
+        Button activeDebugTab;
 
         /// <summary>The Debug page like the pause menu's (remake-only, CheatsCatalog): tabs Cheats / Actions / Give items (click,
         /// Q / E or LB / RB), the toggles and actions in two columns, the item pickers with "Add to hold" / "Add and mount";
@@ -1384,17 +1423,20 @@ namespace GoF2Remake.UI
             for (int i = 0; i < names.Length; i++)
             {
                 int tab = i;
-                var b = new Button { text = names[i].ToUpperInvariant(), focusable = false };
+                // Modified: focusable, so the keys / a controller reach the tab row (up from the first row; left / right switch).
+                var b = new Button { text = names[i].ToUpperInvariant(), focusable = true };
+                if (i == stationDebugTab) activeDebugTab = b;
                 b.AddToClassList("debug-tab");
                 b.AddToClassList("gof-semibold");
                 b.EnableInClassList("debug-tab--active", i == stationDebugTab);
-                b.clicked += () => SwitchDebugTab(tab - stationDebugTab);
+                b.clicked += () => { Play(buttonRelease); SwitchDebugTab(tab - stationDebugTab); };   // Modified: its sound
                 tabs.Add(b);
             }
-            var hint = new Label(InputMode.Current == InputKind.Gamepad ? "LB  ◂  ▸  RB" : InputMode.Current == InputKind.Touch ? "" : "Q  ◂  ▸  E")
-                { pickingMode = PickingMode.Ignore };
-            hint.AddToClassList("debug-tab-hint");
-            tabs.Add(hint);
+            // Modified: an "i" with the page's keys and a "?" with what it is for, in place of the "Q ◂ ▸ E" line; the "i" sat
+            // a little higher than the "?" here (its picture's circle is drawn a touch higher): 1 px down.
+            MenuKeys.AddDebugIcons(tabs);
+            var debugKeys = tabs.Q(className: "menu-keys");
+            if (debugKeys != null) debugKeys.style.top = 1f;
             optionsScroll.Add(tabs);
 
             void Row(OptionDef def, VisualElement parent, string cls = null)
@@ -1507,6 +1549,7 @@ namespace GoF2Remake.UI
             sysPage = page;
             bool slots = page == SysPage.Save || page == SysPage.Load;
             systemMain.EnableInClassList("system-menu-page--shown", page == SysPage.Main);
+            if (systemClose != null) systemClose.style.display = page == SysPage.Main ? StyleKeyword.Null : DisplayStyle.None;
             systemSave.EnableInClassList("system-menu-page--shown", slots);
             systemOptions?.EnableInClassList("system-menu-page--shown", page == SysPage.Debug);
             var menuPanel = root.Q(className: "system-menu");
@@ -1527,7 +1570,7 @@ namespace GoF2Remake.UI
                  : page == SysPage.Load ? saveSlotList.contentContainer.ElementAt(0)
                  : page == SysPage.Options ? optionsView.ActiveTab
                  : page == SysPage.Debug ? (stationOptions.Count > 0 ? stationOptions[0].Field : optionsBack)
-                 : newGameButton);
+                 : SystemMenuItems()[0]);   // Modified: New game is hidden: the first shown one
             BuildHints(InputMode.Current);
         }
 
@@ -1603,6 +1646,7 @@ namespace GoF2Remake.UI
             if (DebugPage)
             {
                 var o = new System.Collections.Generic.List<VisualElement>();
+                if (activeDebugTab != null) o.Add(activeDebugTab);   // Modified: the tab row first
                 foreach (var c in stationOptions) o.Add(c.Field);
                 o.Add(optionsBack);
                 return o.ToArray();
@@ -1690,7 +1734,8 @@ namespace GoF2Remake.UI
 
         void OnPointerDown(PointerDownEvent e)
         {
-            if (e.pointerType == PointerType.mouse) { SetTouchMode(false); return; }
+            if (UiHover.SilentPress(e.target)) pressFrame = Time.frameCount;   // Modified: see Play
+            if (e.pointerType == PointerType.mouse) { SetTouchMode(false); pointerDriven = true; return; }
             // Don't focus what the finger presses, except a text field (the chat line, the multiplayer window's codes, amounts
             // and names): it needs the focus for the on-screen keyboard (MainMenu does the same).
             if (TextFieldKeys.InTextField(e.target)) { touchMode = true; root.EnableInClassList("can-hover", false); return; }
@@ -1705,7 +1750,73 @@ namespace GoF2Remake.UI
 
         void Select(VisualElement e)
         {
-            if (!touchMode) e?.Focus();
+            if (touchMode) return;
+            // Modified: with the mouse in use a menu or window opens with nothing marked (its first button, the Missions
+            // window's Show on map, looked hovered); the keys and a controller still get their selection (KeysTakeOver).
+            if (pointerDriven && InputMode.Current != InputKind.Gamepad)
+            {
+                if (root?.focusController?.focusedElement is Button b) b.Blur();
+                return;
+            }
+            e?.Focus();
+        }
+
+        /// <summary>Modified: the mouse moved or pressed last (Select leaves nothing marked); the keys / a controller clear it.</summary>
+        bool pointerDriven = true;
+        Vector2 pointerPos;   // the mouse's last place (panel coordinates)
+
+        /// <summary>Modified: with the mouse in use, a button keeps its marked look only while the mouse is over it (it stayed
+        /// marked after the mouse left).</summary>
+        void UnmarkLeftButton()
+        {
+            if (!pointerDriven || InputMode.Current == InputKind.Gamepad || root?.panel == null) return;
+            // Any marked item, not only buttons (the Debug rows: the item grids' amber frame, a toggle); not a text field.
+            if (!(root.focusController?.focusedElement is VisualElement b) || b is TextField || b.GetFirstAncestorOfType<TextField>() != null) return;
+            var picked = root.panel.Pick(pointerPos);
+            if (picked == null || !(picked == b || b.Contains(picked))) b.Blur();
+        }
+
+        VisualElement lastHover;
+
+        /// <summary>The title's "| view" after the station's name: the hangar 167, the lounge 398. Modified: also the window
+        /// open from the main view: Missions 129, Status 169 (followed every frame: the windows open and close from several
+        /// places). The map shows it in its own header (StarMap.SetStationTitle: here it flashed for a frame).</summary>
+        void RefreshViewTitle()
+        {
+            if (viewTitle == null || level == null) return;
+            string t = HangarOpen ? Localization.Get(167)
+                : missions != null && missions.IsOpen ? Localization.Get(129)
+                : status != null && status.IsOpen ? Localization.Get(169)
+                : level.View == StationView.Lounge ? Localization.Get(398) : "";
+            t = t.ToUpperInvariant();
+            if (viewTitle.text == t) return;
+            viewTitle.text = t;
+            viewTitle.style.display = t.Length > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        /// <summary>Modified: what the keys' move sound is for: a button, a toggle, a slider, a choice (options, Debug).</summary>
+        static bool IsHoverable(VisualElement v) => UiHover.IsHoverable(v);
+
+        /// <summary>Modified: the mouse onto a button (MainMenu.HookFocusSound's push, softer).</summary>
+        void PlayHover()
+        {
+            if (sfxSource != null && buttonPush != null) sfxSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(buttonPush), Settings.SfxVolume * 0.45f);
+        }
+
+        /// <summary>Modified: an arrow / Tab after the mouse: the keys take over, and with nothing marked the view's first item is
+        /// (the panel sends no navigation without a focused element).</summary>
+        void KeysTakeOver()
+        {
+            var kb = UnityEngine.InputSystem.Keyboard.current;
+            if (!pointerDriven || kb == null || HangarOpen) return;
+            if (!(kb.upArrowKey.wasPressedThisFrame || kb.downArrowKey.wasPressedThisFrame || kb.leftArrowKey.wasPressedThisFrame
+                  || kb.rightArrowKey.wasPressedThisFrame || kb.tabKey.wasPressedThisFrame)) return;
+            if (GoF2Remake.Multiplayer.NetChat.Typing) return;
+            pointerDriven = false;
+            if (root.focusController?.focusedElement != null) return;
+            if (missions != null && missions.IsOpen) Select(missions.NavItems()[0]);
+            else if (lounge != null && lounge.ChatOpen) lounge.FocusFirst();
+            else Select(DefaultFocus());
         }
 
         /// <summary>A button the keys / controller can move to: enabled (the story locks grey some out) and shown.</summary>
@@ -1732,6 +1843,7 @@ namespace GoF2Remake.UI
         {
             if (GoF2Remake.Multiplayer.NetChat.Typing) return;   // the arrows move the chat line's cursor
             SetTouchMode(false);
+            pointerDriven = false;
             bool vertical = e.direction == NavigationMoveEvent.Direction.Up || e.direction == NavigationMoveEvent.Direction.Down;
             bool horizontal = e.direction == NavigationMoveEvent.Direction.Left || e.direction == NavigationMoveEvent.Direction.Right;
             if (HangarOpen && !DialogOpen)
@@ -1792,6 +1904,19 @@ namespace GoF2Remake.UI
                 // (a toggle flipped on left / right, and down went to the button beside).
                 var f = root.focusController?.focusedElement as VisualElement;
                 var c = stationOptions.Find(o => o.Field == f);
+                // Modified: on the tab row left / right switch tabs (the new tab keeps the selection), down goes to the first row.
+                if (f != null && f.ClassListContains("debug-tab"))
+                {
+                    if (horizontal)
+                    {
+                        SwitchDebugTab(e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1);
+                        Select(activeDebugTab);
+                    }
+                    else if (e.direction == NavigationMoveEvent.Direction.Down && stationOptions.Count > 0) Select(stationOptions[0].Field);
+                    e.StopPropagation();
+                    root.focusController?.IgnoreEvent(e);
+                    return;
+                }
                 if (horizontal && c != null && c.StepsSideways) c.Step(e.direction == NavigationMoveEvent.Direction.Left ? -1 : 1);
                 else if (vertical && CheatsCatalog.MoveVertical(f, e.direction == NavigationMoveEvent.Direction.Up ? -1 : 1)) { }
                 else if (System.Array.IndexOf(items, f) < 0) NextNavigable(items, -1, 1)?.Focus();
@@ -1835,23 +1960,8 @@ namespace GoF2Remake.UI
             if (hints == null) return;
             hints.Clear();
             string T(string key, string english) => Localization.Extra(key, english);
-            if (SystemMenuOpen)
-            {
-                string select = T("hudSelect", "SELECT"), confirm = T("hudConfirm", "CONFIRM"), close = T("hudBack", "BACK");
-                if (kind == InputKind.KeyboardMouse)
-                {
-                    Hint(select, InputGlyph.Key("W"), InputGlyph.Key("S"));
-                    Hint(confirm, InputGlyph.Key("ENTER", true));
-                    Hint(close, InputGlyph.Key("ESC"));
-                }
-                else if (kind == InputKind.Gamepad)
-                {
-                    Hint(select, InputGlyph.Pad(PadButton.DPad));
-                    Hint(confirm, InputGlyph.Pad(PadButton.A));
-                    Hint(close, InputGlyph.Pad(PadButton.B));
-                }
-                return;
-            }
+            // Modified: the system menu (MENU) shows no hints under it any more (its own Back, the keys as in every menu).
+            if (SystemMenuOpen) return;
             if (HangarOpen)
             {
                 bool store = hangarWindow != null && hangarWindow.StorageMode;   // the Kaamo Club's storage
@@ -1887,11 +1997,8 @@ namespace GoF2Remake.UI
                 return;
             }
             // The main view shows no hints: the buttons cover hangar / lounge / map / launch / menu (their keys still work:
-            // 1 / 2 / M / L, LB / RB / Y / X). Only the lounge's way back.
-            bool hangar = level == null || level.View == StationView.Hangar;
-            if (hangar) return;
-            if (kind == InputKind.KeyboardMouse) Hint(T("hudBack", "BACK"), InputGlyph.Key("ESC"));
-            else if (kind == InputKind.Gamepad) Hint(T("hudBack", "BACK"), InputGlyph.Pad(PadButton.B));
+            // 1 / 2 / M / L, LB / RB / Y / X). Modified: the lounge's Esc / B Back hint is gone too: its Back button (styled
+            // as the star map's) is the way back; Esc / B still work.
         }
 
         void Hint(string label, params VisualElement[] glyphs)
@@ -1935,7 +2042,7 @@ namespace GoF2Remake.UI
         // (a tap on touch, which has no keys). Remake (players' suggestion, 2026-10-17): Action Freeze's photo tools
         // (PhotoTools): the free camera (F / X) within six ship radii of the hull, above the pad, and the Camera settings
         // panel (Tab / View); not in the Customize screen.
-        VisualElement inspectOverlay, inspectHints, inspectFooter;
+        VisualElement inspectOverlay, inspectHints, inspectFooter, inspectKeys;
         PhotoTools inspectTools;
         Label inspectTitle, inspectMessage;
         Button inspectBack;
@@ -1957,7 +2064,12 @@ namespace GoF2Remake.UI
             inspectMessage = OrbitViewUi.Message();
             inspectOverlay.Add(inspectMessage);
             inspectHints = OrbitViewUi.Hints();
-            inspectOverlay.Add(inspectHints);   // top right
+            inspectOverlay.Add(inspectHints);   // top right (Modified: unseen, GoF2Common.uss: the "i" holds them)
+            // Modified: an "i" at the top right with the controls (as the star map's: OptionInfo), in place of the hint row.
+            inspectKeys = OptionInfo.Icon(InspectHintsContent, Resources.Load<Texture2D>("GoF2Hud/option_keys"));
+            inspectKeys.AddToClassList("orbit-view-keys");
+            inspectKeys.style.width = inspectKeys.style.height = 40f;
+            inspectOverlay.Add(inspectKeys);
             inspectOverlay.Add(footer);
             customize = new ShipCustomizePanel { ClickSound = () => Play(buttonRelease), StatsText = CustomStatsText };
             customize.Changed += ShowCustomBuild;
@@ -2042,6 +2154,7 @@ namespace GoF2Remake.UI
             customizing = true;
             inspectTitle.text = "";
             inspectHints.style.display = DisplayStyle.None;   // the panel has its own keys
+            if (inspectKeys != null) { OptionInfo.Hide(); inspectKeys.style.display = DisplayStyle.None; }
             inspectFooter.style.display = DisplayStyle.None;  // and its own Cancel: the footer's Back lay under its Apply
             customize.Show(GameNames.Ship(ship), kit, ModShipKits.TypeOf(ship), build, ship);
             level.PreviewEngines(true);   // the exhaust running, so its style and colours can be seen
@@ -2118,6 +2231,7 @@ namespace GoF2Remake.UI
             customize.Hide();
             // InspectFrameX stays until the orbit has blended back (StationLevel resets it), so the view turns back with it.
             inspectHints.style.display = StyleKeyword.Null;
+            if (inspectKeys != null) inspectKeys.style.display = StyleKeyword.Null;
             inspectFooter.style.display = StyleKeyword.Null;
             EndInspect();
             Select(customizeButton);
@@ -2147,6 +2261,33 @@ namespace GoF2Remake.UI
             FpsCounter.Suppressed = inspectUiHidden;
             inspectMessage.text = Localization.Get(saved ? 55 : 56);   // "Screenshot saved." / "Error saving screenshot."
             inspectMessageMs = 3000f;
+        }
+
+        /// <summary>Modified: the shop's "i" window: BuildHints' rows for the hangar window (the keyboard's on touch).</summary>
+        VisualElement ShopHintsContent()
+        {
+            var c = new VisualElement { pickingMode = PickingMode.Ignore };
+            c.AddToClassList("hints-popup");
+            var saved = hints;
+            hints = c;
+            try { BuildHints(InputMode.Current == InputKind.Gamepad ? InputKind.Gamepad : InputKind.KeyboardMouse); }
+            finally { hints = saved; }
+            return c;
+        }
+
+        /// <summary>Modified: the "i" window's controls: BuildInspectHints' rows (their actions close the window first).</summary>
+        VisualElement InspectHintsContent()
+        {
+            var c = new VisualElement { pickingMode = PickingMode.Ignore };
+            c.AddToClassList("hints-popup");
+            OrbitViewUi.BuildHints(c, InputMode.Current, new[] { "W", "A", "S", "D" },
+                () => { OptionInfo.Hide(); Play(buttonRelease); SetInspectUiHidden(true); },
+                () => { OptionInfo.Hide(); Play(buttonRelease); TakeInspectScreenshot(); },
+                () => { OptionInfo.Hide(); EndInspect(); }, () => Play(buttonPush),
+                customizing ? null : (System.Action)(() => { OptionInfo.Hide(); inspectTools.ToggleFree(); }),
+                customizing ? null : (System.Action)(() => { OptionInfo.Hide(); inspectTools.ToggleSettings(); }),
+                !customizing && inspectTools.Free);
+            return c;
         }
 
         void BuildInspectHints(InputKind kind)
@@ -2443,6 +2584,12 @@ namespace GoF2Remake.UI
             bool flying = level.PlayerFlying;
             bool inspecting = level.Inspect.Active;
             UpdateUiAnimation(flying || inspecting);   // Inspect ship: the menu flies out like for a flight
+            // Modified: in the lounge before its bar shows (the camera intro), the hangar's menu is hidden at once, as the
+            // hangar window hides it (Lounge.uss .lounge-intro); lounge-open takes over in the same frame it comes.
+            root.EnableInClassList("lounge-intro", level.View == StationView.Lounge && !root.ClassListContains("lounge-open"));
+            KeysTakeOver();
+            UnmarkLeftButton();
+            RefreshViewTitle();
             if (inspectOverlay != null) inspectOverlay.EnableInClassList("inspect-overlay--shown", inspecting);
             if (flying)
             {
@@ -2486,9 +2633,29 @@ namespace GoF2Remake.UI
                 if ((dkb != null && dkb.eKey.wasPressedThisFrame) || (dpad != null && dpad.rightShoulder.wasPressedThisFrame)) tab = 1;
                 if (tab != 0)
                 {
-                    if (sysPage == SysPage.Debug) SwitchDebugTab(tab); else optionsView.StepTab(tab);
+                    if (sysPage == SysPage.Debug) { Play(buttonRelease); SwitchDebugTab(tab); } else optionsView.StepTab(tab);
                     return;
                 }
+            }
+            // Modified: the Missions window's tabs too (Q / E, LB / RB), like the hangar's and the menu's.
+            if (missions != null && missions.IsOpen && !DialogOpen && !SystemMenuOpen && !StarMap.IsOpen)
+            {
+                var mkb = GoF2Remake.Multiplayer.NetChat.Keys;
+                var mpad = Gamepad.current;
+                int mt = 0;
+                if ((mkb != null && mkb.qKey.wasPressedThisFrame) || (mpad != null && mpad.leftShoulder.wasPressedThisFrame)) mt = -1;
+                if ((mkb != null && mkb.eKey.wasPressedThisFrame) || (mpad != null && mpad.rightShoulder.wasPressedThisFrame)) mt = 1;
+                if (mt != 0) { missions.StepTab(mt); return; }
+            }
+            // Modified: the Status window's tabs too (Status, Medals).
+            if (status != null && status.IsOpen && !DialogOpen && !SystemMenuOpen)
+            {
+                var skb = GoF2Remake.Multiplayer.NetChat.Keys;
+                var spad = Gamepad.current;
+                int st = 0;
+                if ((skb != null && skb.qKey.wasPressedThisFrame) || (spad != null && spad.leftShoulder.wasPressedThisFrame)) st = -1;
+                if ((skb != null && skb.eKey.wasPressedThisFrame) || (spad != null && spad.rightShoulder.wasPressedThisFrame)) st = 1;
+                if (st != 0) { status.StepTab(st); return; }
             }
             if (lounge != null && lounge.Active != root.ClassListContains("lounge-open")) lounge.OnViewChanged();   // also under a dialog
             if (StarMap.IsOpen) return;   // the map has its own input
@@ -2636,8 +2803,19 @@ namespace GoF2Remake.UI
                 level.SkipIntro();
         }
 
+        /// <summary>Modified: a click sounds as in the main menu: only the release, on the click (a pointer press's push is
+        /// left out, but in the shop window), once per frame (the generic click sound, UiHover.ClickSounds, and a button's
+        /// own).</summary>
+        int pressFrame = -1, releaseFrame = -1;
+
         void Play(AudioClip clip)
         {
+            if (clip != null && clip == buttonPush && pressFrame == Time.frameCount) return;
+            if (clip != null && clip == buttonRelease)
+            {
+                if (releaseFrame == Time.frameCount) return;
+                releaseFrame = Time.frameCount;
+            }
             if (sfxSource != null && clip != null) sfxSource.PlayOneShot(GoF2Remake.Modding.ModSounds.Get(clip), Settings.SfxVolume);
         }
 

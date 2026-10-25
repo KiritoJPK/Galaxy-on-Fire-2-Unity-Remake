@@ -91,6 +91,13 @@ namespace GoF2Remake.UI
                 Root.Add(tab.scroll);
                 tabs.Add(tab);
             }
+            // Modified: an "i" with the page's keys at the tab row's right end (MenuKeys: select, change a value, switch tab
+            // with Q / E or LB / RB, confirm, back).
+            var keysIcon = MenuKeys.KeysIcon(() => MenuKeys.Content(MenuKeys.Rows.Select | MenuKeys.Rows.Change | MenuKeys.Rows.Tabs
+                                                                    | MenuKeys.Rows.Confirm | MenuKeys.Rows.Back));
+            keysIcon.style.marginLeft = new StyleLength(StyleKeyword.Auto);
+            keysIcon.style.marginBottom = 6f;
+            tabRow.Add(keysIcon);
             foreach (var def in defs)
             {
                 if (def.menuOnly) continue;   // only in the main menu (the save folder)
@@ -269,15 +276,16 @@ namespace GoF2Remake.UI
             if (tabs.Count > 1) SelectTab(((TabIndex + dir) % tabs.Count + tabs.Count) % tabs.Count);
         }
 
-        /// <summary>The pause menu's highlight (its rows don't take focus): the row, tab or footer button looks focused.</summary>
-        public void Select(VisualElement item)
+        /// <summary>The pause menu's highlight (its rows don't take focus): the row, tab or footer button looks focused.
+        /// Modified: 'scrollTo' false leaves the page where it is (the row under the mouse).</summary>
+        public void Select(VisualElement item, bool scrollTo = true)
         {
             if (selected != null) Mark(selected, false);
             selected = item;
             if (selected == null) return;
             Mark(selected, true);
             var row = RowOf(selected);
-            if (row != null) tabs[TabIndex].scroll.ScrollTo(row.Root);
+            if (row != null && scrollTo) tabs[TabIndex].scroll.ScrollTo(row.Root);
         }
 
         static void Mark(VisualElement e, bool on)

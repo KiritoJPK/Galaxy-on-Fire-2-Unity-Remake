@@ -88,6 +88,45 @@
     display: flex;
 }
 
+/* Modified: the shop's "i" (StationMenu: OptionInfo, its controls) left of Menu while the hangar window is open; the hint
+   row under the window gives way to it. */
+.station-keys {
+    display: none;
+    margin-left: auto;
+}
+
+.hangar-open .station-keys {
+    display: flex;
+}
+
+.hangar-open .station-menu-button {
+    margin-left: 14px;
+}
+
+/* Modified: the lounge's help "?" left of Menu while the lounge shows. */
+.station-lounge-help {
+    display: none;
+    margin-left: auto;
+}
+
+.lounge-open .station-lounge-help {
+    display: flex;
+}
+
+.lounge-open .station-menu-button {
+    margin-left: 14px;
+}
+
+/* Modified: a window's help "?" beside its Back (the Missions window, the hangar's: OptionInfo). */
+.window-help {
+    align-self: center;
+    margin: 0 14px 0 0;
+}
+
+.hangar-open .station-hints {
+    display: none;
+}
+
 .can-hover .station-menu-button:hover {
     border-color: var(--gof-amber);
     color: #FFFFFF;
@@ -382,6 +421,39 @@
     letter-spacing: 6px;
     color: #FFFFFF;
     margin-bottom: 20px;
+}
+
+/* Modified: the menu's Back at the panel's top right, as the shop's (HangarWindow.uss .hangar-close). */
+.system-menu-close {
+    position: absolute;
+    top: 26px;
+    right: 40px;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 20px;
+    font-size: 20px;
+    letter-spacing: 3px;
+    -unity-text-align: middle-center;
+    color: var(--gof-text);
+    background-color: rgba(4, 10, 18, 0.55);
+    border-width: 2px;
+    border-left-width: 2px;
+    border-color: var(--gof-cyan-soft);
+    border-radius: 4px;
+}
+
+.can-hover .system-menu-close:hover,
+.system-menu-close:focus {
+    padding-left: 20px;
+    border-color: var(--gof-amber);
+    color: #FFFFFF;
+}
+
+/* Modified: the Options page's title as the menu's (white): it was the shared panels' cyan. */
+.options-panel > .panel-title {
+    font-size: 28px;
+    letter-spacing: 6px;
+    color: #FFFFFF;
 }
 
 .system-menu-page {

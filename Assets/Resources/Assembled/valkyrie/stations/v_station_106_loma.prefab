@@ -65,6 +65,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2639183547071182138}
     m_Modifications:
+    - target: {fileID: 1118123164011090641, guid: 7ebc8c58d42bc3747920797d03b301c1, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 1369687968728471043, guid: 7ebc8c58d42bc3747920797d03b301c1, type: 3}
       propertyPath: m_Name
       value: v_station_106_loma_lights_add

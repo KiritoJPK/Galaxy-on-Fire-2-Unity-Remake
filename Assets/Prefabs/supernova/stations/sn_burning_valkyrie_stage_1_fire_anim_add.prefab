@@ -141,6 +141,7 @@ MonoBehaviour:
   loop: 1
   loopStartMs: 0
   pingPongRotation: 0
+  headingFirst: 0
   speed: 1
   metersPerUnit: 0.05
   positionMap:

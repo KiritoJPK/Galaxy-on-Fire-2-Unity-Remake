@@ -127,6 +127,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6907933848220153318}
     m_Modifications:
+    - target: {fileID: 4446554262117224114, guid: 13089f423c4be1243abf5f2d6e1dc0ab, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 4999824487542947277, guid: 13089f423c4be1243abf5f2d6e1dc0ab, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -189,6 +193,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6907933848220153318}
     m_Modifications:
+    - target: {fileID: 649728101648628043, guid: 8d6dfa27d748d7c4a815e2a6566b5e71, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 7217591695568558550, guid: 8d6dfa27d748d7c4a815e2a6566b5e71, type: 3}
       propertyPath: m_Name
       value: bar_nivelian_alpha

@@ -67,6 +67,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: projectile_009_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 1532267389809142738, guid: 92da7030e25d78641a05b4b49d8de7a1, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 1934718171097836966, guid: 92da7030e25d78641a05b4b49d8de7a1, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

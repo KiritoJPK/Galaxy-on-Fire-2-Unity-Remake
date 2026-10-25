@@ -129,6 +129,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8693220310738651683}
     m_Modifications:
+    - target: {fileID: 1386803773945351747, guid: 62b60716d80aec146ab98662f9437480, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     - target: {fileID: 7317908995889025417, guid: 62b60716d80aec146ab98662f9437480, type: 3}
       propertyPath: m_Name
       value: bar_visitor_glow

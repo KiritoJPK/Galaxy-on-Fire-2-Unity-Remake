@@ -297,28 +297,33 @@
 }
 
 /* The Missions / Most Wanted tabs (129 / 3219) next to the title; only with a board here. */
+/* Modified: the Missions window's tabs as the hangar's (HangarWindow.uss .hangar-tab): no title before them, plain text,
+   the active one white over an amber line. */
 .missions-tab {
-    margin: 0 0 0 10px;
-    padding: 6px 16px;
-    font-size: 18px;
-    letter-spacing: 3px;
+    margin: 0 6px 0 0;
+    padding: 12px 28px;
+    font-size: 24px;
+    letter-spacing: 4px;
     color: var(--gof-text-dim);
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(0, 0, 0, 0);
     border-width: 0;
-    border-bottom-width: 2px;
+    border-bottom-width: 3px;
     border-bottom-color: rgba(0, 0, 0, 0);
     border-radius: 0;
 }
 
 .missions-tab--active {
-    color: var(--gof-cyan);
-    border-bottom-color: var(--gof-cyan);
+    color: #FFFFFF;
+    border-bottom-color: var(--gof-amber);
 }
 
 .missions-tab:focus,
 .can-hover .missions-tab:hover {
     color: #FFFFFF;
-    background-color: var(--gof-cyan-faint);
+}
+
+#missionsTitle {
+    display: none;
 }
 
 .missions-tab--hidden,
@@ -397,26 +402,43 @@
     display: none;
 }
 
+/* Modified: as the star map's Back (StarMap.uss .map-button): dark, a soft cyan edge, amber when hovered / focused,
+   filled amber while pressed. */
 .lounge-back {
     display: none;
     position: absolute;
     left: 40px;
     bottom: 40px;
     min-width: 200px;
-    padding: 18px 30px;
-    font-size: 26px;
+    padding: 16px 28px;
+    font-size: 24px;
     letter-spacing: 5px;
     -unity-text-align: middle-center;
-    color: #FFFFFF;
-    background-color: rgba(62, 200, 255, 0.12);
+    color: var(--gof-text);
+    background-color: rgba(4, 10, 18, 0.7);
     border-width: 2px;
-    border-color: var(--gof-cyan);
+    border-color: var(--gof-cyan-soft);
     border-radius: 4px;
 }
 
 .lounge-back:focus,
 .can-hover .lounge-back:hover {
-    background-color: rgba(62, 200, 255, 0.28);
+    color: #FFFFFF;
+    border-color: var(--gof-amber);
+    background-color: rgba(255, 166, 48, 0.2);
+}
+
+.lounge-back:active {
+    background-color: var(--gof-amber);
+    color: #0B1016;
+}
+
+/* Modified: the lounge's camera intro (StationMenu: lounge-intro until lounge-open): the hangar's menu hidden at once. */
+.lounge-intro .side-panel,
+.lounge-intro .launch-button,
+.lounge-intro .side-shade,
+.lounge-intro .station-hints {
+    display: none;
 }
 
 .lounge-open .lounge-back {

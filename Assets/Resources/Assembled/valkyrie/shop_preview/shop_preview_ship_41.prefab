@@ -64,6 +64,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 478626372764486337}
     m_Modifications:
+    - target: {fileID: 488055074801581105, guid: 36bf48f52249912408abfa489411e092, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8520256459740340769, guid: 36bf48f52249912408abfa489411e092, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -126,6 +130,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 478626372764486337}
     m_Modifications:
+    - target: {fileID: 2090315622385154841, guid: 3662e0db4e787834890d079ab950d855, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3683260579678720763, guid: 3662e0db4e787834890d079ab950d855, type: 3}
       propertyPath: m_Name
       value: v_ship_041_vossk

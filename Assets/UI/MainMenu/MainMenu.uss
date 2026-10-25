@@ -193,7 +193,7 @@
     align-items: flex-start;
     padding-left: 2%;
     padding-right: 6%;
-    padding-top: 6%;
+    padding-top: 0;   /* Modified: the panels centred top to bottom (6 % from the top pushed them low) */
 }
 
 .panel {
@@ -217,6 +217,14 @@
 /* Options: wider than the other panels, so its six tabs fit on one line. */
 #optionsPanel {
     max-width: 1000px;
+}
+
+/* Modified: the Language page as tall as the other tabs' scroll pages (GoF2Common.uss .options-scroll): sized by its few
+   buttons, the window shrank whenever that tab was shown. */
+#languagePage {
+    height: 560px;
+    flex-shrink: 1;
+    min-height: 160px;
 }
 
 .panel--wide {
@@ -279,8 +287,11 @@
     flex-shrink: 0;
 }
 
+/* Modified: wrapped to a second line when long (the Portuguese "Arma secundária sem tempo de recarga" ran over its checkbox
+   on one line). */
 .debug-column--cheats .unity-base-field__label {
-    white-space: nowrap;
+    white-space: normal;
+    flex-shrink: 1;
 }
 
 .debug-heading {

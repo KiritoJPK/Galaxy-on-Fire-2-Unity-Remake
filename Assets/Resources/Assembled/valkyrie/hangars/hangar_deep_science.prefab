@@ -66,6 +66,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2352932801323487030}
     m_Modifications:
+    - target: {fileID: 384930568831656446, guid: da81809abc03762429620e3041c11b1a, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 7107970867924517694, guid: da81809abc03762429620e3041c11b1a, type: 3}
       propertyPath: m_Name
       value: v_hangar_deep_science_anim_add

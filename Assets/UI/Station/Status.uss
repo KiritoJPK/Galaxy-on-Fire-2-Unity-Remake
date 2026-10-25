@@ -1,27 +1,34 @@
 /* Status window (StatusWindow, StatusWindow 0x18345c): on HD both columns side by side - pilot, ship, reputation
    and statistics on the left, the 45 medals in three columns on the right. The root gets status-open while it shows. */
 
+/* Modified: placed and edged as the Missions window (Lounge.uss .missions-window): on the right, the station's info box
+   left of it, the amber top edge (one page at a time now: its Status / Medals tabs). */
 .status-window {
     display: none;
     position: absolute;
-    left: 48px;
+    left: 520px;
     right: 40px;
-    top: 110px;
-    bottom: 96px;
+    top: 120px;
+    bottom: 110px;
     background-color: var(--gof-panel);
     border-width: 1px;
     border-color: var(--gof-line);
     border-top-width: 3px;
-    border-top-color: var(--gof-cyan);
+    border-top-color: var(--gof-amber);
 }
 
 .status-open .status-window {
     display: flex;
 }
 
-.status-open .side-panel,
+/* Phones: the side panel is narrower (as the Missions window). */
+.layout-phone .status-window {
+    left: 450px;
+}
+
+/* Modified: the side shade stays (the station's box over it, as with the Missions window). */
+.status-open .station-buttons,
 .status-open .launch-button,
-.status-open .side-shade,
 .status-open .station-ticker,
 .status-open .lounge-tags,
 .status-open .lounge-list {

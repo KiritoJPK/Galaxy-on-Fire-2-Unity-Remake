@@ -52,11 +52,27 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
+    - target: {fileID: -3464131140781239376, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
+    - target: {fileID: -319211314218358116, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
+    - target: {fileID: -301198645443014928, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
     - target: {fileID: 919132149155446097, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
       propertyPath: m_Name
       value: hangar_terran_x6
       objectReference: {fileID: 0}
     - target: {fileID: 3073908848042236094, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}
+    - target: {fileID: 5034077039324249468, guid: 95301f070d687ec499d36edb5a5f02bc, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 2c2f735c2fd55c246917d4a775f9651b, type: 2}

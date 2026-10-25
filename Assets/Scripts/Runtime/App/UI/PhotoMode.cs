@@ -73,7 +73,12 @@ namespace GoF2Remake.UI
             message = OrbitViewUi.Message();
             overlay.Add(message);
             hints = OrbitViewUi.Hints();
-            overlay.Add(hints);   // top right
+            overlay.Add(hints);   // top right (Modified: unseen, GoF2Common.uss: the "i" holds them)
+            // Modified: an "i" at the top right with the controls (as Inspect ship's and the star map's: OptionInfo).
+            var keys = OptionInfo.Icon(HintsContent, Resources.Load<Texture2D>("GoF2Hud/option_keys"));
+            keys.AddToClassList("orbit-view-keys");
+            keys.style.width = keys.style.height = 40f;
+            overlay.Add(keys);
             var footer = new VisualElement { pickingMode = PickingMode.Ignore };
             footer.AddToClassList("orbit-view-footer");
             footer.AddToClassList(SafeArea.EdgeClass);
@@ -268,6 +273,20 @@ namespace GoF2Remake.UI
         {
             uiHidden = hidden;
             overlay.EnableInClassList("orbit-view--clean", hidden);
+        }
+
+        /// <summary>Modified: the "i" window's controls: BuildHints' rows (their actions close the window first).</summary>
+        VisualElement HintsContent()
+        {
+            var c = new VisualElement { pickingMode = PickingMode.Ignore };
+            c.AddToClassList("hints-popup");
+            OrbitViewUi.BuildHints(c, InputMode.Current, new[] { "↑", "←", "↓", "→" },
+                () => { OptionInfo.Hide(); ButtonSound?.Invoke(false); SetUiHidden(true); },
+                () => { OptionInfo.Hide(); ButtonSound?.Invoke(false); Save(); },
+                () => { OptionInfo.Hide(); ButtonSound?.Invoke(false); Exit(); },
+                () => ButtonSound?.Invoke(true),
+                () => { OptionInfo.Hide(); tools.ToggleFree(); }, () => { OptionInfo.Hide(); tools.ToggleSettings(); }, tools.Free);
+            return c;
         }
 
         /// <summary>The controls for the current input kind (again when it changes); the mouse's hover only with keys / mouse.</summary>

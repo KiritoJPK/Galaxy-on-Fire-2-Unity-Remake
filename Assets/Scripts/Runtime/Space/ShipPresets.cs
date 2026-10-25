@@ -16,7 +16,7 @@ namespace GoF2Remake.Data
     [Unity.Scripting.LifecycleManagement.NoAutoStaticsCleanup]
     public static class ShipPresets
     {
-        public const int Slots = 8;
+        public const int Slots = 14;   // Modified: two full rows of the Debug grid (was 8)
 
         [Serializable]
         public class Stack { public int item, amount; }

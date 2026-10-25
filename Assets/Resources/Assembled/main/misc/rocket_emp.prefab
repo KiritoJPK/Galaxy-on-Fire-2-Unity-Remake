@@ -126,6 +126,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6136579221161926050}
     m_Modifications:
+    - target: {fileID: 2765807799124254090, guid: 2c78b3a7a74d5a744b978dc4c726a552, type: 3}
+      propertyPath: loopStartMs
+      value: 400
+      objectReference: {fileID: 0}
     - target: {fileID: 5129018544664112975, guid: 2c78b3a7a74d5a744b978dc4c726a552, type: 3}
       propertyPath: m_Name
       value: rocket_emp_add

@@ -201,6 +201,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 7159168792386929930}
     m_Modifications:
+    - target: {fileID: 1444641359517173542, guid: f6bbb53086124434992f84adb1410bff, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 2819624537796605488, guid: f6bbb53086124434992f84adb1410bff, type: 3}
       propertyPath: m_Name
       value: v_ship_038_deep_science_lights_anim_add

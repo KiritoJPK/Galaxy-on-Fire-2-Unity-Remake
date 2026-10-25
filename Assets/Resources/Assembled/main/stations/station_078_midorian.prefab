@@ -109,6 +109,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: station_078_midorian_lights_add
       objectReference: {fileID: 0}
+    - target: {fileID: 7633110252883006648, guid: c6d421528fce9e6459c3861aa816e441, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

@@ -62,7 +62,11 @@ namespace GoF2Remake.UI
             {
                 var h = new VisualElement { pickingMode = click != null ? PickingMode.Position : PickingMode.Ignore };
                 h.AddToClassList("hint");
-                foreach (var g in glyphs) { g.pickingMode = PickingMode.Ignore; h.Add(g); }
+                // Modified: the glyphs in a row of their own (hint-keys), the label under them (GoF2InputGlyphs.uss).
+                var keys = new VisualElement { pickingMode = PickingMode.Ignore };
+                keys.AddToClassList("hint-keys");
+                foreach (var g in glyphs) { g.pickingMode = PickingMode.Ignore; keys.Add(g); }
+                h.Add(keys);
                 var l = new Label(label) { pickingMode = PickingMode.Ignore };
                 l.AddToClassList("hint-label");
                 l.AddToClassList("gof-semibold");

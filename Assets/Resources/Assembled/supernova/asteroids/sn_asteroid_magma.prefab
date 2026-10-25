@@ -146,6 +146,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: sn_asteroid_magma_lod_1
       objectReference: {fileID: 0}
+    - target: {fileID: 1936169372196058149, guid: 47c9dd872f86ef74d92eb1e2cfa61780, type: 3}
+      propertyPath: loopStartMs
+      value: 1150
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -169,6 +173,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1226771995508034129}
     m_Modifications:
+    - target: {fileID: 547284934485207944, guid: 838d44280251bcc4faaa1be12198c70f, type: 3}
+      propertyPath: loopStartMs
+      value: 1150
+      objectReference: {fileID: 0}
     - target: {fileID: 8559969513902900993, guid: 838d44280251bcc4faaa1be12198c70f, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -236,6 +244,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1226771995508034129}
     m_Modifications:
+    - target: {fileID: 8158143100800169909, guid: 107c4d5df9905d447b37be291923f113, type: 3}
+      propertyPath: loopStartMs
+      value: 1150
+      objectReference: {fileID: 0}
     - target: {fileID: 8296559133552155522, guid: 107c4d5df9905d447b37be291923f113, type: 3}
       propertyPath: m_Name
       value: sn_asteroid_magma
@@ -303,6 +315,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1226771995508034129}
     m_Modifications:
+    - target: {fileID: 2661236698604048899, guid: 07572a63e0bf16141b3feee2bdc67bb7, type: 3}
+      propertyPath: loopStartMs
+      value: 1150
+      objectReference: {fileID: 0}
     - target: {fileID: 7480603437931894317, guid: 07572a63e0bf16141b3feee2bdc67bb7, type: 3}
       propertyPath: m_Name
       value: sn_asteroid_magma_lod_3

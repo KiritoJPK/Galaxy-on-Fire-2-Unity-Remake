@@ -108,6 +108,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: bomb_emp_a_add
       objectReference: {fileID: 0}
+    - target: {fileID: 8672547956945825056, guid: 70c1634d550c00949861b74e2e1a02e7, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33125
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

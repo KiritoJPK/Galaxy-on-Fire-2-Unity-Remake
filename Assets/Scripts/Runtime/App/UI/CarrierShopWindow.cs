@@ -58,6 +58,8 @@ namespace GoF2Remake.UI
         const float RepeatAfterMs = 300f, RepeatEveryMs = 90f, MoveAfterMs = 350f, MoveEveryMs = 80f;
 
         public bool IsOpen { get; private set; }
+        /// <summary>Modified: the menus' hover sound on the window's tab (FlightHud; UiHover: tabs and side menus only).</summary>
+        public Action HoverSound;
 
         static string T(int id) => Localization.Get(id);
         static string X(string key, string english) => Localization.Extra(key, english);
@@ -73,6 +75,7 @@ namespace GoF2Remake.UI
             closed = onClosed;
 
             window = El("hangar-window", "carrier-shop");
+            UiHover.Hook(window, () => HoverSound?.Invoke());   // Modified
             window.style.display = DisplayStyle.None;
             var top = El("hangar-top");
             tab = new Button { text = CapitalShips.CarrierName.ToUpperInvariant(), focusable = false };

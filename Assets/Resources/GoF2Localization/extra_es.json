@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Vista libre (mantener)",
  "kitExhaustColor": "Color del escape",
  "kitExhaustColor2": "Segundo color",
- "mbTestStart": "Vuelo de prueba: piratas delante. Acopla en la estación (o Esc > Volver al Mod Builder) para regresar."
+ "mbTestStart": "Vuelo de prueba: piratas delante. Acopla en la estación (o Esc > Volver al Mod Builder) para regresar.",
+ "hudSwitchTab": "CAMBIAR PESTAÑA",
+ "hudChangeValue": "CAMBIAR VALOR",
+ "hudMoveChange": "MOVER / CAMBIAR",
+ "pirateHelp": "Actividad pirata\n\nLas autoridades informan de puestos avanzados y jefes piratas avistados en los sistemas. El tablón indica el sistema, no la estación: tendrás que buscar en las órbitas. Cada informe muestra el nivel de amenaza, la recompensa y cuánto tiempo permanece en el tablón. Destruye el puesto o al jefe para cobrar la recompensa.",
+ "debugHelp": "Herramientas de prueba del remake.\n\n{0}: opciones que cambian las reglas del juego (modo dios, munición infinita, compras gratis...).\n{1}: cambios al instante (créditos, reparación, células de energía, todo el mapa estelar, paz con todas las razas).\n{2}: cualquier objeto a la bodega de carga, o ya montado.\n{3}: pilota cualquier nave del juego.\n{4}: hasta 14 naves guardadas con su equipo.\n{5} (en vuelo): naves, naves capitales y objetos cerca de ti.\n\nEl resultado de la última acción aparece debajo de las pestañas."
 }

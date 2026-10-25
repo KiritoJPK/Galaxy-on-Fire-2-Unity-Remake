@@ -107,6 +107,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: v_station_battlestation_laser_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 5390296779500830500, guid: 2a94cff2800e869459cb5e3b8101cc04, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

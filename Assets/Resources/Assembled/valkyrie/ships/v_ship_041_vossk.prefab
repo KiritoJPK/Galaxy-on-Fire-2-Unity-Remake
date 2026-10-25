@@ -108,6 +108,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2889527561935647958}
     m_Modifications:
+    - target: {fileID: 488055074801581105, guid: 36bf48f52249912408abfa489411e092, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8520256459740340769, guid: 36bf48f52249912408abfa489411e092, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -367,6 +371,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 5490798696933795725, guid: 8d70ea0914bec394db3365781000778e, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -390,6 +398,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2889527561935647958}
     m_Modifications:
+    - target: {fileID: 3807223155201602038, guid: 7ef90d408257bae4fb5243ece65bfe9e, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7327804596143614441, guid: 7ef90d408257bae4fb5243ece65bfe9e, type: 3}
       propertyPath: m_Name
       value: v_ship_041_vossk_lod_2
@@ -457,6 +469,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2889527561935647958}
     m_Modifications:
+    - target: {fileID: 2090315622385154841, guid: 3662e0db4e787834890d079ab950d855, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3683260579678720763, guid: 3662e0db4e787834890d079ab950d855, type: 3}
       propertyPath: m_Name
       value: v_ship_041_vossk

@@ -189,6 +189,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 8176381923187258407}
     m_Modifications:
+    - target: {fileID: 2769280920212614290, guid: 8db36b3a1320abf428fbffc143710536, type: 3}
+      propertyPath: loopStartMs
+      value: 33.33
+      objectReference: {fileID: 0}
+    - target: {fileID: 2769280920212614290, guid: 8db36b3a1320abf428fbffc143710536, type: 3}
+      propertyPath: applyMaterialChannels
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 5061605440051318053, guid: 8db36b3a1320abf428fbffc143710536, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

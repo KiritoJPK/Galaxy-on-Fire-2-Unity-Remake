@@ -172,6 +172,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: v_station_deep_science_damaged_emitters_anim_add
       objectReference: {fileID: 0}
+    - target: {fileID: 5415895262174147024, guid: a4055ab615dd43b4b8e1690ac156337e, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

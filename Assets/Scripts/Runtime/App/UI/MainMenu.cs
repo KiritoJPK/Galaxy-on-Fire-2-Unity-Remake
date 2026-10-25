@@ -77,6 +77,7 @@ namespace GoF2Remake.UI
 
         VisualElement root, logo, splash, splashLogo, fade, dialog, mainColumn, mainButtons;
         Label pressAnyKey, versionLabel, hintLabel;
+        int escFrame = -10, cancelFrame = -10;
         Button resumeButton, newGameButton, multiplayerButton, loadButton, optionsButton, modsButton, aboutButton, debugButton, exitButton;
         ModBrowser modBrowser;
         VisualElement updateRow;
@@ -285,6 +286,7 @@ namespace GoF2Remake.UI
         void OnUIReload(PanelRenderer renderer, VisualElement rootElement, int version)
         {
             root = rootElement;
+            ScrollBars.Watch(rootElement);   // Modified: the hangar's scrollbar on every scroll view that needs one
             root.style.flexGrow = 1;   // the default theme would stretch the document root; ours is custom
             root.EnableInClassList("can-hover", !touchMode);
             safeArea = root.Q("safeArea");
@@ -316,6 +318,21 @@ namespace GoF2Remake.UI
             pressAnyKey = root.Q<Label>("pressAnyKey");
             versionLabel = root.Q<Label>("versionLabel");
             hintLabel = root.Q<Label>("hintLabel");
+            // Modified: the footer's "↑ ↓ NAVIGATE  ENTER SELECT  ESC BACK" is gone: the same keys (as the HUDs' hint boxes) are in
+            // an "i" at the top right (MenuKeys, KeysContent), shown on the menu (not the splash / title).
+            hintLabel.style.display = DisplayStyle.None;
+            var keysHost = root.Q("safeArea") ?? root;
+            if (keysHost.Q(name: "menuKeys") == null)
+            {
+                var menuKeys = MenuKeys.KeysIcon(KeysContent, 40f);
+                menuKeys.name = "menuKeys";
+                menuKeys.style.position = Position.Absolute;
+                menuKeys.style.top = 28f;
+                menuKeys.style.right = 36f;
+                keysHost.Add(menuKeys);
+                menuKeys.schedule.Execute(() =>
+                    menuKeys.style.display = screen == MenuState.Menu ? DisplayStyle.Flex : DisplayStyle.None).Every(100);
+            }
 
             resumeButton = Bind("resumeButton", () => LoadSlot(SaveGame.MostRecentSlot()));
             newGameButton = Bind("newGameButton", () => OpenPanel("campaignPanel"));
@@ -418,8 +435,14 @@ namespace GoF2Remake.UI
             Bind("optionsDefaults", ShowResetChoice);   // 497: asks first (this tab or every tab)
             SetupOptions();
 
-            root.RegisterCallback<NavigationCancelEvent>(_ => Back(), TrickleDown.TrickleDown);
+            root.RegisterCallback<NavigationCancelEvent>(_ =>
+            {
+                cancelFrame = Time.frameCount;
+                if (ChoicePopup.IsOpen) { ChoicePopup.Close(); return; }   // an option's open list closes first
+                Back();
+            }, TrickleDown.TrickleDown);
             root.RegisterCallback<NavigationMoveEvent>(OnNavigate, TrickleDown.TrickleDown);
+            root.RegisterCallback<PointerMoveEvent>(e => { if (e.pointerType == PointerType.mouse) pointerDriven = true; }, TrickleDown.TrickleDown);
             root.RegisterCallback<NavigationSubmitEvent>(e =>
             {
                 // Space typed into a field is a space, not a press of the menu's button.
@@ -520,6 +543,7 @@ namespace GoF2Remake.UI
             DpadTapNavigation.Pump(root);   // D-pad taps the panel's own navigation drops (the Steam controller)
             // Remake: the debug panel (F10, LB + RB or three fingers held for a second, or five taps on the version text).
             if (screen == MenuState.Menu && Keyboard.current != null && Keyboard.current.f10Key.wasPressedThisFrame) OpenDebug();
+            EscBack();
             var pad = Gamepad.current;
             if (screen == MenuState.Menu && ((pad != null && pad.leftShoulder.isPressed && pad.rightShoulder.isPressed) || FingersDown() >= 3))
             {
@@ -546,6 +570,7 @@ namespace GoF2Remake.UI
             // Also on a navigation press outside the controller input mode (Android: B arrives as Escape, some pads send the
             // D-pad as arrow keys; Discord report 2026-10-18).
             if (InputMode.Current != InputKind.Gamepad && !MenuFocus.NavPressed(Gamepad.current, Keyboard.current)) return;
+            pointerDriven = false;   // Modified: the keys took over (Select marks again)
             if ((focusRetry -= Time.unscaledDeltaTime) > 0f) return;   // a page with nothing to focus: not every frame
             focusRetry = 0.25f;
             SetTouchMode(false);
@@ -617,6 +642,56 @@ namespace GoF2Remake.UI
             anyKey?.Dispose();
         }
 
+        /// <summary>Modified: Esc goes back as the footer says. The panel only sends its Cancel to a focused element, and after a
+        /// click outside the buttons (the mouse) nothing has the focus: Esc did nothing. A press the panel didn't turn into
+        /// a Cancel within two frames goes back here (closing an option's open list first).</summary>
+        void EscBack()
+        {
+            var kb = Keyboard.current;
+            if (kb != null && kb.escapeKey.wasPressedThisFrame) escFrame = Time.frameCount;
+            if (escFrame < 0 || Time.frameCount < escFrame + 2) return;
+            bool handled = cancelFrame >= escFrame;
+            escFrame = -10;
+            if (handled || screen != MenuState.Menu) return;
+            if (ChoicePopup.IsOpen) { ChoicePopup.Close(); return; }
+            Back();
+        }
+
+        /// <summary>Modified: the top-right "i" window: the keys for the input in use: Up / Down navigate, Enter select, Esc
+        /// back (the D-pad, A and B on a controller); on the Options panel also left / right (a value) and Q / E, LB / RB (the
+        /// tabs). The labels from the localized footer line ("↑ ↓  NAVIGATE     ENTER  SELECT     ESC  BACK": its words
+        /// between the keys), else the English.</summary>
+        VisualElement KeysContent()
+        {
+            var c = MenuKeys.Popup();
+            string line = Localization.Extra("hint", "↑ ↓  NAVIGATE     ENTER  SELECT     ESC  " + Localization.Get(170).ToUpperInvariant());
+            var parts = System.Text.RegularExpressions.Regex.Split(line.Trim(), @"\s{2,}");
+            string nav = parts.Length == 6 ? parts[1] : "NAVIGATE";
+            string select = parts.Length == 6 ? parts[3] : Localization.Extra("hudSelect", "SELECT");
+            string back = parts.Length == 6 ? parts[5] : Localization.Get(170).ToUpperInvariant();
+            bool options = panels.TryGetValue("optionsPanel", out var optionsPanel) && openPanel == optionsPanel;
+            string change = Localization.Extra("hudChangeValue", "CHANGE VALUE"), tabs = Localization.Extra("hudSwitchTab", "SWITCH TAB");
+            if (InputMode.Current == InputKind.Gamepad)
+            {
+                c.Add(MenuKeys.Hint(options ? $"{nav} / {change}" : nav, InputGlyph.Pad(PadButton.DPad)));
+                if (options) c.Add(MenuKeys.Hint(tabs, InputGlyph.Pad(PadButton.LeftBumper), InputGlyph.Pad(PadButton.RightBumper)));
+                c.Add(MenuKeys.Hint(select, InputGlyph.Pad(PadButton.A)));
+                c.Add(MenuKeys.Hint(back, InputGlyph.Pad(PadButton.B)));
+            }
+            else
+            {
+                c.Add(MenuKeys.Hint(nav, InputGlyph.Key("↑"), InputGlyph.Key("↓")));
+                if (options)
+                {
+                    c.Add(MenuKeys.Hint(change, InputGlyph.Key("←"), InputGlyph.Key("→")));
+                    c.Add(MenuKeys.Hint(tabs, InputGlyph.Key("Q"), InputGlyph.Key("E")));
+                }
+                c.Add(MenuKeys.Hint(select, InputGlyph.Key("ENTER", true)));
+                c.Add(MenuKeys.Hint(back, InputGlyph.Key("ESC")));
+            }
+            return c;
+        }
+
         /// <summary>The title prompt follows the input scheme: any key on the keyboard, any button on a controller, a tap
         /// on touch.</summary>
         void UpdatePressAnyKey()
@@ -647,7 +722,17 @@ namespace GoF2Remake.UI
             // Mouse only: a finger sliding over the UI must not drag the selection along with it.
             // Only when the mouse moved: a row that slides under a resting cursor as the list scrolls doesn't take the focus.
             e.RegisterCallback<PointerEnterEvent>(ev => { if (ev.pointerType == PointerType.mouse && InputMode.MouseMovedRecently && e.enabledInHierarchy && e.focusable) e.Focus(); });
-            e.RegisterCallback<FocusInEvent>(_ => { if (screen == MenuState.Menu) Play(buttonPush, 0.45f); });
+            // Modified: with the mouse in use, marked only while the mouse is over it (it stayed marked after the mouse left,
+            // and, already focused, made no sound when the mouse came back).
+            e.RegisterCallback<PointerLeaveEvent>(ev => { if (ev.pointerType == PointerType.mouse && pointerDriven && InputMode.Current != InputKind.Gamepad && e.focusController?.focusedElement == e) e.Blur(); });
+            // Modified: under the mouse only the main column's buttons and the tabs sound (UiHover.MenuTarget); the keys / a
+            // controller sound on every move (they clear pointerDriven first: OnNavigate, KeepControllerFocus).
+            e.RegisterCallback<FocusInEvent>(_ =>
+            {
+                if (screen != MenuState.Menu) return;
+                if (pointerDriven && !(mainButtons != null && mainButtons.Contains(e)) && UiHover.MenuTarget(e) == null) return;
+                Play(buttonPush, 0.45f);
+            });
         }
 
         // Touch has no hover, and a highlight that follows the finger (or stays on whatever was last pressed)
@@ -665,7 +750,7 @@ namespace GoF2Remake.UI
         void OnPointerDown(PointerDownEvent e)
         {
             DragScroll.NotePointer();
-            if (e.pointerType == PointerType.mouse) { SetTouchMode(false); return; }
+            if (e.pointerType == PointerType.mouse) { SetTouchMode(false); pointerDriven = true; return; }
             // Don't focus what the finger presses, except a text field (the address, the code, the debug search): it needs
             // the focus for the on-screen keyboard. Touch mode without the blur there: tapping the focused field again blurred
             // it first, which closed the keyboard.
@@ -676,8 +761,19 @@ namespace GoF2Remake.UI
 
         void Select(VisualElement e)
         {
-            if (!touchMode) e?.Focus();
+            if (touchMode) return;
+            // Modified: with the mouse in use a panel opens with nothing marked (its first button looked hovered); the keys
+            // and a controller still get their selection (KeepControllerFocus, OnNavigate).
+            if (pointerDriven && InputMode.Current != InputKind.Gamepad)
+            {
+                if (root?.focusController?.focusedElement is Button b) b.Blur();
+                return;
+            }
+            e?.Focus();
         }
+
+        /// <summary>Modified: the mouse moved or pressed last; the keys / a controller clear it.</summary>
+        bool pointerDriven = true;
 
         // ---- flow ------------------------------------------------------------------------------
 
@@ -2482,6 +2578,7 @@ namespace GoF2Remake.UI
 
         void OnNavigate(NavigationMoveEvent e)
         {
+            pointerDriven = false;
             if (screen != MenuState.Menu) return;
             var focused = root.focusController?.focusedElement as VisualElement;
             // Typing into a field (the address, the code, a name): W A S D and the side arrows are letters and the cursor.

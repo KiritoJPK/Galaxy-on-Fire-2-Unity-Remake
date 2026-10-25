@@ -129,6 +129,9 @@
     flex-direction: row;
     align-items: center;
     padding: 34px 40px 0 48px;
+    /* Modified: as tall as the station's top bar with its Menu button (StationMenu.uss .station-menu-button: 20 px text,
+       12 px padding, 2 px border), so the title sits at the same height as the station's name. */
+    min-height: 87px;
 }
 
 .map-title {
@@ -136,6 +139,61 @@
     letter-spacing: 6px;
     color: #FFFFFF;
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* Modified: "| MAP" after the station's name (StarMap.SetStationTitle), as the station's view title (StationMenu.uss). */
+.map-view-title {
+    margin-left: 22px;
+    padding-left: 22px;
+    border-left-width: 2px;
+    border-left-color: var(--gof-amber);
+    font-size: 24px;
+    letter-spacing: 4px;
+    color: var(--gof-text-dim);
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* Modified: the key hints' "i" and the help's "?" (StarMap: OptionInfo) at the header's right, the title's height. */
+.map-keys {
+    margin-left: auto;
+}
+
+.map-help {
+    margin-left: 12px;
+}
+
+/* Modified: the key hints live in the "i" window now: the bottom row keeps its place (the footer's layout) unseen. */
+.map-footer > .map-hints {
+    visibility: hidden;
+}
+
+/* The "i" window: one hint a line, its keys then its label, no boxes. */
+.map-hints-popup {
+    flex-direction: column;
+}
+
+.map-hints-popup .hint {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    margin: 3px 0;
+    padding: 0;
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+}
+
+.map-hints-popup .hint-keys {
+    min-width: 150px;
+    justify-content: flex-end;
+    margin-right: 14px;
+}
+
+.map-hints-popup .hint-label {
+    margin: 0;
+    padding: 0;
+    font-size: 17px;
+    white-space: nowrap;
+    -unity-text-align: middle-left;
 }
 
 .system-header {
@@ -229,9 +287,9 @@
     display: none;
     flex-grow: 1;
     flex-direction: row;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;   /* Modified: one row, the labels under their keys (was wrap) */
     justify-content: center;
-    align-items: flex-end;
+    align-items: center;   /* Modified: centred both ways (was flex-end) */
 }
 
 .input-keyboard .map-hints,
@@ -239,8 +297,26 @@
     display: flex;
 }
 
+/* Modified: each hint's label under its keys (StarMap.Hint's hint-keys), on one line, keys and label centred both ways,
+   as in the hangar window (HangarWindow.uss): side by side the labels took the row's width. */
 .map-hints .hint {
-    margin: 0 6px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 7px 12px 3px 12px;
+    margin: 0 4px;   /* no top margin (GoF2InputGlyphs' 6 px): the row centres on the boxes themselves */
+}
+
+.map-hints .hint-keys {
+    flex-direction: row;
+    align-items: center;
+}
+
+.map-hints .hint-label {
+    margin: 3px 0 0 0;
+    padding: 0;
+    white-space: nowrap;
+    -unity-text-align: middle-center;
 }
 
 .map-button {

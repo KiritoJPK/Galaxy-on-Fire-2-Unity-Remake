@@ -114,6 +114,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 3681016736610888291, guid: 791db6942d459f548a64ea6b315e092a, type: 3}
+      propertyPath: loopStartMs
+      value: 100
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -137,6 +141,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1519677540752457375}
     m_Modifications:
+    - target: {fileID: 659278392177641704, guid: 4b3bc7875d08b48479ef7b6d662ae0c5, type: 3}
+      propertyPath: loopStartMs
+      value: 100
+      objectReference: {fileID: 0}
     - target: {fileID: 5175881261772919898, guid: 4b3bc7875d08b48479ef7b6d662ae0c5, type: 3}
       propertyPath: m_Name
       value: sn_gas_cloud_blue_anim_lookat_add

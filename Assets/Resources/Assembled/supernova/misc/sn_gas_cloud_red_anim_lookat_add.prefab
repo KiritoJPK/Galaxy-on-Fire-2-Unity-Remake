@@ -66,6 +66,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3823304764483664681}
     m_Modifications:
+    - target: {fileID: 2620128636109323449, guid: 184d8352947acc943a2e53fad2bf87bb, type: 3}
+      propertyPath: loopStartMs
+      value: 100
+      objectReference: {fileID: 0}
     - target: {fileID: 7212163512024260393, guid: 184d8352947acc943a2e53fad2bf87bb, type: 3}
       propertyPath: m_Name
       value: sn_plasma_red_anim_lookat_add
@@ -137,6 +141,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 3823304764483664681}
     m_Modifications:
+    - target: {fileID: 93808458648098589, guid: 182cafe4007ce0244900de96a13f030a, type: 3}
+      propertyPath: loopStartMs
+      value: 100
+      objectReference: {fileID: 0}
     - target: {fileID: 6131321208808534872, guid: 182cafe4007ce0244900de96a13f030a, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

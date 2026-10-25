@@ -149,6 +149,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6992765387220347516}
     m_Modifications:
+    - target: {fileID: 225490670087095226, guid: a366e6cce993a8a42a3bcedcb6a762e6, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 1655143937331652647, guid: a366e6cce993a8a42a3bcedcb6a762e6, type: 3}
       propertyPath: m_Name
       value: jumpgate_terran_jump_anim_add
@@ -294,6 +298,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: jumpgate_terran
       objectReference: {fileID: 0}
+    - target: {fileID: 1864275108933226892, guid: 578590d2ba6c7e14f9863b5d78ddf9a8, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -322,6 +330,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 6992765387220347516}
     m_Modifications:
+    - target: {fileID: 3080969992407531532, guid: 97863d86b1270c446bc37d0b7f8e443e, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 5122353006177575994, guid: 97863d86b1270c446bc37d0b7f8e443e, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -434,6 +446,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 2797317268241119347, guid: b7686cacf25b32e4c8a6c869e6ff0b41, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 3038228876473486130, guid: b7686cacf25b32e4c8a6c869e6ff0b41, type: 3}
       propertyPath: m_Name
       value: jumpgate_terran_emissive
@@ -515,6 +531,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: jumpgate_terran_lod_1
       objectReference: {fileID: 0}
+    - target: {fileID: 5969882088778639154, guid: 33f21341198a6d54a9b43bf9e4c1fc67, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -586,6 +606,10 @@ PrefabInstance:
     - target: {fileID: 1916016510562071121, guid: 9647cf1b2b1697047ba190f9a740e8cf, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7288905958236421063, guid: 9647cf1b2b1697047ba190f9a740e8cf, type: 3}
+      propertyPath: loopStartMs
+      value: 50
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

@@ -68,6 +68,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: sn_asteroid_magma_explosion_anim_alpha
       objectReference: {fileID: 0}
+    - target: {fileID: 7789333259422951010, guid: be9277163ed23484ca2c67caf05623c7, type: 3}
+      propertyPath: loopStartMs
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 7896688417943336871, guid: be9277163ed23484ca2c67caf05623c7, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -169,6 +173,10 @@ PrefabInstance:
     - target: {fileID: 936721882073675973, guid: 44508d7aebb077140b12af7066f47c02, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8764017267541676817, guid: 44508d7aebb077140b12af7066f47c02, type: 3}
+      propertyPath: loopStartMs
+      value: 50
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

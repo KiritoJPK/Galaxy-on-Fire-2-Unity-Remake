@@ -1599,5 +1599,10 @@
  "ctlFreeLookHold": "Vue libre (maintenir)",
  "kitExhaustColor": "Couleur de l'échappement",
  "kitExhaustColor2": "Deuxième couleur",
- "mbTestStart": "Vol d'essai : pirates droit devant. Amarre-toi à la station (ou Échap > Retour au Mod Builder) pour revenir."
+ "mbTestStart": "Vol d'essai : pirates droit devant. Amarre-toi à la station (ou Échap > Retour au Mod Builder) pour revenir.",
+ "hudSwitchTab": "CHANGER D'ONGLET",
+ "hudChangeValue": "CHANGER LA VALEUR",
+ "hudMoveChange": "DÉPLACER / CHANGER",
+ "pirateHelp": "Activité pirate\n\nLes autorités signalent les avant-postes et les chefs pirates aperçus dans les systèmes. Le tableau indique le système, pas la station : il faut fouiller les orbites. Chaque signalement indique le niveau de menace, la prime et combien de temps il reste affiché. Détruis l'avant-poste ou le chef pour toucher la prime.",
+ "debugHelp": "Outils de test du remake.\n\n{0} : des options qui changent les règles du jeu (mode dieu, munitions infinies, achats gratuits...).\n{1} : des changements immédiats (crédits, réparation, cellules d'énergie, toute la carte stellaire, paix avec toutes les races).\n{2} : n'importe quel objet dans la soute, ou monté directement.\n{3} : pilote n'importe quel vaisseau du jeu.\n{4} : jusqu'à 14 vaisseaux enregistrés avec leur équipement.\n{5} (en vol) : vaisseaux, vaisseaux amiraux et objets près de toi.\n\nLe résultat de la dernière action s'affiche sous les onglets."
 }

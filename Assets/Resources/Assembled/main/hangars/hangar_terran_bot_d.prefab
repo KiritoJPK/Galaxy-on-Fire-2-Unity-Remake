@@ -64,6 +64,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 2986244215036614567}
     m_Modifications:
+    - target: {fileID: 802625800431222267, guid: b1c8232c621b22145a9c2153eb9b2e5a, type: 3}
+      propertyPath: loopStartMs
+      value: 33.333332
+      objectReference: {fileID: 0}
     - target: {fileID: 6200110050489046358, guid: b1c8232c621b22145a9c2153eb9b2e5a, type: 3}
       propertyPath: m_Name
       value: hangar_terran_bot_d_anim_add
@@ -169,6 +173,10 @@ PrefabInstance:
     - target: {fileID: 3374551818980513370, guid: bdd2c8cb687c4274c852e08696a3bad0, type: 3}
       propertyPath: m_Name
       value: hangar_terran_bot_d_anim
+      objectReference: {fileID: 0}
+    - target: {fileID: 4112537290799939235, guid: bdd2c8cb687c4274c852e08696a3bad0, type: 3}
+      propertyPath: loopStartMs
+      value: 33.333332
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

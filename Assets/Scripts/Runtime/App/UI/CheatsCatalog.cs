@@ -205,7 +205,12 @@ namespace GoF2Remake.UI
                         var text = new UIE.Label(name(items[i])) { pickingMode = UIE.PickingMode.Ignore };
                         text.AddToClassList("debug-item-name");
                         cell.Add(image);
-                        cell.Add(text);
+                        // Modified: the name on one line, centred, sliding when longer than the cell (TextMarquee).
+                        var clip = new UIE.VisualElement { pickingMode = UIE.PickingMode.Ignore };
+                        clip.AddToClassList("debug-item-name-clip");
+                        clip.Add(text);
+                        cell.Add(clip);
+                        TextMarquee.Attach(clip, text);
                         // A tap that didn't scroll the grid picks (a drag on a touch screen scrolls it).
                         UnityEngine.Vector2 down = default;
                         cell.RegisterCallback<UIE.PointerDownEvent>(e => down = e.position);
@@ -233,8 +238,9 @@ namespace GoF2Remake.UI
                     int pick = Math.Clamp(getPick(), 0, Math.Max(0, cells.Count - 1));
                     if (hintBox != null && items.Count > 0)
                     {
-                        // The entry under the pointer, else the picked one; filled again when it or its content changes.
-                        var entry = items[hover >= 0 && hover < items.Count ? hover : pick];
+                        // Modified: the picked one only (a click / tap, the keys): the entry under the pointer filled it too, so
+                        // the presets' equipment changed as the mouse passed over the slots.
+                        var entry = items[pick];
                         string k = key(entry);
                         if (k != hintShown) { hintShown = k; hintBox.Clear(); hint(entry, hintBox); }
                     }
@@ -255,6 +261,7 @@ namespace GoF2Remake.UI
                     var stepper = row != null ? UIE.UQueryExtensions.Q<ChoiceRow>(row) : null;
                     if (stepper == null || stepper.ClassListContains("debug-item-stepper")) return;
                     stepper.AddToClassList("debug-item-stepper");
+                    row.AddToClassList("debug-item-grid-row");   // Modified: no "?" on a grid's row (GoF2Common.uss)
                     // Up / down move the pick a row in the grid (MoveVertical; the menus ask before moving on): only from its
                     // top / bottom row do they go on to the row above / below. A short last row: down picks its last icon.
                     stepper.userData = (Func<int, bool>)(dy =>

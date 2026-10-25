@@ -15,6 +15,7 @@ using GoF2Remake.World;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
+using PointerType = UnityEngine.UIElements.PointerType;
 
 namespace GoF2Remake.UI
 {
@@ -42,6 +43,17 @@ namespace GoF2Remake.UI
         public Action InfoSound;
         /// <summary>59 Action Freeze (MenuTouchWindow button 0x13 -> state 0xd); set by FlightHud.</summary>
         public PhotoMode Photo;
+        /// <summary>Modified: the hover sound (the mouse onto an entry, the keys moving the highlight); set by FlightHud.</summary>
+        public Action HoverSound;
+        /// <summary>Modified: the button sounds (true push, false release): a tab switched with Q / E, an entry taken with the
+        /// keys (a click has FlightHud.ButtonSounds); set by FlightHud.</summary>
+        public Action<bool> ButtonSound;
+
+        /// <summary>Modified: the mouse moved last: only the entry under it is highlighted (none when it is over nothing), as
+        /// in the station's and the main menu's menus; the keys / a controller bring the highlight back.</summary>
+        bool pointerDriven;
+        /// <summary>The entry (or the Options page's row / tab / footer button) under the mouse, null over nothing.</summary>
+        VisualElement pointerItem;
 
         static string T(int id) => Localization.Get(id).ToUpperInvariant();
 
@@ -62,6 +74,53 @@ namespace GoF2Remake.UI
             panel.Add(body);
             backdrop.Add(panel);
             root.Add(backdrop);
+            // Modified: the mouse drives the highlight while it moves (see pointerDriven), with the menus' hover sound.
+            backdrop.RegisterCallback<PointerMoveEvent>(e =>
+            {
+                if (e.pointerType != PointerType.mouse || pointerDriven || !IsOpen) return;
+                pointerDriven = true;
+                Rehighlight();
+            }, TrickleDown.TrickleDown);
+            backdrop.RegisterCallback<PointerOverEvent>(e =>
+            {
+                if (e.pointerType != PointerType.mouse || !IsOpen || !(e.target is VisualElement t)) return;
+                var item = ItemAt(t);
+                if (item == pointerItem) return;
+                pointerItem = item;
+                if (pointerDriven) Rehighlight();
+            });
+            UiHover.Hook(backdrop, () => HoverSound?.Invoke());   // the tabs only (Options, Debug)
+        }
+
+        /// <summary>Modified: the page's entry at 't' (the Options page: the row, tab or footer button), null when none.</summary>
+        VisualElement ItemAt(VisualElement t)
+        {
+            if (page == Page.Options && options != null)
+            {
+                foreach (var nav in options.NavItems())
+                {
+                    var area = options.RowOf(nav)?.Root ?? nav;
+                    if (area == t || area.Contains(t)) return nav;
+                }
+                return null;
+            }
+            for (var v = t; v != null && v != backdrop; v = v.parent) if (items.Contains(v)) return v;
+            return null;
+        }
+
+        void Rehighlight()
+        {
+            if (page == Page.Options) HighlightOptions();
+            else Highlight();
+        }
+
+        /// <summary>Modified: a key / button moved the highlight: the keys take over from the mouse. True when the mouse was
+        /// over nothing: this press only shows the highlight where it was (it doesn't move it yet).</summary>
+        bool KeysTakeOver()
+        {
+            if (!pointerDriven) return false;
+            pointerDriven = false;
+            return pointerItem == null;
         }
 
         // ---- open / close -----------------------------------------------------------------------------------
@@ -95,6 +154,7 @@ namespace GoF2Remake.UI
             audioWasPaused = AudioListener.pause;
             if (!GoF2Remake.Multiplayer.NetGame.Active) AudioListener.pause = true;   // multiplayer: the world (and its sound) goes on
             backdrop.AddToClassList("pause-backdrop--shown");
+            pointerDriven = false;   // Modified: opened with a key / button: its first entry is highlighted
             Show(Page.Main);
         }
 
@@ -338,7 +398,16 @@ namespace GoF2Remake.UI
             if (options == null) return;
             var items = options.NavItems();
             optionIndex = Mathf.Clamp(optionIndex, 0, items.Count - 1);
-            options.Select(InputMode.Current != InputKind.Touch ? items[optionIndex] : null);
+            if (InputMode.Current == InputKind.Touch) { options.Select(null); return; }
+            if (pointerDriven)
+            {
+                // Modified: with the mouse only the row under it (the keys go on from there).
+                int under = pointerItem != null ? items.IndexOf(pointerItem) : -1;
+                if (under >= 0) optionIndex = under;
+                options.Select(under >= 0 ? pointerItem : null, false);
+                return;
+            }
+            options.Select(items[optionIndex]);
         }
 
         // Held directions repeat (HeldRepeat): up / down walk on, left / right step a slider or a stepper on; a toggle, the tab
@@ -378,10 +447,12 @@ namespace GoF2Remake.UI
             int tab = 0;
             if ((kb != null && kb.qKey.wasPressedThisFrame) || (pad != null && pad.leftShoulder.wasPressedThisFrame)) tab = -1;
             if ((kb != null && kb.eKey.wasPressedThisFrame) || (pad != null && pad.rightShoulder.wasPressedThisFrame)) tab = 1;
-            if (tab != 0) { options.StepTab(tab); return; }
+            if (tab != 0) { ButtonSound?.Invoke(false); options.StepTab(tab); return; }   // Modified: the tab's sound
 
             var items = options.NavItems();
             int move = Vertical(kb, pad);
+            // Modified: the keys take over from the mouse (the first press only shows the highlight when it was over nothing).
+            if (move != 0 && KeysTakeOver()) { HighlightOptions(); HoverSound?.Invoke(); return; }
             if (move != 0)
             {
                 // The footer (Back and Default settings, or the defaults prompt's buttons) is one row: down from it stays,
@@ -390,23 +461,34 @@ namespace GoF2Remake.UI
                 bool inFooter = options.IsFooter(items[optionIndex]);
                 if (move > 0 && inFooter) next = optionIndex;
                 if (move < 0 && inFooter) next = options.FooterStart(items) - 1;
-                optionIndex = Mathf.Clamp(next, 0, items.Count - 1);
+                next = Mathf.Clamp(next, 0, items.Count - 1);
+                if (next != optionIndex) HoverSound?.Invoke();   // Modified: the arrows' sound
+                optionIndex = next;
                 HighlightOptions();
                 return;
             }
             int side = Sideways(kb, pad);
+            if (side != 0 && KeysTakeOver()) { HighlightOptions(); HoverSound?.Invoke(); return; }
             var current = items[optionIndex];
             var row = options.RowOf(current);
             if (side != 0)
             {
-                if (options.IsTab(current)) { if (sideRepeat.Fresh) options.StepTab(side); }
+                if (options.IsTab(current)) { if (sideRepeat.Fresh) { ButtonSound?.Invoke(false); options.StepTab(side); } }
                 else if (row != null) { if (sideRepeat.Fresh || row.StepsSideways) row.Step(side); KeepOptionSelected(current); }
-                else if (options.IsFooter(current)) { optionIndex = items.IndexOf(options.FooterStep(current, side)); HighlightOptions(); }
+                else if (options.IsFooter(current))
+                {
+                    int next = items.IndexOf(options.FooterStep(current, side));
+                    if (next != optionIndex) HoverSound?.Invoke();
+                    optionIndex = next;
+                    HighlightOptions();
+                }
                 return;
             }
             bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame))
                            || (pad != null && pad.buttonSouth.wasPressedThisFrame);
             if (!confirm) return;
+            if (pointerDriven && pointerItem == null) { KeysTakeOver(); HighlightOptions(); return; }   // Modified: nothing marked yet
+            ButtonSound?.Invoke(false);   // Modified: the entry's sound (a click has its own)
             if (row != null) { row.Activate(); KeepOptionSelected(current); }
             else if (options.IsFooter(current)) options.Activate(current);   // Back, Default settings, the defaults prompt
         }
@@ -443,10 +525,8 @@ namespace GoF2Remake.UI
                 b.clicked += () => { debugTab = tab; Show(Page.Debug); };
                 tabs.Add(b);
             }
-            var hint = new Label(InputMode.Current == InputKind.Gamepad ? "LB  ◂  ▸  RB" : InputMode.Current == InputKind.Touch ? "" : "Q  ◂  ▸  E")
-                { pickingMode = PickingMode.Ignore };
-            hint.AddToClassList("debug-tab-hint");
-            tabs.Add(hint);
+            // Modified: an "i" with the page's keys and a "?" with what it is for, in place of the "Q ◂ ▸ E" line.
+            MenuKeys.AddDebugIcons(tabs);
             body.Add(tabs);
 
             var status = new Label(debugStatus) { pickingMode = PickingMode.Ignore };
@@ -575,9 +655,13 @@ namespace GoF2Remake.UI
         void Highlight()
         {
             bool keys = InputMode.Current != InputKind.Touch;
-            for (int i = 0; i < items.Count; i++) items[i].EnableInClassList("autopilot-menu-item--selected", keys && i == index);
-            // A long page (the Debug page on a short screen): the selected row scrolls into view.
-            if (keys && scroll != null && index >= 0 && index < items.Count && scroll.contentContainer.Contains(items[index])) scroll.ScrollTo(items[index]);
+            // Modified: with the mouse only the entry under it (none over nothing); the keys go on from there.
+            int under = pointerDriven && pointerItem != null ? items.IndexOf(pointerItem) : -1;
+            if (under >= 0) index = under;
+            int marked = !keys ? -1 : pointerDriven ? under : index;
+            for (int i = 0; i < items.Count; i++) items[i].EnableInClassList("autopilot-menu-item--selected", i == marked);
+            // A long page (the Debug page on a short screen): the selected row scrolls into view (not under the mouse).
+            if (keys && !pointerDriven && scroll != null && index >= 0 && index < items.Count && scroll.contentContainer.Contains(items[index])) scroll.ScrollTo(items[index]);
         }
 
         // ---- input (unscaled: the game is paused) -------------------------------------------------------------
@@ -619,12 +703,20 @@ namespace GoF2Remake.UI
                 int tab = 0;
                 if ((kb != null && kb.qKey.wasPressedThisFrame) || (pad != null && pad.leftShoulder.wasPressedThisFrame)) tab = -1;
                 if ((kb != null && kb.eKey.wasPressedThisFrame) || (pad != null && pad.rightShoulder.wasPressedThisFrame)) tab = 1;
-                if (tab != 0) { debugTab = (debugTab + tab + debugTabCount) % debugTabCount; Show(Page.Debug); return; }
+                if (tab != 0) { ButtonSound?.Invoke(false); debugTab = (debugTab + tab + debugTabCount) % debugTabCount; Show(Page.Debug); return; }   // Modified: the tab's sound
             }
             int move = Vertical(kb, pad);
+            int sideFirst = Sideways(kb, pad);
+            // Modified: the keys take over from the mouse; over nothing the first press only shows the highlight.
+            if ((move != 0 || sideFirst != 0) && KeysTakeOver()) { Highlight(); HoverSound?.Invoke(); return; }
+            int indexBefore = index;
+            bool gridMoved = false;
             bool debugGrid = page == Page.Debug && items.Count > 0 && index >= 0 && index < items.Count;
             if (debugGrid && move != 0 && optionRows.TryGetValue(items[index], out var gridRow) && CheatsCatalog.MoveVertical(gridRow.Field, move))
+            {
                 move = 0;   // the item grid moved its pick a row
+                gridMoved = true;
+            }
             if (debugGrid && move != 0)
             {
                 // The Debug page moves on screen (SpatialNav): the toggles stand two to a row, the Give items buttons
@@ -646,7 +738,7 @@ namespace GoF2Remake.UI
                 if (scroll != null && scroll.contentContainer.Contains(items[index])) scroll.ScrollTo(items[index]);
                 else if (scroll != null) scroll.scrollOffset += new Vector2(0f, move * 120f);
             }
-            int side = Sideways(kb, pad);
+            int side = sideFirst;
             var current = index < items.Count ? items[index] : null;
             optionRows.TryGetValue(current ?? backdrop, out var option);
             if (side != 0 && debugGrid && (option == null || !option.StepsSideways))
@@ -656,9 +748,12 @@ namespace GoF2Remake.UI
                 if (next != null) { index = items.IndexOf(next); Highlight(); current = next; optionRows.TryGetValue(current, out option); }
             }
             else if (side != 0 && option != null && (sideRepeat.Fresh || option.StepsSideways)) option.Step(side);
+            if (index != indexBefore || gridMoved) HoverSound?.Invoke();   // Modified: the arrows' sound
             bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame))
                            || (pad != null && pad.buttonSouth.wasPressedThisFrame);
             if (!confirm || current == null) return;
+            if (pointerDriven && pointerItem == null) { KeysTakeOver(); Highlight(); return; }   // Modified: nothing marked yet
+            ButtonSound?.Invoke(false);   // Modified: the entry's sound (a click has its own)
             if (option != null) option.Activate();
             else actions[index]?.Invoke();
         }
