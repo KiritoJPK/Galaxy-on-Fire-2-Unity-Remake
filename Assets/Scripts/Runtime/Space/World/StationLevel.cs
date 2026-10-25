@@ -12,6 +12,7 @@
 //     from A to B in 3 s on the first visit, then sways around the room origin (SpaceLounge::update 0x19ef20); lit by
 //     the system's sun (StarSystem::initLight); Terran service bot loops, the Midorian prop replays now and then; remake:
 //     the Vossk bar's two bartender arms the original never shows replay every 20 / 22 s (VosskBarBots).
+//   Modified: the Terran hangar's four service bots fly one at a time, in random order (TerranHangarBots).
 // Both show the current system's sky behind the room (Level::createSpace builds the StarSystem for these levels).
 // Music per station/race, ambience per screen (Station_Atmo_Mainview / _Lounge).
 // Arrival also rolls or refreshes the station's shop stock (Shop.EnterStation); the shop itself is HangarWindow.
@@ -136,6 +137,9 @@ namespace GoF2Remake.World
         VosskBarBots vosskBots;
         PartAnimation vosskBotA, vosskBotB, vosskBotC;
         bool vosskBotsPosed;
+        // Modified: the Terran hangar's service bots (TerranHangarBots): each bot's _anim and _anim_add layers, a to d.
+        TerranHangarBots terranBots;
+        readonly List<List<PartAnimation>> terranBotParts = new List<List<PartAnimation>>();
         CycleSound mainViewAtmo, loungeAtmo, hangarAtmo;
         bool hangarWindowOpen;
 
@@ -365,6 +369,7 @@ namespace GoF2Remake.World
                     // Modified: the Terran hangar's beta bots are keyed heading first (PartAnimation.headingFirst).
                     if (a.gameObject.name.StartsWith("hangar_terran_bot_")) a.headingFirst = true;
                 }
+            SetupTerranBots(roomGo);
             if (customHangar == null) PlaceValkyrieHangarParts(roomGo);
             CollectRoomHighlights(roomGo);
 
@@ -1009,6 +1014,55 @@ namespace GoF2Remake.World
             if ((start & VosskBarBots.Start.SecondArm) != 0) vosskBotB.Restart();
         }
 
+        /// <summary>Modified: the Terran hangar's bots (hangar_terran_bot_a..d_anim + _anim_add) become one-shots, hidden
+        /// in their first pose until TerranHangarBots picks them.</summary>
+        void SetupTerranBots(GameObject roomGo)
+        {
+            terranBots = null;
+            terranBotParts.Clear();
+            if (roomGo == null) return;
+            const string prefix = "hangar_terran_bot_";
+            var byBot = new SortedDictionary<char, List<PartAnimation>>();
+            foreach (var a in roomGo.GetComponentsInChildren<PartAnimation>(true))
+            {
+                string n = a.gameObject.name;
+                if (!n.StartsWith(prefix) || n.Length <= prefix.Length) continue;
+                if (!byBot.TryGetValue(n[prefix.Length], out var parts)) byBot[n[prefix.Length]] = parts = new List<PartAnimation>();
+                parts.Add(a);
+            }
+            foreach (var parts in byBot.Values)
+            {
+                foreach (var a in parts)
+                {
+                    a.loop = false;
+                    a.Hold();
+                    a.gameObject.SetActive(false);
+                }
+                terranBotParts.Add(parts);
+            }
+            if (terranBotParts.Count > 0) terranBots = new TerranHangarBots(terranBotParts.Count, () => Random.value);
+        }
+
+        /// <summary>Modified: one Terran bot flies at a time (TerranHangarBots); it shows while it flies.</summary>
+        void UpdateTerranBots(float dtMs)
+        {
+            int prev = terranBots.Current;
+            bool playing = false;
+            if (prev >= 0)
+                foreach (var a in terranBotParts[prev]) if (a != null && a.play) playing = true;
+            int next = terranBots.Tick(dtMs, playing, () => Random.value);
+            if (prev >= 0 && terranBots.Current != prev)
+                foreach (var a in terranBotParts[prev]) if (a != null) a.gameObject.SetActive(false);
+            if (next < 0) return;
+            foreach (var a in terranBotParts[next])
+            {
+                if (a == null) continue;
+                a.gameObject.SetActive(true);
+                a.loop = false;
+                a.Restart();
+            }
+        }
+
         // ---- view switching ----------------------------------------------------------------------------------
 
         /// <summary>Instant switch, like ModStation (no fades). The lounge plays its camera intro on the first visit only.</summary>
@@ -1313,6 +1367,7 @@ namespace GoF2Remake.World
                 if (Random.value < 0.3f) midorianProp.Restart();
             }
             if (View == StationView.Lounge && vosskBots != null) UpdateVosskBots(dtMs);
+            if (View == StationView.Hangar && terranBots != null) UpdateTerranBots(dtMs);
 
             if (View == StationView.Hangar) RefreshTurret(false);
             if (MusicHeld) musicHeldUntil = Time.unscaledTime + MusicHoldAfter;
