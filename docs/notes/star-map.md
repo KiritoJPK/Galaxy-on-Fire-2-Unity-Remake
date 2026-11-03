@@ -79,11 +79,13 @@ runtime by `Open()`), the flight side in `SystemJump` (on the player ship).
   (`StarMapRules.ShowDialog`, `.map-dialog--choice`, `dialogBack`; up / down move between them too; Esc / B close it).
 - **Arrival** from another system: the hidden gate in the gate orbit, else (0, 0, 100000), facing the station, with the
   7 s fly-in camera. Remake (the user, 2026-11-03): **a gate jump always comes out of the target system's own gate**
-  (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, missions included, the user's call to try them all):
+  (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, missions included, the user's call to try them all,
+  but the story steps 51 / 52 keep the old arrival, `OldGateArrival`: the K'Suukk escape's levels put the Vossk freighters
+  between the gate and the arrival point and the H'Soc around the gate, 52 in any orbit):
   the gate plays its jump animation (`PlayGateJump`, a jump sound) and the ship,
   hidden and held in its centre, appears as it flashes (1300 ms, `SpaceLevel.BeginGateArrival`, `Session.GateArrival`) and
   flies out of its front (game -z, a jump goes in through the back) through its sphere (`GateExiting`), fast, slowing to
-  the normal speed (14 to 2 units / ms over 3 s, eased out, `GateExitSpeed` / `GateExitMs`); the fly-in camera
+  the normal speed (14 to 2 units / ms over 3 s, eased out, `GateExitSpeed` / `GateExitMs`; no hits or collisions meanwhile, `GateLeaving`); the fly-in camera
   stands beside the gate, off its front at an angle and a little above, left or right at random (`GateCameraLocal`, the
   user's shot), and its clock waits for the flash. A destination elsewhere in that system stays programmed, so after the camera the autopilot flies to its
   planet and jumps there (`Arrive`'s `hopping`; no unasked gate jump then, `RouteDestination` only for another system); the orbit information (race logo, station, "<System> System", security level in its colour) shows

@@ -363,10 +363,16 @@ namespace GoF2Remake.World
         /// system without a gate keeps the station.</summary>
         int GateArrivalStation(int station)
         {
+            if (OldGateArrival) return station;
             int system = db.Stations.Find(s => s.index == station)?.system ?? -1;
             int gateStation = db.Systems.Find(s => s.index == system)?.jumpgateStation ?? -1;
             return gateStation >= 0 ? gateStation : station;
         }
+
+        /// <summary>The story steps whose levels are built around the gate (ValkyrieLevels Build51 / Build52, the hijacked
+        /// K'Suukk's escape: the Vossk freighters between the gate and the arrival point, the H'Soc circling the gate; 52 in
+        /// whatever orbit the player comes to): they keep the old arrival, or the ship would come out among them.</summary>
+        static bool OldGateArrival => !Session.FreePlay && (Story.Index == 51 || Story.Index == 52);
 
         /// <summary>Set while the gate takes the ship one system along the route to the programmed station (Arrive keeps it).
         /// Where the gate jumps: GalaxyMap.NextHop (the station, or the next system's gate orbit on the gate route).</summary>
@@ -923,7 +929,7 @@ namespace GoF2Remake.World
             int destSystem = db.Stations.Find(s => s.index == Session.ProgrammedStation)?.system ?? -1;
             Session.RouteDestination = viaGate && hopping && destSystem != arrivedSystem ? Session.ProgrammedStation : -1;
             // Modified: out of this system's gate as it flashes (SpaceLevel.BeginGateArrival), into its gate orbit.
-            Session.GateArrival = viaGate && targetStation == (db.Systems.Find(s => s.index == arrivedSystem)?.jumpgateStation ?? -2);
+            Session.GateArrival = viaGate && !OldGateArrival && targetStation == (db.Systems.Find(s => s.index == arrivedSystem)?.jumpgateStation ?? -2);
             hopping = false;
             Session.InstantJump = false;
             state = State.None;

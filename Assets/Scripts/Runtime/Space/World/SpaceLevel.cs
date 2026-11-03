@@ -778,14 +778,14 @@ namespace GoF2Remake.World
             if (Weapons != null) Weapons.WarpHeld = warpHolds;
             Navigation.ArrivalHeld = warpSky != null && warpSky.Arriving;
             if (Traffic != null) Traffic.HoldFire = warpHolds || Navigation.ConversationRuns;   // remake: a conversation the game runs on through
-            Health.invulnerable = warpHolds || launchCameraMs > 0f || DriveArriving || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Es2Busy || DockedInOrbit
+            Health.invulnerable = warpHolds || launchCameraMs > 0f || DriveArriving || GateLeaving || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Es2Busy || DockedInOrbit
                                   || (Campaign != null && (Campaign.PlayerInvulnerable || Campaign.Held)) || (StorySpace != null && StorySpace.SuccessPending)
                                   || GoF2Remake.World.SpaceHooks.Invulnerable || Navigation.ConversationRuns;
             // Modified: while a mod drive's jump has hidden the ship (vanished into its effect, or not yet out of the arrival fx),
             // enemy shots fly through it (Target.phased) and nothing targets it (untargetable: NPC fighters, turrets and
             // sentries drop it). The gate's and the Khador Drive's scenes are left as they are.
             SetSceneHidden((SystemJump != null && SystemJump.ModDriveHidden) || DriveArrivalHidden);
-            Collision.off = warpHolds || launchCameraMs > 0f || DriveArriving || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Es2Busy || DockedInOrbit
+            Collision.off = warpHolds || launchCameraMs > 0f || DriveArriving || GateLeaving || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Es2Busy || DockedInOrbit
                             || (Campaign != null && Campaign.CollisionOff);   // PlayerEgo+0x144
             Collision.ignoreGate = Navigation.GoingToGate || GateExiting;   // Modified: out of the gate after a gate jump
             // Hostiles, or a radio line on screen, block fast-forward (MGame::OnUpdate).

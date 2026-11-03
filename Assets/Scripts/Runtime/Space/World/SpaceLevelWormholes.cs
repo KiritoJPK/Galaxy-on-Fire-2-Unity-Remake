@@ -475,6 +475,9 @@ namespace GoF2Remake.World
         /// <summary>The ship hasn't left the gate it came out of yet: the gate's solid sphere (OrbitBuilder.AddObstacles) lets
         /// it through, as it does the autopilot flying into it.</summary>
         public bool GateExiting => gateExiting;
+        /// <summary>Still in the fast exit out of the gate: the ship can't be hit or collide (an asteroid at that speed, the
+        /// volatile goods' +0.2 per touch) even after a skipped arrival camera.</summary>
+        public bool GateLeaving => gateLeaving;
 
         void BeginGateArrival()
         {
