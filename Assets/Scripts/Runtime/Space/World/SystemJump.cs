@@ -358,16 +358,28 @@ namespace GoF2Remake.World
 
         /// <summary>Modified (the user, 2026-11-03): a gate jump always comes out of the target system's own gate, its jump
         /// animation playing as the ship appears in it (SpaceLevel.BeginGateArrival), not at the target planet's orbit: the
-        /// system's gate orbit (SystemData.jumpgateStation) for 'station'. Unchanged where a script sets up the target orbit
-        /// or the gate orbit (Navigation.ScriptedArrival: a story mission's, a freelance or event mission's), or for a system
-        /// without a gate.</summary>
+        /// system's gate orbit (SystemData.jumpgateStation) for 'station'; the destination stays programmed and the autopilot
+        /// flies on to its planet. Unchanged where the gate orbit holds a fight or a scene (GateSceneOrbit): the ship would
+        /// land in it on the way elsewhere, or be placed by its script; and for a system without a gate.</summary>
         int GateArrivalStation(int station)
         {
-            if (Navigation.ScriptedArrival(station)) return station;
             int system = db.Stations.Find(s => s.index == station)?.system ?? -1;
             int gateStation = db.Systems.Find(s => s.index == system)?.jumpgateStation ?? -1;
-            if (gateStation < 0 || gateStation == station) return station;
-            return Navigation.ScriptedArrival(gateStation) ? station : gateStation;
+            if (gateStation < 0) return station;
+            return GateSceneOrbit(gateStation) ? station : gateStation;
+        }
+
+        /// <summary>A gate orbit a script turns into a fight or a scene on arrival: the current story step's level there (a
+        /// fight, an orbit to reach, a criminal, a defence, an interception, a challenge, the Void attack: not a step that only
+        /// asks to dock, visit the lounge, equip or wait for a call, which reads Story.IsLevelMission true too), a freelance
+        /// mission's target, an event quest's (Navigation.ScriptedArrival's other two).</summary>
+        static bool GateSceneOrbit(int station)
+        {
+            if (Freelance.IsMissionOrbit(station) || SpaceHooks.IsQuietOrbit(station)) return true;
+            if (Session.FreePlay || !Story.IsLevelMission(station)) return false;
+            int type = Story.Mission?.type ?? StoryType.Empty;
+            return type == StoryType.Level || type == StoryType.ReachOrbit || type == StoryType.Wanted || type == StoryType.Defense
+                   || type == StoryType.Intercept || type == StoryType.Challenge || type == StoryType.VoidInvasion;
         }
 
         /// <summary>Set while the gate takes the ship one system along the route to the programmed station (Arrive keeps it).
@@ -926,7 +938,7 @@ namespace GoF2Remake.World
             Session.RouteDestination = viaGate && hopping && destSystem != arrivedSystem ? Session.ProgrammedStation : -1;
             // Modified: out of this system's gate as it flashes (SpaceLevel.BeginGateArrival), into its gate orbit.
             Session.GateArrival = viaGate && targetStation == (db.Systems.Find(s => s.index == arrivedSystem)?.jumpgateStation ?? -2)
-                                  && !Navigation.ScriptedArrival(targetStation);
+                                  && !GateSceneOrbit(targetStation);
             hopping = false;
             Session.InstantJump = false;
             state = State.None;

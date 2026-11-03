@@ -79,8 +79,10 @@ runtime by `Open()`), the flight side in `SystemJump` (on the player ship).
   (`StarMapRules.ShowDialog`, `.map-dialog--choice`, `dialogBack`; up / down move between them too; Esc / B close it).
 - **Arrival** from another system: the hidden gate in the gate orbit, else (0, 0, 100000), facing the station, with the
   7 s fly-in camera. Remake (the user, 2026-11-03): **a gate jump always comes out of the target system's own gate**
-  (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, unless a script sets up the target orbit or the gate
-  orbit, `Navigation.ScriptedArrival`): the gate plays its jump animation (`PlayGateJump`, a jump sound) and the ship,
+  (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, unless the gate orbit holds a fight or a scene,
+  `GateSceneOrbit`: the story step's level there of a fighting / reach-orbit / criminal / defence / interception /
+  challenge / Void-attack type, a freelance or an event mission's target; a step that only asks to dock, visit the lounge,
+  equip or wait for a call doesn't count, though `Story.IsLevelMission` holds for it): the gate plays its jump animation (`PlayGateJump`, a jump sound) and the ship,
   hidden and held in its centre, appears as it flashes (1300 ms, `SpaceLevel.BeginGateArrival`, `Session.GateArrival`) and
   flies out of its front (game -z, a jump goes in through the back) through its sphere (`GateExiting`); the fly-in camera
   stands beside the gate, off its front at an angle and a little above, left or right at random (`GateCameraLocal`, the
