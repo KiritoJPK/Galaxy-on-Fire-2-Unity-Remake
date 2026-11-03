@@ -361,9 +361,9 @@ namespace GoF2Remake.World
                 root.transform.SetPositionAndRotation(failAt, Quaternion.LookRotation(-failAt.normalized, Vector3.up));
             // Modified: a gate jump comes out of this orbit's visible gate (Session.GateArrival, SystemJump.GateArrivalStation),
             // at its centre facing out of its front (game -z: a jump goes in through the back, game +z), hidden until the gate's
-            // jump animation flashes (BeginGateArrival). Not with a story start placed elsewhere (Coromesk) or a distress call's.
+            // jump animation flashes (BeginGateArrival). Not with a multiplayer distress call's arrival (next to the caller).
             bool gateArrival = Session.GateArrival && Session.ArrivedByTravel && Jumpgate != null && Layout.hasJumpgate && !Layout.interstellar
-                               && !warpArrival && !driveArrival && !distressArrival && !((cm > 0x54 || cm == 0x87) && Layout.stationIndex == 103);
+                               && !warpArrival && !driveArrival && !distressArrival;
             Session.GateArrival = false;
             if (gateArrival)
                 root.transform.SetPositionAndRotation(Jumpgate.transform.position,
