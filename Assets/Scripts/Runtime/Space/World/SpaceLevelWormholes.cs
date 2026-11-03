@@ -462,11 +462,14 @@ namespace GoF2Remake.World
         // (GateShowMs, SystemJump's GateFlashMs) and flies out; the arrival camera's clock waits until then. The gate goes back
         // to its idle look when the animation is over.
         const float GateShowMs = 1300f;
+        /// <summary>Out of the gate fast, slowing down to the normal speed (FlightModel.BaseSpeed, 2 units / ms) over
+        /// GateExitMs, eased out (the user, 2026-11-03).</summary>
+        const float GateExitSpeed = 14f, GateExitMs = 3000f;
         /// <summary>The arrival camera beside the gate, off its front at an angle, a little above (game units in the ship's
         /// frame: out of the gate, to the side, up), left or right at random (the user's shot, 2026-11-03).</summary>
         static readonly Vector3 GateCameraLocal = new Vector3(11000f, 2500f, 14000f);
         float gateArrivalMs = -1f, gateArrivalLength;
-        bool gateHolding, gateExiting;
+        bool gateHolding, gateExiting, gateLeaving;
         /// <summary>The ship is still hidden in the gate, waiting for its flash.</summary>
         public bool GateArrivalHidden => gateArrivalMs >= 0f && gateHolding;
         /// <summary>The ship hasn't left the gate it came out of yet: the gate's solid sphere (OrbitBuilder.AddObstacles) lets
@@ -502,10 +505,19 @@ namespace GoF2Remake.World
             if (gateHolding && gateArrivalMs >= GateShowMs)
             {
                 gateHolding = false;
+                gateLeaving = true;
                 if (Player.visualModel != null) Player.visualModel.gameObject.SetActive(true);
-                Player.externalControl = false;
             }
-            if (gateArrivalMs < Mathf.Max(gateArrivalLength, GateShowMs)) return;
+            if (gateLeaving)
+            {
+                // Out of the gate at GateExitSpeed, slowing to the normal speed; then the ship flies on by itself.
+                float u = Mathf.Clamp01((gateArrivalMs - GateShowMs) / GateExitMs);
+                float speed = FlightModel.BaseSpeed + (GateExitSpeed - FlightModel.BaseSpeed) * (1f - u) * (1f - u);
+                Player.transform.position += Player.transform.forward * speed * Time.deltaTime * 1000f * M;
+                Player.ExternalSpeedMetersPerSecond = speed * M * 1000f;
+                if (u >= 1f) { gateLeaving = false; Player.externalControl = false; }
+            }
+            if (gateLeaving || gateArrivalMs < Mathf.Max(gateArrivalLength, GateShowMs)) return;
             SystemJump.ResetGate(Jumpgate);
             gateArrivalMs = -1f;
         }
