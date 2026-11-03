@@ -113,10 +113,14 @@
     display: flex;
 }
 
+/* Modified: the top padding in units of the height (the panel is about 1080 high, UiLayout's Expand), not a share of the
+   width: as 13 % (10 % for the full list) of the width it was 250 / 192 units at 16:9 but grew with a wider screen, and on
+   a wide, short window (the Editor's Game view docked low) it took half the height, the rows squeezed together. The same
+   units at 16:9. */
 .main-column {
     width: 30%;
     padding-left: 3%;
-    padding-top: 13%;
+    padding-top: 250px;
     justify-content: center;
 }
 
@@ -128,7 +132,7 @@
    Exit ended up over the version text at the bottom left (and its tap zone, .footer-version) and couldn't be pressed.
    The column starts higher and keeps the bottom 110 units free, the logo still clear above it. */
 .main-column--full {
-    padding-top: 10%;
+    padding-top: 192px;
     padding-bottom: 110px;
 }
 
