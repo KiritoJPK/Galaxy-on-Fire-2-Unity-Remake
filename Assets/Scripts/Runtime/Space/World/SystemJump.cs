@@ -340,8 +340,11 @@ namespace GoF2Remake.World
                 Session.ProgrammedStation = result.station;
                 Session.RouteSafest = result.safestRoute;
                 int hop = GalaxyMap.NextHop(db, Session.StationIndex, result.station, result.safestRoute);
-                hopping = hop != result.station;
-                StartGateScene(hop);
+                // Modified: every gate jump comes out of the next system's gate (GateArrivalStation); a destination elsewhere
+                // in that system is kept, so the autopilot flies on to its planet after the arrival camera.
+                int arriveAt = GateArrivalStation(hop);
+                hopping = arriveAt != result.station;
+                StartGateScene(arriveAt);
                 return;
             }
             // dockToStream(false): controls back, the ship past the gate with the gate's direction.
@@ -351,6 +354,20 @@ namespace GoF2Remake.World
             if (gate != null)
                 ship.transform.SetPositionAndRotation(gate.transform.position + OrbitLayout.DirToUnity(new Vector3(0f, 0f, 8000f)) * M,
                                                       Quaternion.LookRotation(OrbitLayout.DirToUnity(Vector3.forward), Vector3.up));
+        }
+
+        /// <summary>Modified (the user, 2026-11-03): a gate jump always comes out of the target system's own gate, its jump
+        /// animation playing as the ship appears in it (SpaceLevel.BeginGateArrival), not at the target planet's orbit: the
+        /// system's gate orbit (SystemData.jumpgateStation) for 'station'. Unchanged where a script sets up the target orbit
+        /// or the gate orbit (Navigation.ScriptedArrival: a story mission's, a freelance or event mission's), or for a system
+        /// without a gate.</summary>
+        int GateArrivalStation(int station)
+        {
+            if (Navigation.ScriptedArrival(station)) return station;
+            int system = db.Stations.Find(s => s.index == station)?.system ?? -1;
+            int gateStation = db.Systems.Find(s => s.index == system)?.jumpgateStation ?? -1;
+            if (gateStation < 0 || gateStation == station) return station;
+            return Navigation.ScriptedArrival(gateStation) ? station : gateStation;
         }
 
         /// <summary>Set while the gate takes the ship one system along the route to the programmed station (Arrive keeps it).
@@ -902,7 +919,14 @@ namespace GoF2Remake.World
             Session.LaunchedFromStation = false;
             if (viaGate) Session.JumpgatesUsed++;
             if (!hopping) Session.ProgrammedStation = -1;   // remake: a hop keeps the destination, the autopilot flies on
-            Session.RouteDestination = viaGate && hopping ? Session.ProgrammedStation : -1;   // and the next gate jumps on unasked
+            // and the next gate jumps on unasked (Modified: not when the destination is in the system arrived in: the
+            // autopilot flies to its planet, GateArrivalStation)
+            int arrivedSystem = db.Stations.Find(s => s.index == targetStation)?.system ?? -1;
+            int destSystem = db.Stations.Find(s => s.index == Session.ProgrammedStation)?.system ?? -1;
+            Session.RouteDestination = viaGate && hopping && destSystem != arrivedSystem ? Session.ProgrammedStation : -1;
+            // Modified: out of this system's gate as it flashes (SpaceLevel.BeginGateArrival), into its gate orbit.
+            Session.GateArrival = viaGate && targetStation == (db.Systems.Find(s => s.index == arrivedSystem)?.jumpgateStation ?? -2)
+                                  && !Navigation.ScriptedArrival(targetStation);
             hopping = false;
             Session.InstantJump = false;
             state = State.None;

@@ -787,7 +787,7 @@ namespace GoF2Remake.World
             SetSceneHidden((SystemJump != null && SystemJump.ModDriveHidden) || DriveArrivalHidden);
             Collision.off = warpHolds || launchCameraMs > 0f || DriveArriving || Navigation.Jumping || (SystemJump != null && SystemJump.Cinematic) || Es2Busy || DockedInOrbit
                             || (Campaign != null && Campaign.CollisionOff);   // PlayerEgo+0x144
-            Collision.ignoreGate = Navigation.GoingToGate;
+            Collision.ignoreGate = Navigation.GoingToGate || GateExiting;   // Modified: out of the gate after a gate jump
             // Hostiles, or a radio line on screen, block fast-forward (MGame::OnUpdate).
             Navigation.HostilesPresent = (Traffic != null && (Traffic.HostileCount > 0 || Traffic.ChatterVisible != null)) || (Campaign != null && Campaign.Radio != null && Campaign.Radio.Busy);
             if (Extender != null && ExtenderCancelled) Extender.Cancel();
@@ -865,6 +865,7 @@ namespace GoF2Remake.World
             if (Player == null || (Health != null && Health.Dead)) return;
             if (!InDockRange) leftDockRange = true;
             UpdateDriveArrival();   // Modified: a mod drive's arrival fx
+            UpdateGateArrival();    // Modified: out of the gate as it flashes
             foreach (var m in Mobiles) if (m != null && !m.LeftRange && !m.InRange(Player.transform.position)) m.LeftRange = true;
             // Remake mods: the autopilot to a mobile station docks within its range.
             if (DockedInOrbit || Es2Busy) return;   // EVERSPACE 2's docking / take-off flies the ship
@@ -895,7 +896,7 @@ namespace GoF2Remake.World
             if (!Settings.LaunchCamera) { EndLaunchCamera(true); return; }
             // LevelScript::skipSequence 0x16f57c only sets the fly-in clock to 7001: the next frame ends it like the natural
             // end (setLookAtCam(false), no resetCamera), so the chase camera eases in from where the camera is.
-            if (DriveArriving)
+            if (DriveArriving || GateArrivalHidden)
             {
                 // Modified: the arrival camera's clock starts once a mod drive's arrival fx is over (no skipping meanwhile).
                 var hc = mainCamera.transform;

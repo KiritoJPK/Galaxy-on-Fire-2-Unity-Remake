@@ -78,7 +78,13 @@ runtime by `Open()`), the flight side in `SystemJump` (on the player ship).
   safest route) stack their two answers in the middle and have a Back button at the top right in place of No
   (`StarMapRules.ShowDialog`, `.map-dialog--choice`, `dialogBack`; up / down move between them too; Esc / B close it).
 - **Arrival** from another system: the hidden gate in the gate orbit, else (0, 0, 100000), facing the station, with the
-  7 s fly-in camera; the orbit information (race logo, station, "<System> System", security level in its colour) shows
+  7 s fly-in camera. Remake (the user, 2026-11-03): **a gate jump always comes out of the target system's own gate**
+  (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, unless a script sets up the target orbit or the gate
+  orbit, `Navigation.ScriptedArrival`): the gate plays its jump animation (`PlayGateJump`, a jump sound) and the ship,
+  hidden and held in its centre, appears as it flashes (1300 ms, `SpaceLevel.BeginGateArrival`, `Session.GateArrival`) and
+  flies out along the gate's direction (game +z) through its sphere (`GateExiting`); the fly-in camera's clock waits for
+  the flash. A destination elsewhere in that system stays programmed, so after the camera the autopilot flies to its
+  planet and jumps there (`Arrive`'s `hopping`; no unasked gate jump then, `RouteDestination` only for another system); the orbit information (race logo, station, "<System> System", security level in its colour) shows
   during it. The programmed station is cleared: no autopilot leg follows a system jump (remake: but a gate route's hop,
   "Jumpgate route planning").
 - **Loma** (system 25, the Valkyrie add-on's black market; gates to Aquila, Union and Shima): on the map from a new game's

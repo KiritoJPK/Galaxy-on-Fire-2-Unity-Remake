@@ -317,8 +317,12 @@ namespace GoF2Remake.World
             if (GoF2Remake.World.SpaceHooks.InArena) { var spawn = GoF2Remake.World.SpaceHooks.ArenaSpawnPose(); root.transform.SetPositionAndRotation(spawn.position, spawn.rotation); }
             else if (NetSession.Active) root.transform.position += root.transform.right * (((int)(NetSession.LocalId % 8) - 3) * 80f);
             // Multiplayer: answering a squadmate's distress call, next to them (NetDistress).
+            bool distressArrival = false;
             if (GoF2Remake.Data.NetSession.Active && Session.ArrivedByTravel && SpaceHooks.DistressArrival != null && SpaceHooks.DistressArrival(Layout.stationIndex, out var near, out var nearFacing))
+            {
                 root.transform.SetPositionAndRotation(near, nearFacing);
+                distressArrival = true;
+            }
             // LevelScript::LevelScript 0x160380: at Coromesk (103) from campaign 0x55 on (or at 0x87), outside the Void, every
             // start is at (70000, 0, 100000) facing the station (the mining plant stands at the origin from then on).
             int cm = Session.CampaignMission;
@@ -355,6 +359,15 @@ namespace GoF2Remake.World
             Session.DriveArrival = Session.DriveFailArrival = false;
             if (driveFailed && DriveFailPoint(jumpDriveSpec.failRadiusKm * 16000f, out var failAt))
                 root.transform.SetPositionAndRotation(failAt, Quaternion.LookRotation(-failAt.normalized, Vector3.up));
+            // Modified: a gate jump comes out of this orbit's visible gate (Session.GateArrival, SystemJump.GateArrivalStation),
+            // at its centre along the gate's direction (game +z, the way a jump goes through it), hidden until the gate's jump
+            // animation flashes (BeginGateArrival). Not with a story start placed elsewhere (Coromesk) or a distress call's.
+            bool gateArrival = Session.GateArrival && Session.ArrivedByTravel && Jumpgate != null && Layout.hasJumpgate && !Layout.interstellar
+                               && !warpArrival && !driveArrival && !distressArrival && !((cm > 0x54 || cm == 0x87) && Layout.stationIndex == 103);
+            Session.GateArrival = false;
+            if (gateArrival)
+                root.transform.SetPositionAndRotation(Jumpgate.transform.position,
+                                                      Quaternion.LookRotation(OrbitLayout.DirToUnity(Vector3.forward), Vector3.up));
             // Remake multiplayer: an admin's teleport into this orbit (NetTeleport) brings its own pose.
             if (SpaceHooks.TeleportPose != null && SpaceHooks.TeleportPose(out var tpPos, out var tpRot)) root.transform.SetPositionAndRotation(tpPos, tpRot);
             var ctrl = root.AddComponent<ShipController>();
@@ -441,6 +454,52 @@ namespace GoF2Remake.World
             if (warpArrival) { launchTravel = true; Session.LaunchedFromStation = Session.ArrivedByTravel = false; }
             else if (Session.LaunchedFromStation || Session.ArrivedByTravel) StartLaunchCamera();
             if (driveArrival) BeginDriveArrival(driveFailed);
+            if (gateArrival) BeginGateArrival();
+        }
+
+        // Modified: a gate jump's arrival (Session.GateArrival): the gate plays its jump animation (SystemJump.PlayGateJump,
+        // PlayerJumpgate::activate, with a jump sound) and the ship, hidden and held in its centre, appears as it flashes
+        // (GateShowMs, SystemJump's GateFlashMs) and flies out; the arrival camera's clock waits until then. The gate goes back
+        // to its idle look when the animation is over.
+        const float GateShowMs = 1300f;
+        float gateArrivalMs = -1f, gateArrivalLength;
+        bool gateHolding, gateExiting;
+        /// <summary>The ship is still hidden in the gate, waiting for its flash.</summary>
+        public bool GateArrivalHidden => gateArrivalMs >= 0f && gateHolding;
+        /// <summary>The ship hasn't left the gate it came out of yet: the gate's solid sphere (OrbitBuilder.AddObstacles) lets
+        /// it through, as it does the autopilot flying into it.</summary>
+        public bool GateExiting => gateExiting;
+
+        void BeginGateArrival()
+        {
+            gateArrivalMs = 0f;
+            gateHolding = gateExiting = true;
+            Player.externalControl = true;
+            Player.ExternalSpeedMetersPerSecond = 0f;
+            if (Player.visualModel != null) Player.visualModel.gameObject.SetActive(false);
+            float len = SystemJump.PlayGateJump(Jumpgate);
+            gateArrivalLength = len > 0f ? len : GateShowMs;
+            var sounds = GoF2Remake.UI.StarMapAssets.Load();
+            if (sounds != null && sounds.jumpgate != null && sounds.jumpgate.Length > 0)
+                Sfx.PlayAt(sounds.jumpgate[Random.Range(0, sounds.jumpgate.Length)], Jumpgate.transform.position);
+        }
+
+        void UpdateGateArrival()
+        {
+            if (gateExiting && !gateHolding && (Jumpgate == null
+                || (Player.transform.position - Jumpgate.transform.position).magnitude > Layout.JumpgateRadius * M * 1.1f))
+                gateExiting = false;
+            if (gateArrivalMs < 0f) return;
+            gateArrivalMs += Time.deltaTime * 1000f;
+            if (gateHolding && gateArrivalMs >= GateShowMs)
+            {
+                gateHolding = false;
+                if (Player.visualModel != null) Player.visualModel.gameObject.SetActive(true);
+                Player.externalControl = false;
+            }
+            if (gateArrivalMs < Mathf.Max(gateArrivalLength, GateShowMs)) return;
+            SystemJump.ResetGate(Jumpgate);
+            gateArrivalMs = -1f;
         }
 
         // Modified: a mod drive's arrival (ModJumpFx "arrivalFx"; IntroCutscenes' time jump end, steps 10 / 11): sound 159, the

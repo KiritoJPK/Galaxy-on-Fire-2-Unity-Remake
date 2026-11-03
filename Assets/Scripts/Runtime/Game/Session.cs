@@ -324,6 +324,9 @@ namespace GoF2Remake.Data
         /// <summary>Modified: the arrival of a mod jump drive's jump (failed or not; ModJumpFx "arrivalFx"): the ship comes in
         /// with the 2D hyper_drive fx in the drive's own texture (SpaceLevel.BeginDriveArrival).</summary>
         public static bool DriveArrival;
+        /// <summary>Modified: a gate jump's arrival (SystemJump.Arrive): the ship comes out of this system's visible gate as it
+        /// flashes (SpaceLevel.BeginGateArrival). Never saved.</summary>
+        public static bool GateArrival;
 
         /// <summary>Set by the station's launch button: the flight level starts with the launch camera
         /// (LevelScript: a fixed camera 9000 units ahead watches the ship fly past for 7 s).</summary>
