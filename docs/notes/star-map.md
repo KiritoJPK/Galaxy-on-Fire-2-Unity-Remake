@@ -82,8 +82,9 @@ runtime by `Open()`), the flight side in `SystemJump` (on the player ship).
   (`SystemJump.GateArrivalStation`: the system's `jumpgateStation`, unless a script sets up the target orbit or the gate
   orbit, `Navigation.ScriptedArrival`): the gate plays its jump animation (`PlayGateJump`, a jump sound) and the ship,
   hidden and held in its centre, appears as it flashes (1300 ms, `SpaceLevel.BeginGateArrival`, `Session.GateArrival`) and
-  flies out along the gate's direction (game +z) through its sphere (`GateExiting`); the fly-in camera's clock waits for
-  the flash. A destination elsewhere in that system stays programmed, so after the camera the autopilot flies to its
+  flies out of its front (game -z, a jump goes in through the back) through its sphere (`GateExiting`); the fly-in camera
+  stands beside the gate, off its front at an angle and a little above, left or right at random (`GateCameraLocal`, the
+  user's shot), and its clock waits for the flash. A destination elsewhere in that system stays programmed, so after the camera the autopilot flies to its
   planet and jumps there (`Arrive`'s `hopping`; no unasked gate jump then, `RouteDestination` only for another system); the orbit information (race logo, station, "<System> System", security level in its colour) shows
   during it. The programmed station is cleared: no autopilot leg follows a system jump (remake: but a gate route's hop,
   "Jumpgate route planning").

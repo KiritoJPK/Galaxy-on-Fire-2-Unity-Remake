@@ -360,14 +360,14 @@ namespace GoF2Remake.World
             if (driveFailed && DriveFailPoint(jumpDriveSpec.failRadiusKm * 16000f, out var failAt))
                 root.transform.SetPositionAndRotation(failAt, Quaternion.LookRotation(-failAt.normalized, Vector3.up));
             // Modified: a gate jump comes out of this orbit's visible gate (Session.GateArrival, SystemJump.GateArrivalStation),
-            // at its centre along the gate's direction (game +z, the way a jump goes through it), hidden until the gate's jump
-            // animation flashes (BeginGateArrival). Not with a story start placed elsewhere (Coromesk) or a distress call's.
+            // at its centre facing out of its front (game -z: a jump goes in through the back, game +z), hidden until the gate's
+            // jump animation flashes (BeginGateArrival). Not with a story start placed elsewhere (Coromesk) or a distress call's.
             bool gateArrival = Session.GateArrival && Session.ArrivedByTravel && Jumpgate != null && Layout.hasJumpgate && !Layout.interstellar
                                && !warpArrival && !driveArrival && !distressArrival && !((cm > 0x54 || cm == 0x87) && Layout.stationIndex == 103);
             Session.GateArrival = false;
             if (gateArrival)
                 root.transform.SetPositionAndRotation(Jumpgate.transform.position,
-                                                      Quaternion.LookRotation(OrbitLayout.DirToUnity(Vector3.forward), Vector3.up));
+                                                      Quaternion.LookRotation(OrbitLayout.DirToUnity(Vector3.back), Vector3.up));
             // Remake multiplayer: an admin's teleport into this orbit (NetTeleport) brings its own pose.
             if (SpaceHooks.TeleportPose != null && SpaceHooks.TeleportPose(out var tpPos, out var tpRot)) root.transform.SetPositionAndRotation(tpPos, tpRot);
             var ctrl = root.AddComponent<ShipController>();
@@ -462,6 +462,9 @@ namespace GoF2Remake.World
         // (GateShowMs, SystemJump's GateFlashMs) and flies out; the arrival camera's clock waits until then. The gate goes back
         // to its idle look when the animation is over.
         const float GateShowMs = 1300f;
+        /// <summary>The arrival camera beside the gate, off its front at an angle, a little above (game units in the ship's
+        /// frame: out of the gate, to the side, up), left or right at random (the user's shot, 2026-11-03).</summary>
+        static readonly Vector3 GateCameraLocal = new Vector3(11000f, 2500f, 14000f);
         float gateArrivalMs = -1f, gateArrivalLength;
         bool gateHolding, gateExiting;
         /// <summary>The ship is still hidden in the gate, waiting for its flash.</summary>
@@ -477,6 +480,11 @@ namespace GoF2Remake.World
             Player.externalControl = true;
             Player.ExternalSpeedMetersPerSecond = 0f;
             if (Player.visualModel != null) Player.visualModel.gameObject.SetActive(false);
+            // The camera beside the gate, looking at it (the fly-in keeps it there, turning to follow the ship out).
+            var local = GateCameraLocal;
+            if (Random.value < 0.5f) local.x = -local.x;
+            mainCamera.transform.position = Player.transform.TransformPoint(local * M);
+            mainCamera.transform.rotation = Quaternion.LookRotation(Player.transform.position - mainCamera.transform.position, Vector3.up);
             float len = SystemJump.PlayGateJump(Jumpgate);
             gateArrivalLength = len > 0f ? len : GateShowMs;
             var sounds = GoF2Remake.UI.StarMapAssets.Load();
