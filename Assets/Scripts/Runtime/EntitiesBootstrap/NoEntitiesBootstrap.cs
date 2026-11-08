@@ -3,7 +3,8 @@
 // (ClientServerBootstrap) would create an Entities host world at startup and tick its systems every frame, single player
 // included. The remake doesn't use Entities, and NGO only needs them in its unified mode (UNIFIED_NETCODE, not set):
 // this bootstrap (the project's own, so Entities picks it over the package's) creates no client / server world, only the
-// default world Entities insists on (World.DefaultGameObjectInjectionWorld), empty: no systems, not in the player loop.
+// default world Entities insists on (World.DefaultGameObjectInjectionWorld), empty: no systems, not in the player loop;
+// one the engine made already is kept.
 
 namespace GoF2Remake.Multiplayer
 {
@@ -12,7 +13,15 @@ namespace GoF2Remake.Multiplayer
     {
         public override bool Initialize(string defaultWorldName)
         {
-            Unity.Entities.World.DefaultGameObjectInjectionWorld = new Unity.Entities.World(defaultWorldName, Unity.Entities.WorldFlags.Game);
+            // Modified: keep the world the engine already has (Unity 7000 a16 gives every GameObject an entity in it, World id 1)
+            // instead of replacing it: GameObjects made after a new world took its place (Instantiate under a scene parent,
+            // new GameObject) went into that one, and every hierarchy mixing the two logged "A transform hierarchy holds
+            // entities of more than one Entities World (World ids 1 and N)" (the menu, the station, flight; N grew with each
+            // Play mode entry, one more world each time). The package's own bootstraps do the same
+            // (ClientServerBootstrap.AssignCurrentActiveWorldIfNotSet).
+            var world = Unity.Entities.World.DefaultGameObjectInjectionWorld;
+            if (world == null || !world.IsCreated)
+                Unity.Entities.World.DefaultGameObjectInjectionWorld = new Unity.Entities.World(defaultWorldName, Unity.Entities.WorldFlags.Game);
             return true;
         }
     }
