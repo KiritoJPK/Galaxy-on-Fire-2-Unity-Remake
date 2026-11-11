@@ -212,7 +212,9 @@ Notes moved from `CLAUDE.md` (its index lists every notes file). Code comments c
   tilt sensitivity (the stick, keys and pads now use the plain sensitivity, like the original); the touch stick is
   squared per axis (`Hud::getAnalog`²); dimmed stick (alpha 50).
 - **Touch controls** (`TouchControls`, `Reference/research/touch_hud.md`): the original's flight controls as UI Toolkit
-  elements with the original images (`GoF2Hud/touch_*`, **GoF2 > Build > HUD Images**) and their own pointer events,
+  elements with the original images (`GoF2Hud/touch_*`, **GoF2 > Build > HUD Images**; trilinear mipmaps that ignore
+  the texture quality's mip limit since 2026-11-10: drawn smaller without mips, their thin rings broke where they run
+  along a row or column) and their own pointer events,
   placed like `Globals::setCoordsSteer` / `setCoordsFire` with the Android defaults S = 415 / F = 365 in the safe area
   (panel units = HD pixels): the left group (fast-forward / time extender and autopilot on their pill from
   `NavigationView`, the pill only behind a shown icon, the autopilot hidden at campaign 0 / 1; the fixed stick 0x4c1 /

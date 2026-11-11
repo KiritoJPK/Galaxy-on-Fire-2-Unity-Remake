@@ -277,7 +277,12 @@ namespace GoF2Remake.EditorTools
                 var ti = (TextureImporter)AssetImporter.GetAtPath(path);
                 if (ti == null) continue;
                 ti.textureType = TextureImporterType.Default;
-                ti.mipmapEnabled = false;
+                // Modified: the touch controls are drawn smaller than their iPad images, and without mipmaps their thin dark
+                // rings lost pixels where they run along a row or column (gaps at the top / bottom / sides of the stick, boost
+                // and camera buttons). Trilinear mipmaps average them; ignoreMipmapLimit keeps them sharp at low texture quality.
+                bool touch = Path.GetFileName(path).StartsWith("touch_");
+                ti.mipmapEnabled = touch;
+                if (touch) { ti.filterMode = FilterMode.Trilinear; ti.ignoreMipmapLimit = true; }
                 ti.alphaIsTransparency = true;
                 ti.npotScale = TextureImporterNPOTScale.None;
                 ti.wrapMode = repeat ? TextureWrapMode.Repeat : TextureWrapMode.Clamp;
