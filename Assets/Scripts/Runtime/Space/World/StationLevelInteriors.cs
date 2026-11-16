@@ -128,6 +128,8 @@ namespace GoF2Remake.World
             SetupTerranBots(roomGo);
             if (customHangar == null) PlaceValkyrieHangarParts(roomGo);
             DrawPadsWithDepth(roomGo);
+            hangarRoomGo = roomGo;
+            if (customHangar == null) CollectRoomReflections(roomGo);
             CollectRoomHighlights(roomGo);
 
             shipPivot = PadPosition(shipIndex);   // clear of the pad (remake)
@@ -372,6 +374,7 @@ namespace GoF2Remake.World
             if (customBar != null) { room = Instantiate(customBar.template, Vector3.zero, Quaternion.identity, barRoot); room.name = "Room (" + customBar.def.key + ")"; }
             else room = Spawn(StationTables.BarRoom[BarRace], Vector3.zero, OrbitLayout.RotationToUnity(Vector3.zero), barRoot, "Room");
             BarRoom = room != null ? room.transform : null;
+            if (customBar == null) CollectRoomReflections(room);
             // As in the hangar: the loops (and the Midorian prop's replays) skip their one-off first key, where every part
             // sits at the origin for 33 / 50 ms; played, it flashed for a frame on every wrap (the Nivelian bar's 6.5 s
             // bar_nivelian_anim_add, the Midorian prop each time it replayed).

@@ -45,7 +45,9 @@ Research: `Reference/research/space_level_setup.md`, `space_backdrop.md` (+ `spa
   fragment source in libgof2hdaa.so: + cubemap(reflect) x clamp(smoothstep(0.6, 1, 1 - N.V), spec^2, 2 spec + rim) +
   rim x spec^2 x rimColor, spec = the specular map, `_MetallicGlossMap`'s alpha; sampled with the GPU's mip choice; x (1 -
   metallic)): the ships, stations, turrets and objects with a specular map (165 materials, `AssetImport`), not the hangar /
-  bar rooms or the sky props (plain URP Lit, the original's have no cube reflection); globals `_GoF2HullReflection` (1) and
+  bar rooms or the sky props (plain URP Lit, the original's have no cube reflection; Options > Graphics "Hangar and bar
+  reflections", off by default, gives the rooms' glossy opaque materials GoF2/Hull copies at run time,
+  `StationLevel.CollectRoomReflections` / `ApplyRoomReflections`, the user's request 2026-11-15); globals `_GoF2HullReflection` (1) and
   `_GoF2HullRimColor` (3 x `DAT_00258d34[sysTex]`, the sun colour table but systems 11 / 15, `StarSystem::initLight`).
   URP Lit alone reflected ~4 % (a dielectric): the hulls had none of the original's shine. The mods' material templates
   (`ModAssetsBuilder`) use it with `_GOF2_PBR`, which leaves the GoF2 terms out (2026-10-17, the user's report: mod ships

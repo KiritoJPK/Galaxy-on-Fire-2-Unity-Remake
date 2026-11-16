@@ -373,10 +373,18 @@ namespace GoF2Remake.World
             if (orbitDocked && hangarRoot != null) Destroy(hangarRoot.gameObject);   // it rode on the station in the orbit's scene
             Modding.ModShips.ModelsChanged -= OnModShipModels;
             if (dofProfile != null) Destroy(dofProfile);
+            DropRoomHighlightCopies();
+            foreach (var m in roomHullCopies.Values) if (m != null) Destroy(m);
+        }
+        /// <summary>The materials CollectRoomHighlights made (its matte copies; the lit side is the room's own or a reflection
+        /// copy, freed with roomHullCopies).</summary>
+        void DropRoomHighlightCopies()
+        {
             var copies = new HashSet<Material>();
             foreach (var (_, _, matte) in roomHighlights) foreach (var m in matte) copies.Add(m);
             foreach (var (_, lit, _) in roomHighlights) foreach (var m in lit) copies.Remove(m);
             foreach (var m in copies) if (m != null) Destroy(m);
+            roomHighlights.Clear();
         }
 
         // ---- depth of field (remake option "Hangar depth of field", Settings.HangarDepthOfField) ---------------------------
@@ -397,6 +405,14 @@ namespace GoF2Remake.World
         // The room's URP Lit materials with and without their specular highlights (CollectRoomHighlights).
         readonly List<(Renderer renderer, Material[] lit, Material[] matte)> roomHighlights = new List<(Renderer, Material[], Material[])>();
         bool roomMatte;
+
+        // Modified (the user's request, 2026-11-15): Options > Graphics "Hangar and bar reflections" (Settings.RoomReflections,
+        // ApplyRoomReflections): the rooms' glossy URP Lit materials and their GoF2/Hull copies, the hangar's room for
+        // CollectRoomHighlights again after a swap.
+        readonly List<(Renderer renderer, Material[] lit, Material[] hull)> roomReflections = new List<(Renderer, Material[], Material[])>();
+        readonly Dictionary<Material, Material> roomHullCopies = new Dictionary<Material, Material>();
+        GameObject hangarRoomGo;
+        bool roomReflectionsShown;
 
         // ---- turntable (ModStation::OnTouchMove 0xea340 / OnTouchEnd / OnUpdate) ----------------------------
 
@@ -483,6 +499,7 @@ namespace GoF2Remake.World
                 if (Random.value < 0.3f) midorianProp.Restart();
             }
             ApplyRobotOptions();
+            ApplyRoomReflections();
             if (View == StationView.Lounge && vosskBots != null) UpdateVosskBots(dtMs);
             if (View == StationView.Hangar && terranBots != null) UpdateTerranBots(dtMs);
 

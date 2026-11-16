@@ -3394,6 +3394,8 @@
  "hangarRobotsHelp": "服务机器人在Terran人和Nivelian人的机库中飞行。",
  "barRobots": "酒吧机器人",
  "barRobotsHelp": "在Terran人和Vossk人的酒吧里工作的机器人。",
+ "roomReflections": "机库和酒吧反射",
+ "roomReflectionsHelp": "机库和酒吧的光亮部分会像飞船一样反射周围环境。在手机上稍微更耗性能。",
  "autoJumpgate": "自动飞行穿越星门",
  "autoJumpgateHelp": "设定目的地后，自动飞行器会不经询问穿过星门飞向目的地。关闭：星门先询问，与原版相同。",
  "statLoadingTime": "再充时间",

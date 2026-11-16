@@ -3394,6 +3394,8 @@
  "hangarRobotsHelp": "Robots de servicio vuelan por los hangares terrícolas y nivelianos.",
  "barRobots": "Robots del bar",
  "barRobotsHelp": "Los robots que trabajan en los bares terrícolas y vossk.",
+ "roomReflections": "Reflejos en hangar y bar",
+ "roomReflectionsHelp": "Las partes brillantes de los hangares y bares reflejan su entorno, como las naves. Algo más exigente en móviles.",
  "autoJumpgate": "El piloto automático usa las puertas de salto",
  "autoJumpgateHelp": "Con un destino fijado, el piloto automático cruza la puerta de salto hacia él sin preguntar. Desactivado: la puerta pregunta primero, como en el original.",
  "statLoadingTime": "Tiempo de recarga",

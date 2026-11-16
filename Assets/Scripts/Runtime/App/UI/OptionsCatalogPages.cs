@@ -192,6 +192,12 @@ namespace GoF2Remake.UI
                 () => Settings.BarRobots, v => Settings.BarRobots = v);
             barRobots.description = () => X("barRobotsHelp", "The robots at work in the Terran and Vossk bars.");
             list.Add(barRobots);
+            // Modified (the user's request, 2026-11-15): the rooms' cube reflection (StationLevel.ApplyRoomReflections).
+            var roomReflections = Toggle("roomReflections", OptionPage.Graphics, () => X("roomReflections", "Hangar and bar reflections"),
+                () => Settings.RoomReflections, v => Settings.RoomReflections = v);
+            roomReflections.description = () => X("roomReflectionsHelp",
+                "The shiny parts of the hangars and bars reflect their surroundings, as the ships do. A little heavier on phones.");
+            list.Add(roomReflections);
             list.Add(Toggle("lensFlare", OptionPage.Graphics, () => X("lensFlare", "Lens flare"), () => Settings.LensFlare, v => Settings.LensFlare = v));
             list.Add(Toggle("npcPlayerEngines", OptionPage.Graphics, () => X("npcPlayerEngines", "Other ships' engines like yours"),
                 () => Settings.NpcPlayerEngines, v => Settings.NpcPlayerEngines = v));

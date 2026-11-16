@@ -175,6 +175,10 @@ namespace GoF2Remake.Data
         /// <summary>Remake (2026-11-05): the bars' robots (the Terran bar's bot, the Vossk bar's bartender arms, VosskBarBots).
         /// Off: hidden. On by default.</summary>
         public static bool BarRobots { get => GetBool("barRobots", true); set => SetBool("barRobots", value); }
+        /// <summary>Modified (the user's request, 2026-11-15): the hangar and bar rooms' glossy parts take the ships' cube
+        /// reflection and rim (GoF2/Hull; the original's rooms have none). Off by default: a cube sample more on nearly every
+        /// pixel of the room. Live while docked (StationLevel.ApplyRoomReflections).</summary>
+        public static bool RoomReflections { get => GetBool("roomReflections", false); set => SetBool("roomReflections", value); }
         /// <summary>Remake: levels of detail (AutoLods): far objects drawn with fewer triangles, the original's LOD meshes
         /// and the ones made from the models (the game's prebaked, the mods' at run time). Off: every model at full detail
         /// (LOD 0, as the original binary's AEGeometry::updateLod). On by default on every platform (the user's choice,
@@ -912,7 +916,7 @@ namespace GoF2Remake.Data
         public static readonly string[] GraphicsKeys =
         {
             "displayMode", "resolutionWidth", "resolutionHeight", "frameRate", "quality", "fireSmoke", "fog", "detailDistance", "textureFiltering", "renderScale", "upscaler", "upscalerQuality",
-            "msaa", "postAa", "textureQuality", "brightness", "bloom", "bloomStyle", "bloomStrength", "hangarShadows", "lods", "hangarDof", "hangarRobots", "barRobots", "lensFlare", "npcPlayerEngines", "fov",
+            "msaa", "postAa", "textureQuality", "brightness", "bloom", "bloomStyle", "bloomStrength", "hangarShadows", "lods", "hangarDof", "hangarRobots", "barRobots", "roomReflections", "lensFlare", "npcPlayerEngines", "fov",
             "cameraShake", "originalChaseCamera", "originalUi", "uiWidth", "uiMargin", "showFps", "fpsPosition", "gameCursor",
         };
         public static readonly string[] ControlsKeys =

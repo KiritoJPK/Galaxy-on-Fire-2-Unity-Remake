@@ -41,6 +41,13 @@ slots, ship heights, fighters per race, music) are in `StationTables`.
     station's Options page shows a change at once; on again starts the schedulers afresh (arms back in their rest poses).
     A mod hangar's bots follow it when named like the Terran / Nivelian ones (`SetupTerranBots` collects them by name);
     a mod bar (`customBar`) is left alone. Test `SettingsTests.RobotOptions`.
+  - **Room reflections** (remake, the user's request, 2026-11-15; Graphics "Hangar and bar reflections",
+    `Settings.RoomReflections`, key `roomReflections`, off by default, not in the presets): the hangar and bar rooms' glossy
+    opaque URP Lit materials (the original's specular map, `_METALLICSPECGLOSSMAP`; no alpha) get GoF2/Hull copies, the
+    ships' cube reflection and rim (the hangar's own cubemap, `SkyReflection.SetHangar`; the lounge the system's). The
+    original's rooms have none. `StationLevel.CollectRoomReflections` (BuildHangar / BuildBar, not a mod's room) and
+    `ApplyRoomReflections` (every frame, live from the Options page; the hangar's highlight copies for the depth of field,
+    `CollectRoomHighlights`, are made again after a swap). Cost: one cube sample more on nearly every pixel of the room.
 - **Space Lounge:**
   - 3-4 generic visitors (the race and gender rules of `Generator::createAgent`) on random slots, as camera-facing billboards with a glow and a floor shadow.
     Remake (#174, `StationLevel.UpdateBillboards`): upright (turned about the vertical only; the original's look-at with

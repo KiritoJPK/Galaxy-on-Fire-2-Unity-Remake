@@ -47,7 +47,8 @@ namespace GoF2Remake.World
         /// highlights off, as with the depth of field off). Under the blur the room looks the same without them.</summary>
         void CollectRoomHighlights(GameObject room)
         {
-            roomHighlights.Clear();
+            SetRoomMatte(false);
+            DropRoomHighlightCopies();
             roomMatte = false;
             if (room == null) return;
             var copies = new Dictionary<Material, Material>();
@@ -78,6 +79,59 @@ namespace GoF2Remake.World
             roomMatte = matte;
             foreach (var (r, lit, m) in roomHighlights)
                 if (r != null) r.sharedMaterials = matte ? m : lit;
+        }
+        /// <summary>Modified (the user's request, 2026-11-15): Options > Graphics "Hangar and bar reflections"
+        /// (Settings.RoomReflections). The rooms' glossy materials (URP Lit with the original's specular map, opaque: the
+        /// ones AssetImport gives GoF2/Hull everywhere but in /hangars/ and /bars/) get a GoF2/Hull copy, which adds the ships'
+        /// cube reflection and rim (the hangar's own cubemap, SkyReflection.SetHangar; the lounge the system's). GoF2/Hull is
+        /// URP Lit's copy, so the copy keeps every property and keyword. A mod's room is left alone (ModMaterials.PlainLit).</summary>
+        void CollectRoomReflections(GameObject room)
+        {
+            if (room == null) return;
+            roomReflections.RemoveAll(e => e.renderer == null);
+            var hull = Shader.Find("GoF2/Hull");
+            if (hull == null) return;
+            foreach (var r in room.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                Material[] withHull = null;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || m.shader == null || m.shader.name != "Universal Render Pipeline/Lit") continue;
+                    if (!m.IsKeywordEnabled("_METALLICSPECGLOSSMAP") || !m.HasProperty("_MetallicGlossMap") || m.GetTexture("_MetallicGlossMap") == null) continue;
+                    if ((m.HasProperty("_Surface") && m.GetFloat("_Surface") > 0.5f) || m.IsKeywordEnabled("_ALPHATEST_ON")) continue;
+                    if (!roomHullCopies.TryGetValue(m, out var c))
+                    {
+                        int queue = m.renderQueue;
+                        c = new Material(m) { name = m.name + " (reflection)" };
+                        c.shader = hull;
+                        c.renderQueue = queue;
+                        c.SetShaderPassEnabled("MotionVectors", true);   // as AssetImport leaves GoF2/Hull's materials
+                        roomHullCopies[m] = c;
+                    }
+                    withHull ??= (Material[])mats.Clone();
+                    withHull[i] = c;
+                }
+                if (withHull == null) continue;
+                roomReflections.Add((r, mats, withHull));
+                if (roomReflectionsShown) r.sharedMaterials = withHull;   // the bar built after the option was applied
+            }
+        }
+        /// <summary>Settings.RoomReflections as the rooms show it, read every frame (a change from the station's Options page
+        /// shows at once). The hangar's highlight copies (CollectRoomHighlights, under the depth of field) are made again
+        /// from the materials now on the room.</summary>
+        void ApplyRoomReflections()
+        {
+            bool on = Settings.RoomReflections;
+            if (on == roomReflectionsShown) return;
+            bool matte = roomMatte;
+            SetRoomMatte(false);
+            roomReflectionsShown = on;
+            foreach (var (r, lit, withHull) in roomReflections)
+                if (r != null) r.sharedMaterials = on ? withHull : lit;
+            if (hangarRoomGo != null) CollectRoomHighlights(hangarRoomGo);
+            SetRoomMatte(matte);
         }
         void UpdateDepthOfField()
         {
